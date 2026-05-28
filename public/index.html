@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
 <style>
 :root {
   --bg: #0d0f14;
@@ -266,34 +266,34 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     <nav class="nav">
       <div class="nav-section">Overview</div>
       <div class="nav-item active" onclick="showPage('dashboard')">
-        <i class="fa-solid fa-gauge-high"></i> Dashboard
+        <i class="ti ti-dashboard"></i> Dashboard
       </div>
       <div class="nav-section">Monitoring</div>
       <div class="nav-item" onclick="showPage('domains')">
-        <i class="fa-solid fa-globe"></i> โดเมนทั้งหมด
+        <i class="ti ti-world"></i> โดเมนทั้งหมด
         <span class="nav-badge" id="nav-total">0</span>
       </div>
       <div class="nav-item" onclick="showPageFiltered('domains','down')">
-        <i class="fa-solid fa-circle-exclamation"></i> Down / Error
+        <i class="ti ti-alert-circle"></i> Down / Error
         <span class="nav-badge" id="nav-down">0</span>
       </div>
       <div class="nav-item" onclick="showPageFiltered('domains','expiring')">
-        <i class="fa-solid fa-clock"></i> หมดอายุเร็วๆ
+        <i class="ti ti-clock"></i> หมดอายุเร็วๆ
         <span class="nav-badge amber" id="nav-expiring">0</span>
       </div>
       <div class="nav-section">Analytics</div>
       <div class="nav-item" onclick="showPage('traffic')">
-        <i class="fa-solid fa-chart-line"></i> Traffic & GSC
+        <i class="ti ti-chart-line"></i> Traffic & GSC
       </div>
       <div class="nav-item" onclick="showPage('keywords')">
-        <i class="fa-solid fa-ranking-star"></i> Keyword Rankings
+        <i class="ti ti-award"></i> Keyword Rankings
       </div>
       <div class="nav-section">Tools</div>
       <div class="nav-item" onclick="showPage('import')">
-        <i class="fa-solid fa-file-import"></i> Import CSV
+        <i class="ti ti-file-import"></i> Import CSV
       </div>
       <div class="nav-item" onclick="showPage('settings')">
-        <i class="fa-solid fa-gear"></i> Settings
+        <i class="ti ti-settings"></i> Settings
       </div>
     </nav>
     <div class="sidebar-footer">
@@ -316,25 +316,25 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="topbar-sub" id="dash-subtitle">โหลดข้อมูล...</div>
         </div>
         <div class="topbar-right">
-          <button class="btn" onclick="syncPlesk()" id="plesk-sync-btn"><i class="fa-solid fa-server"></i> Sync Plesk</button>
-          <button class="btn" id="refresh-btn" onclick="refreshNow()"><i class="fa-solid fa-arrows-rotate"></i> รีเฟรช</button>
-          <button class="btn" onclick="checkAllNow()"><i class="fa-solid fa-rotate"></i> เช็คทุกโดเมน</button>
-          <button class="btn" onclick="syncGSCAll()"><i class="fa-brands fa-google"></i> Sync GSC</button>
-          <button class="btn btn-green" onclick="openAddModal()"><i class="fa-solid fa-plus"></i> เพิ่มโดเมน</button>
+          <button class="btn" onclick="syncPlesk()" id="plesk-sync-btn"><i class="ti ti-server"></i> Sync Plesk</button>
+          <button class="btn" id="refresh-btn" onclick="refreshNow()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+          <button class="btn" onclick="checkAllNow()"><i class="ti ti-refresh"></i> เช็คทุกโดเมน</button>
+          <button class="btn" onclick="syncGSCAll()"><i class="ti ti-brand-google"></i> Sync GSC</button>
+          <button class="btn btn-green" onclick="openAddModal()"><i class="ti ti-plus"></i> เพิ่มโดเมน</button>
         </div>
       </div>
       <div class="content">
         <div class="metrics-grid">
-          <div class="metric-card clickable" onclick="goToFilter('all')"><div class="metric-label"><i class="fa-solid fa-globe"></i> โดเมนทั้งหมด</div><div class="metric-val blue" id="stat-total">—</div><div class="metric-sub" id="stat-last">—</div></div>
-          <div class="metric-card highlight-green clickable" onclick="goToFilter('up')"><div class="metric-label"><i class="fa-solid fa-circle-check"></i> Up</div><div class="metric-val green" id="stat-up">—</div><div class="metric-sub" id="stat-up-pct">—</div></div>
-          <div class="metric-card highlight-red clickable" onclick="goToFilter('down')"><div class="metric-label"><i class="fa-solid fa-circle-xmark"></i> Down</div><div class="metric-val red" id="stat-down">—</div><div class="metric-sub">ต้องตรวจสอบด่วน</div></div>
-          <div class="metric-card highlight-amber clickable" onclick="goToFilter('warn')"><div class="metric-label"><i class="fa-solid fa-triangle-exclamation"></i> Warning</div><div class="metric-val amber" id="stat-warn">—</div><div class="metric-sub">ตอบสนองช้า / error</div></div>
-          <div class="metric-card highlight-green clickable" onclick="goToFilter('traffic')"><div class="metric-label"><i class="fa-solid fa-chart-bar"></i> มีทราฟฟิค (GSC)</div><div class="metric-val green" id="stat-traffic">—</div><div class="metric-sub" id="stat-clicks">—</div></div>
-          <div class="metric-card highlight-amber clickable" onclick="goToFilter('notraffic')"><div class="metric-label"><i class="fa-solid fa-ban"></i> ไม่มีทราฟฟิค</div><div class="metric-val amber" id="stat-notraffic">—</div><div class="metric-sub">0 คลิกใน 30 วัน</div></div>
-          <div class="metric-card highlight-red clickable" onclick="goToFilter('expiring')"><div class="metric-label"><i class="fa-solid fa-calendar-xmark"></i> SSL หมดอายุใน 30 วัน</div><div class="metric-val red" id="stat-expiring">—</div><div class="metric-sub">ต้องต่ออายุด่วน</div></div>
-          <div class="metric-card highlight-green clickable" onclick="goToFilter('plesk-active')"><div class="metric-label"><i class="fa-solid fa-server"></i> Plesk Active</div><div class="metric-val green" id="stat-plesk-active">—</div><div class="metric-sub" id="stat-plesk-host">—</div></div>
-          <div class="metric-card highlight-red clickable" onclick="goToFilter('plesk-suspended')"><div class="metric-label"><i class="fa-solid fa-ban"></i> Plesk Suspended</div><div class="metric-val red" id="stat-plesk-suspended">—</div><div class="metric-sub">โดเมนถูกระงับ</div></div>
-          <div class="metric-card"><div class="metric-label"><i class="fa-solid fa-eye"></i> Total Impressions</div><div class="metric-val" id="stat-impressions">—</div><div class="metric-sub">30 วันล่าสุด</div></div>
+          <div class="metric-card clickable" onclick="goToFilter('all')"><div class="metric-label"><i class="ti ti-world"></i> โดเมนทั้งหมด</div><div class="metric-val blue" id="stat-total">—</div><div class="metric-sub" id="stat-last">—</div></div>
+          <div class="metric-card highlight-green clickable" onclick="goToFilter('up')"><div class="metric-label"><i class="ti ti-circle-check"></i> Up</div><div class="metric-val green" id="stat-up">—</div><div class="metric-sub" id="stat-up-pct">—</div></div>
+          <div class="metric-card highlight-red clickable" onclick="goToFilter('down')"><div class="metric-label"><i class="ti ti-circle-x"></i> Down</div><div class="metric-val red" id="stat-down">—</div><div class="metric-sub">ต้องตรวจสอบด่วน</div></div>
+          <div class="metric-card highlight-amber clickable" onclick="goToFilter('warn')"><div class="metric-label"><i class="ti ti-alert-triangle"></i> Warning</div><div class="metric-val amber" id="stat-warn">—</div><div class="metric-sub">ตอบสนองช้า / error</div></div>
+          <div class="metric-card highlight-green clickable" onclick="goToFilter('traffic')"><div class="metric-label"><i class="ti ti-chart-bar"></i> มีทราฟฟิค (GSC)</div><div class="metric-val green" id="stat-traffic">—</div><div class="metric-sub" id="stat-clicks">—</div></div>
+          <div class="metric-card highlight-amber clickable" onclick="goToFilter('notraffic')"><div class="metric-label"><i class="ti ti-ban"></i> ไม่มีทราฟฟิค</div><div class="metric-val amber" id="stat-notraffic">—</div><div class="metric-sub">0 คลิกใน 30 วัน</div></div>
+          <div class="metric-card highlight-red clickable" onclick="goToFilter('expiring')"><div class="metric-label"><i class="ti ti-calendar-x"></i> SSL หมดอายุใน 30 วัน</div><div class="metric-val red" id="stat-expiring">—</div><div class="metric-sub">ต้องต่ออายุด่วน</div></div>
+          <div class="metric-card highlight-green clickable" onclick="goToFilter('plesk-active')"><div class="metric-label"><i class="ti ti-server"></i> Plesk Active</div><div class="metric-val green" id="stat-plesk-active">—</div><div class="metric-sub" id="stat-plesk-host">—</div></div>
+          <div class="metric-card highlight-red clickable" onclick="goToFilter('plesk-suspended')"><div class="metric-label"><i class="ti ti-ban"></i> Plesk Suspended</div><div class="metric-val red" id="stat-plesk-suspended">—</div><div class="metric-sub">โดเมนถูกระงับ</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-eye"></i> Total Impressions</div><div class="metric-val" id="stat-impressions">—</div><div class="metric-sub">30 วันล่าสุด</div></div>
         </div>
 
         <div id="gsc-banner-wrap"></div>
@@ -356,15 +356,15 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="topbar-sub" id="domains-count-text">—</div>
         </div>
         <div class="topbar-right">
-          <button class="btn" onclick="exportCSV()"><i class="fa-solid fa-download"></i> Export CSV</button>
-          <button class="btn" onclick="checkAllNow()"><i class="fa-solid fa-rotate"></i> เช็คทั้งหมด</button>
-          <button class="btn btn-green" onclick="openAddModal()"><i class="fa-solid fa-plus"></i> เพิ่มโดเมน</button>
+          <button class="btn" onclick="exportCSV()"><i class="ti ti-download"></i> Export CSV</button>
+          <button class="btn" onclick="checkAllNow()"><i class="ti ti-refresh"></i> เช็คทั้งหมด</button>
+          <button class="btn btn-green" onclick="openAddModal()"><i class="ti ti-plus"></i> เพิ่มโดเมน</button>
         </div>
       </div>
       <div class="content">
         <div class="toolbar">
           <div class="search-box">
-            <i class="fa-solid fa-search"></i>
+            <i class="ti ti-search"></i>
             <input type="text" placeholder="ค้นหาโดเมน..." id="search-input" oninput="applyFilters()" />
           </div>
           <select class="sel" id="filter-status" onchange="applyFilters()">
@@ -390,8 +390,8 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         </div>
         <div class="tabs" id="domain-tabs">
           <div class="tab active" onclick="setDomainTab('all',this)">ทั้งหมด <span class="tab-count" id="tab-all">0</span></div>
-          <div class="tab" onclick="setDomainTab('down',this)"><i class="fa-solid fa-circle-xmark"></i> Down <span class="tab-count" id="tab-down">0</span></div>
-          <div class="tab" onclick="setDomainTab('warn',this)"><i class="fa-solid fa-triangle-exclamation"></i> Warning <span class="tab-count" id="tab-warn">0</span></div>
+          <div class="tab" onclick="setDomainTab('down',this)"><i class="ti ti-circle-x"></i> Down <span class="tab-count" id="tab-down">0</span></div>
+          <div class="tab" onclick="setDomainTab('warn',this)"><i class="ti ti-alert-triangle"></i> Warning <span class="tab-count" id="tab-warn">0</span></div>
           <div class="tab" onclick="setDomainTab('notraffic',this)">ไม่มีทราฟฟิค <span class="tab-count" id="tab-notraffic">0</span></div>
           <div class="tab" onclick="setDomainTab('expiring',this)">หมดอายุเร็ว <span class="tab-count" id="tab-expiring">0</span></div>
           <div class="tab" onclick="setDomainTab('ranked',this)">มี Keyword ติด <span class="tab-count" id="tab-ranked">0</span></div>
@@ -401,13 +401,13 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <span id="bulk-count" style="font-size:13px;color:var(--text2)">เลือก 0 โดเมน</span>
           <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn-sm" onclick="bulkAutoFix()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.3)">
-              <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fix ทั้งหมดที่เลือก
+              <i class="ti ti-wand"></i> Auto-fix ทั้งหมดที่เลือก
             </button>
             <button class="btn btn-sm" onclick="bulkCheck()" style="background:var(--blue-dim);color:var(--blue);border-color:rgba(96,165,250,0.3)">
-              <i class="fa-solid fa-rotate"></i> เช็คสถานะ
+              <i class="ti ti-refresh"></i> เช็คสถานะ
             </button>
             <button class="btn btn-sm btn-red" onclick="bulkDelete()">
-              <i class="fa-solid fa-trash"></i> ลบ
+              <i class="ti ti-trash"></i> ลบ
             </button>
             <button class="btn btn-sm btn-ghost" onclick="clearSelection()">ยกเลิก</button>
           </div>
@@ -421,7 +421,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="topbar">
         <div><div class="topbar-title">Traffic & Google Search Console</div><div class="topbar-sub">ข้อมูล 30 วันล่าสุด</div></div>
         <div class="topbar-right">
-          <button class="btn btn-green" onclick="syncGSCAll()"><i class="fa-brands fa-google"></i> Sync GSC ทั้งหมด</button>
+          <button class="btn btn-green" onclick="syncGSCAll()"><i class="ti ti-brand-google"></i> Sync GSC ทั้งหมด</button>
         </div>
       </div>
       <div class="content" id="traffic-content">
@@ -434,7 +434,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="topbar">
         <div><div class="topbar-title">Keyword Rankings</div><div class="topbar-sub">จาก Google Search Console</div></div>
         <div class="topbar-right">
-          <button class="btn btn-green" onclick="syncGSCAll()"><i class="fa-brands fa-google"></i> Sync GSC</button>
+          <button class="btn btn-green" onclick="syncGSCAll()"><i class="ti ti-brand-google"></i> Sync GSC</button>
         </div>
       </div>
       <div class="content" id="keywords-content">
@@ -449,7 +449,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
       <div class="content">
         <div class="settings-section">
-          <div class="settings-section-title"><i class="fa-solid fa-file-csv"></i> รูปแบบ CSV ที่รองรับ</div>
+          <div class="settings-section-title"><i class="ti ti-file-spreadsheet"></i> รูปแบบ CSV ที่รองรับ</div>
           <p style="font-size:13px;color:var(--text2);margin-bottom:12px">คอลัมน์ที่รองรับ (บรรทัดแรกต้องเป็น header):</p>
           <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:14px;font-family:var(--mono);font-size:12px;color:var(--text2);margin-bottom:16px;overflow-x:auto">
             <div style="color:var(--green);margin-bottom:4px">domain,notes,tags,expiry_date,days_left</div>
@@ -457,23 +457,23 @@ textarea.form-input { resize: vertical; min-height: 80px; }
             <div>example2.net,แคมเปญ Q1,ppc,2026-06-30,32</div>
           </div>
           <div style="display:flex;gap:8px">
-            <button class="btn" onclick="downloadTemplate()"><i class="fa-solid fa-download"></i> ดาวน์โหลด Template</button>
+            <button class="btn" onclick="downloadTemplate()"><i class="ti ti-download"></i> ดาวน์โหลด Template</button>
           </div>
         </div>
 
         <div class="settings-section">
-          <div class="settings-section-title"><i class="fa-solid fa-upload"></i> อัพโหลด CSV</div>
+          <div class="settings-section-title"><i class="ti ti-upload"></i> อัพโหลด CSV</div>
           <div id="drop-zone" style="border:2px dashed var(--border2);border-radius:var(--radius);padding:40px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px" ondragover="event.preventDefault();this.style.borderColor='var(--green)'" ondragleave="this.style.borderColor='var(--border2)'" ondrop="handleDrop(event)">
-            <i class="fa-solid fa-cloud-upload" style="font-size:32px;color:var(--text3);display:block;margin-bottom:12px"></i>
+            <i class="ti ti-cloud-upload" style="font-size:32px;color:var(--text3);display:block;margin-bottom:12px"></i>
             <div style="font-size:14px;color:var(--text2);margin-bottom:6px">ลากไฟล์มาวางตรงนี้</div>
             <div style="font-size:12px;color:var(--text3);margin-bottom:16px">หรือ</div>
-            <button class="btn" onclick="document.getElementById('file-input').click()"><i class="fa-solid fa-folder-open"></i> เลือกไฟล์</button>
+            <button class="btn" onclick="document.getElementById('file-input').click()"><i class="ti ti-folder-open"></i> เลือกไฟล์</button>
             <input type="file" id="file-input" accept=".csv" style="display:none" onchange="handleFileSelect(this)" />
           </div>
           <div style="font-size:13px;color:var(--text2);margin-bottom:12px">หรือวาง CSV โดยตรง:</div>
           <textarea class="form-input" id="csv-text" rows="8" placeholder="domain,notes,tags&#10;example.com,เว็บหลัก,seo&#10;example2.net,,ppc"></textarea>
           <div style="margin-top:12px;display:flex;gap:8px">
-            <button class="btn btn-green" onclick="importCSV()"><i class="fa-solid fa-file-import"></i> Import โดเมน</button>
+            <button class="btn btn-green" onclick="importCSV()"><i class="ti ti-file-import"></i> Import โดเมน</button>
             <button class="btn" onclick="document.getElementById('csv-text').value=''">ล้าง</button>
           </div>
           <div id="import-result" style="margin-top:12px"></div>
@@ -486,22 +486,22 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="topbar">
         <div><div class="topbar-title">Settings</div><div class="topbar-sub">ตั้งค่า GSC API และการแจ้งเตือน</div></div>
         <div class="topbar-right">
-          <button class="btn btn-green" onclick="saveSettings()"><i class="fa-solid fa-save"></i> บันทึก</button>
+          <button class="btn btn-green" onclick="saveSettings()"><i class="ti ti-device-floppy"></i> บันทึก</button>
         </div>
       </div>
       <div class="content">
         <div class="settings-section">
-          <div class="settings-section-title"><i class="fa-solid fa-server"></i> Backend Server</div>
+          <div class="settings-section-title"><i class="ti ti-server"></i> Backend Server</div>
           <p style="font-size:13px;color:var(--text2);margin-bottom:12px">URL ของ Backend Server (node server.js)</p>
           <div style="display:flex;gap:10px;align-items:center">
             <input class="form-input" id="server-url" style="max-width:320px" placeholder="https://your-app.up.railway.app" value="" />
-            <button class="btn" onclick="testConnection()"><i class="fa-solid fa-plug"></i> ทดสอบ</button>
+            <button class="btn" onclick="testConnection()"><i class="ti ti-plug"></i> ทดสอบ</button>
             <span id="conn-status"></span>
           </div>
         </div>
 
         <div class="settings-section">
-          <div class="settings-section-title"><i class="fa-brands fa-google"></i> Google Search Console API</div>
+          <div class="settings-section-title"><i class="ti ti-brand-google"></i> Google Search Console API</div>
           <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
             ขั้นตอน: <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue)">Google Cloud Console</a> → สร้าง Project → เปิด Search Console API → สร้าง OAuth 2.0 Credentials
           </p>
@@ -520,7 +520,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
             <input class="form-input" id="gsc-refresh-token" placeholder="1//..." />
             <div class="form-hint">ได้จาก OAuth Playground: <a href="https://developers.google.com/oauthplayground/" target="_blank" style="color:var(--blue)">developers.google.com/oauthplayground</a> → scope: https://www.googleapis.com/auth/webmasters.readonly</div>
           </div>
-          <button class="btn" onclick="saveGSC()"><i class="fa-solid fa-save"></i> บันทึก GSC Config</button>
+          <button class="btn" onclick="saveGSC()"><i class="ti ti-device-floppy"></i> บันทึก GSC Config</button>
         </div>
 
         <div class="settings-section">
@@ -549,11 +549,11 @@ textarea.form-input { resize: vertical; min-height: 80px; }
               <input type="checkbox" id="notify-expiry" checked style="accent-color:var(--green)" /> แจ้งเมื่อโดเมนใกล้หมดอายุ
             </label>
           </div>
-          <button class="btn" style="margin-top:12px" onclick="testLineAlert()"><i class="fa-brands fa-telegram"></i> ทดสอบแจ้งเตือน Telegram</button>
+          <button class="btn" style="margin-top:12px" onclick="testLineAlert()"><i class="ti ti-brand-telegram"></i> ทดสอบแจ้งเตือน Telegram</button>
         </div>
 
         <div class="settings-section">
-          <div class="settings-section-title"><i class="fa-solid fa-clock-rotate-left"></i> Auto-check Schedule</div>
+          <div class="settings-section-title"><i class="ti ti-history"></i> Auto-check Schedule</div>
           <p style="font-size:13px;color:var(--text2)">Server จะเช็คโดเมนอัตโนมัติทุก <strong>30 นาที</strong> และ Sync GSC ทุก <strong>6 ชั่วโมง</strong> (ต้องรัน server.js)</p>
         </div>
       </div>
@@ -565,7 +565,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 <!-- MODALS -->
 <div id="add-modal" class="modal-overlay" style="display:none">
   <div class="modal">
-    <div class="modal-title"><i class="fa-solid fa-plus-circle" style="color:var(--green)"></i> เพิ่มโดเมนใหม่</div>
+    <div class="modal-title"><i class="ti ti-circle-plus" style="color:var(--green)"></i> เพิ่มโดเมนใหม่</div>
     <div class="form-group">
       <label class="form-label">Domain *</label>
       <input class="form-input" id="add-domain" placeholder="example.com" />
@@ -584,7 +584,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     </div>
     <div class="modal-footer">
       <button class="btn" onclick="closeModal('add-modal')">ยกเลิก</button>
-      <button class="btn btn-green" onclick="addDomain()"><i class="fa-solid fa-plus"></i> เพิ่มโดเมน</button>
+      <button class="btn btn-green" onclick="addDomain()"><i class="ti ti-plus"></i> เพิ่มโดเมน</button>
     </div>
   </div>
 </div>
@@ -600,6 +600,27 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     </div>
   </div>
 </div>
+
+<!-- GLOBAL LOADING OVERLAY -->
+<div id="global-loading" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;flex-direction:column;gap:16px">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:28px 36px;text-align:center;min-width:280px">
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
+      <div class="spinner" style="width:22px;height:22px;border-width:3px"></div>
+      <div id="global-loading-title" style="font-size:15px;font-weight:500;color:var(--text)">กำลังโหลด...</div>
+    </div>
+    <div id="global-loading-sub" style="font-size:12px;color:var(--text3)">กรุณารอสักครู่</div>
+    <div style="background:var(--bg4);border-radius:4px;overflow:hidden;height:4px;margin-top:14px">
+      <div id="global-loading-bar" style="height:100%;background:var(--green);border-radius:4px;width:30%;animation:loadbar 1.5s ease-in-out infinite"></div>
+    </div>
+  </div>
+</div>
+<style>
+@keyframes loadbar {
+  0%{width:10%;margin-left:0}
+  50%{width:50%;margin-left:30%}
+  100%{width:10%;margin-left:90%}
+}
+</style>
 
 <div class="toast-container" id="toast-container"></div>
 
@@ -639,7 +660,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     </div>
     
     <button id="progress-close-btn" class="btn btn-green" style="margin-top:20px;display:none;width:100%" onclick="closeProgressModal()">
-      <i class="fa-solid fa-check"></i> เสร็จสิ้น — ปิด
+      <i class="ti ti-check"></i> เสร็จสิ้น — ปิด
     </button>
   </div>
 </div>
@@ -678,6 +699,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ===== DATA =====
 async function loadData() {
+  // อัพเดต live dot เป็น loading
+  const dot = document.getElementById('live-dot');
+  if (dot) dot.style.background = 'var(--amber)';
   try {
     const [domainsRes, statsRes] = await Promise.all([
       fetch(`${API}/api/domains`),
@@ -693,9 +717,10 @@ async function loadData() {
     renderTrafficPage();
     renderKeywordsPage();
     setServerStatus(true, domainsData.lastUpdated);
+    if (dot) dot.style.background = 'var(--green)';
   } catch (e) {
     setServerStatus(false);
-    // Show demo data if server not available
+    if (dot) dot.style.background = 'var(--red)';
     if (allDomains.length === 0) loadDemoData();
   }
 }
@@ -790,8 +815,8 @@ function updateStats(stats, extra) {
   const bannerWrap = document.getElementById('gsc-banner-wrap');
   if (bannerWrap) {
     let banners = '';
-    if (extra.pleskConnected && stats.total === 0) banners += `<div class="gsc-banner" style="margin-bottom:10px"><div class="gsc-banner-icon">🔄</div><div class="gsc-banner-text"><h3>Plesk เชื่อมต่อแล้ว</h3><p>กด Sync Plesk เพื่อดึงโดเมนทั้งหมดจาก ${extra.pleskHost}</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="syncPlesk()"><i class="fa-solid fa-server"></i> Sync Plesk</button></div></div>`;
-    if (stats.withTraffic === 0 && stats.total > 0) banners += `<div class="gsc-banner"><div class="gsc-banner-icon">🔗</div><div class="gsc-banner-text"><h3>เชื่อมต่อ Google Search Console</h3><p>ตั้งค่า API เพื่อดู Traffic, Clicks และ Keyword Rankings</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="fa-solid fa-gear"></i> ตั้งค่า GSC</button></div></div>`;
+    if (extra.pleskConnected && stats.total === 0) banners += `<div class="gsc-banner" style="margin-bottom:10px"><div class="gsc-banner-icon">🔄</div><div class="gsc-banner-text"><h3>Plesk เชื่อมต่อแล้ว</h3><p>กด Sync Plesk เพื่อดึงโดเมนทั้งหมดจาก ${extra.pleskHost}</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="syncPlesk()"><i class="ti ti-server"></i> Sync Plesk</button></div></div>`;
+    if (stats.withTraffic === 0 && stats.total > 0) banners += `<div class="gsc-banner"><div class="gsc-banner-icon">🔗</div><div class="gsc-banner-text"><h3>เชื่อมต่อ Google Search Console</h3><p>ตั้งค่า API เพื่อดู Traffic, Clicks และ Keyword Rankings</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="ti ti-settings"></i> ตั้งค่า GSC</button></div></div>`;
     bannerWrap.innerHTML = banners;
   }
 }
@@ -899,15 +924,15 @@ function expiryCell(d) {
 
 function pleskBadge(d) {
   if (!d.pleskId) return '<span style="color:var(--text3);font-size:11px">—</span>';
-  if (d.pleskActive) return '<span class="badge badge-up" style="font-size:10px"><i class="fa-solid fa-circle-check"></i> Active</span>';
-  return '<span class="badge badge-down" style="font-size:10px"><i class="fa-solid fa-ban"></i> Suspended</span>';
+  if (d.pleskActive) return '<span class="badge badge-up" style="font-size:10px"><i class="ti ti-circle-check"></i> Active</span>';
+  return '<span class="badge badge-down" style="font-size:10px"><i class="ti ti-ban"></i> Suspended</span>';
 }
 
 function renderDomainTable() {
   const wrap = document.getElementById('domain-table-wrap');
   if (!wrap) return;
   if (filteredDomains.length === 0) {
-    wrap.innerHTML = `<div class="empty-state"><i class="fa-solid fa-inbox"></i><h3>ไม่พบโดเมน</h3><p>ลองปรับตัวกรองหรือเพิ่มโดเมนใหม่</p></div>`;
+    wrap.innerHTML = `<div class="empty-state"><i class="ti ti-inbox"></i><h3>ไม่พบโดเมน</h3><p>ลองปรับตัวกรองหรือเพิ่มโดเมนใหม่</p></div>`;
     return;
   }
   const start = (currentPage-1)*PER_PAGE;
@@ -934,7 +959,7 @@ function renderDomainTable() {
           <tr>
             <td><input type="checkbox" style="accent-color:var(--green)" onchange="updateBulkBar()" data-domain="${d.domain}" /></td>
             <td>
-              <div class="domain-name"><a href="https://${d.domain}" target="_blank">${d.domain} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px;opacity:0.5"></i></a></div>
+              <div class="domain-name"><a href="https://${d.domain}" target="_blank">${d.domain} <i class="ti ti-external-link" style="font-size:10px;opacity:0.5"></i></a></div>
               ${d.tags?.length ? `<div style="margin-top:3px">${d.tags.map(t=>`<span style="background:var(--bg4);color:var(--text3);font-size:10px;padding:1px 5px;border-radius:3px;margin-right:3px">${t}</span>`).join('')}</div>` : ''}
             </td>
             <td>${statusBadge(d)}</td>
@@ -945,11 +970,11 @@ function renderDomainTable() {
             <td>${expiryCell(d)}</td>
             <td>
               <div class="action-group">
-                <button class="action-btn" title="ดูรายละเอียด" onclick="viewDetail('${d.domain}')"><i class="fa-solid fa-eye"></i></button>
-                <button class="action-btn" title="เช็คสถานะ" onclick="checkOne('${d.domain}')"><i class="fa-solid fa-rotate"></i></button>
-                ${d.status === 'down' ? `<button class="action-btn" title="Auto-fix (Unsuspend Plesk + Pause CF)" onclick="autoFixDomain('${d.domain}')" style="color:var(--amber);border-color:var(--amber)"><i class="fa-solid fa-wand-magic-sparkles"></i></button>` : ''}
-                <button class="action-btn" title="Sync GSC" onclick="syncGSCOne('${d.domain}')"><i class="fa-brands fa-google"></i></button>
-                <button class="action-btn danger" title="ลบ" onclick="deleteDomain('${d.domain}')"><i class="fa-solid fa-trash"></i></button>
+                <button class="action-btn" title="ดูรายละเอียด" onclick="viewDetail('${d.domain}')"><i class="ti ti-eye"></i></button>
+                <button class="action-btn" title="เช็คสถานะ" onclick="checkOne('${d.domain}')"><i class="ti ti-refresh"></i></button>
+                ${d.status === 'down' ? `<button class="action-btn" title="Auto-fix (Unsuspend Plesk + Pause CF)" onclick="autoFixDomain('${d.domain}')" style="color:var(--amber);border-color:var(--amber)"><i class="ti ti-wand"></i></button>` : ''}
+                <button class="action-btn" title="Sync GSC" onclick="syncGSCOne('${d.domain}')"><i class="ti ti-brand-google"></i></button>
+                <button class="action-btn danger" title="ลบ" onclick="deleteDomain('${d.domain}')"><i class="ti ti-trash"></i></button>
               </div>
             </td>
           </tr>`).join('')}
@@ -993,8 +1018,8 @@ function renderQuickTable() {
   const urgent = [...allDomains].filter(d=>d.status==='down'||d.daysLeft<=7).slice(0,5);
   const recent = [...allDomains].sort((a,b)=>new Date(b.addedAt)-new Date(a.addedAt)).slice(0,5);
   const list = [...new Map([...urgent,...recent].map(d=>[d.domain,d])).values()].slice(0,8);
-  if (!list.length) { wrap.innerHTML='<div class="empty-state" style="padding:30px"><i class="fa-solid fa-party-horn"></i><h3>ทุกอย่างปกติดี!</h3></div>'; return; }
-  wrap.innerHTML = `<div class="table-container"><div class="table-wrap"><table><thead><tr><th>โดเมน</th><th>สถานะ</th><th>Traffic</th><th>หมดอายุ</th><th></th></tr></thead><tbody>${list.map(d=>`<tr><td class="domain-name">${d.domain}</td><td>${statusBadge(d)}</td><td>${trafficBar(d)}</td><td>${expiryCell(d)}</td><td><button class="action-btn" onclick="viewDetail('${d.domain}')"><i class="fa-solid fa-eye"></i></button></td></tr>`).join('')}</tbody></table></div></div>`;
+  if (!list.length) { wrap.innerHTML='<div class="empty-state" style="padding:30px"><i class="ti ti-confetti"></i><h3>ทุกอย่างปกติดี!</h3></div>'; return; }
+  wrap.innerHTML = `<div class="table-container"><div class="table-wrap"><table><thead><tr><th>โดเมน</th><th>สถานะ</th><th>Traffic</th><th>หมดอายุ</th><th></th></tr></thead><tbody>${list.map(d=>`<tr><td class="domain-name">${d.domain}</td><td>${statusBadge(d)}</td><td>${trafficBar(d)}</td><td>${expiryCell(d)}</td><td><button class="action-btn" onclick="viewDetail('${d.domain}')"><i class="ti ti-eye"></i></button></td></tr>`).join('')}</tbody></table></div></div>`;
 }
 
 // ===== TRAFFIC PAGE =====
@@ -1003,7 +1028,7 @@ function renderTrafficPage() {
   if (!el) return;
   const withGSC = allDomains.filter(d => d.gsc);
   if (!withGSC.length) {
-    el.innerHTML = `<div class="gsc-banner"><div class="gsc-banner-icon">📊</div><div class="gsc-banner-text"><h3>ยังไม่มีข้อมูล GSC</h3><p>เชื่อมต่อ Google Search Console API แล้วกด Sync เพื่อดูข้อมูล Traffic</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="fa-solid fa-gear"></i> ตั้งค่า</button></div></div>`; return;
+    el.innerHTML = `<div class="gsc-banner"><div class="gsc-banner-icon">📊</div><div class="gsc-banner-text"><h3>ยังไม่มีข้อมูล GSC</h3><p>เชื่อมต่อ Google Search Console API แล้วกด Sync เพื่อดูข้อมูล Traffic</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="ti ti-settings"></i> ตั้งค่า</button></div></div>`; return;
   }
   const sorted = [...withGSC].sort((a,b)=>(b.gsc?.clicks||0)-(a.gsc?.clicks||0));
   const totalClicks = sorted.reduce((s,d)=>s+(d.gsc?.clicks||0),0);
@@ -1039,7 +1064,7 @@ function renderKeywordsPage() {
   if (!el) return;
   const withKw = allDomains.filter(d => d.gsc?.keywordCount > 0);
   if (!withKw.length) {
-    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-ranking-star"></i><h3>ยังไม่มีข้อมูล Keywords</h3><p>Sync GSC เพื่อดูข้อมูล Keyword Rankings</p></div>`; return;
+    el.innerHTML = `<div class="empty-state"><i class="ti ti-award"></i><h3>ยังไม่มีข้อมูล Keywords</h3><p>Sync GSC เพื่อดูข้อมูล Keyword Rankings</p></div>`; return;
   }
   const sorted = [...withKw].sort((a,b)=>(a.gsc?.topPosition||999)-(b.gsc?.topPosition||999));
   el.innerHTML = `
@@ -1069,7 +1094,7 @@ function renderKeywordsPage() {
 function viewDetail(domain) {
   const d = allDomains.find(x => x.domain === domain);
   if (!d) return;
-  document.getElementById('detail-modal-title').innerHTML = `<i class="fa-solid fa-globe" style="color:var(--green)"></i> ${d.domain}`;
+  document.getElementById('detail-modal-title').innerHTML = `<i class="ti ti-world" style="color:var(--green)"></i> ${d.domain}`;
   document.getElementById('detail-sync-btn').onclick = () => syncGSCOne(domain);
   document.getElementById('detail-check-btn').onclick = () => checkOne(domain);
   const gsc = d.gsc;
@@ -1082,10 +1107,10 @@ function viewDetail(domain) {
       <div class="detail-item"><div class="detail-item-label">หมดอายุ</div><div>${expiryCell(d)} ${d.expiryDate ? `<span style="color:var(--text3);font-size:11px">(${d.expiryDate})</span>` : ''}</div></div>
       <div class="detail-item"><div class="detail-item-label">Tags</div><div style="font-size:13px">${d.tags?.map(t=>`<span style="background:var(--bg4);color:var(--text2);font-size:11px;padding:2px 6px;border-radius:3px;margin-right:3px">${t}</span>`).join('')||'—'}</div></div>
     </div>
-    ${d.error ? `<div style="background:var(--red-dim);border:1px solid rgba(240,82,82,0.2);border-radius:var(--radius-sm);padding:10px;margin-top:12px;font-size:12px;color:var(--red)"><i class="fa-solid fa-circle-xmark"></i> ${d.error}</div>` : ''}
+    ${d.error ? `<div style="background:var(--red-dim);border:1px solid rgba(240,82,82,0.2);border-radius:var(--radius-sm);padding:10px;margin-top:12px;font-size:12px;color:var(--red)"><i class="ti ti-circle-x"></i> ${d.error}</div>` : ''}
     ${gsc ? `
     <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-      <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text)"><i class="fa-brands fa-google" style="color:var(--blue)"></i> Google Search Console (30 วันล่าสุด)</div>
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text)"><i class="ti ti-brand-google" style="color:var(--blue)"></i> Google Search Console (30 วันล่าสุด)</div>
       <div class="detail-grid">
         <div class="detail-item"><div class="detail-item-label">Clicks</div><div class="detail-item-val green">${gsc.clicks.toLocaleString()}</div></div>
         <div class="detail-item"><div class="detail-item-label">Impressions</div><div class="detail-item-val">${gsc.impressions.toLocaleString()}</div></div>
@@ -1099,7 +1124,7 @@ function viewDetail(domain) {
         <div class="kw-table-wrap"><table style="width:100%;font-size:12px"><thead><tr style="background:var(--bg3)"><th style="padding:6px 10px;color:var(--text3)">Keyword</th><th style="padding:6px 10px;color:var(--text3)">Position</th><th style="padding:6px 10px;color:var(--text3)">Clicks</th><th style="padding:6px 10px;color:var(--text3)">Imp</th><th style="padding:6px 10px;color:var(--text3)">CTR</th></tr></thead>
         <tbody>${gsc.keywords.slice(0,10).map(k=>`<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px;color:var(--text)">${k.keyword}</td><td style="padding:6px 10px;font-family:var(--mono);color:var(--green)">#${k.position}</td><td style="padding:6px 10px;font-family:var(--mono)">${k.clicks}</td><td style="padding:6px 10px;font-family:var(--mono);color:var(--text2)">${k.impressions}</td><td style="padding:6px 10px;font-family:var(--mono);color:var(--text2)">${k.ctr}%</td></tr>`).join('')}</tbody></table></div>
       </div>` : ''}
-    </div>` : `<div style="margin-top:16px;padding:16px;background:var(--bg3);border-radius:var(--radius-sm);text-align:center;font-size:13px;color:var(--text3)"><i class="fa-brands fa-google"></i> ยังไม่มีข้อมูล GSC — คลิก Sync GSC</div>`}`;
+    </div>` : `<div style="margin-top:16px;padding:16px;background:var(--bg3);border-radius:var(--radius-sm);text-align:center;font-size:13px;color:var(--text3)"><i class="ti ti-brand-google"></i> ยังไม่มีข้อมูล GSC — คลิก Sync GSC</div>`}`;
   document.getElementById('detail-modal').style.display = 'flex';
 }
 
@@ -1178,11 +1203,16 @@ async function checkOne(domain) {
 }
 
 async function checkAllNow() {
-  toast('กำลังเช็คโดเมนทั้งหมด...', 'info');
+  showLoading('🔍 กำลังเช็คโดเมนทั้งหมด...', 'กำลังตรวจสอบสถานะ Up/Down พร้อมกัน');
   try {
     await fetch(`${API}/api/check-all`, { method:'POST' });
-    setTimeout(loadData, 3000);
-  } catch { toast('ต้องรัน server.js ก่อน', 'error'); }
+    toast('⚙️ เริ่มเช็คโดเมนแล้ว — อัพเดตใน 30-60 วินาที', 'info');
+    setTimeout(async () => { await loadData(); hideLoading(); }, 5000);
+    setTimeout(loadData, 30000);
+  } catch {
+    hideLoading();
+    toast('ต้องรัน server.js ก่อน', 'error');
+  }
 }
 
 async function syncGSCOne(domain) {
@@ -1196,24 +1226,33 @@ async function syncGSCOne(domain) {
 }
 
 async function syncGSCAll() {
-  toast('กำลัง Sync GSC ทั้งหมด...', 'info');
+  showLoading('📊 กำลัง Sync Google Search Console...', 'ดึงข้อมูล Traffic และ Keywords');
   try {
     await fetch(`${API}/api/gsc/sync-all`, { method:'POST' });
-    setTimeout(loadData, 5000);
-    toast('Sync กำลังทำงาน background', 'success');
-  } catch { toast('ต้องตั้งค่า GSC API ก่อน', 'error'); }
+    setTimeout(async () => { await loadData(); hideLoading(); toast('✅ Sync GSC เสร็จ!', 'success'); }, 5000);
+  } catch {
+    hideLoading();
+    toast('ต้องตั้งค่า GSC API ก่อน', 'error');
+  }
 }
 
 async function syncPlesk() {
-  toast('กำลัง Sync โดเมนจาก Plesk...', 'info');
+  showLoading('🔄 กำลัง Sync Plesk...', 'ดึงโดเมนจากทุก Server กรุณารอสักครู่');
   try {
     const res = await fetch(`${API}/api/plesk/sync`, { method:'POST' });
     const data = await res.json();
-    if (data.error) { toast(data.error, 'error'); return; }
-    toast('Sync Plesk สำเร็จ — กำลังเช็คสถานะโดเมน...', 'success');
-    setTimeout(loadData, 4000);
-    setTimeout(loadData, 10000);
-  } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
+    if (data.error) { hideLoading(); toast(data.error, 'error'); return; }
+    document.getElementById('global-loading-sub').textContent = 'กำลังดึงโดเมนจากทุก Plesk Server...';
+    setTimeout(async () => {
+      await loadData();
+      hideLoading();
+      toast('✅ Sync Plesk สำเร็จ!', 'success');
+    }, 8000);
+    setTimeout(loadData, 20000);
+  } catch {
+    hideLoading();
+    toast('เชื่อมต่อ Server ไม่ได้', 'error');
+  }
 }
 
 // ===== IMPORT =====
@@ -1239,7 +1278,7 @@ async function importCSV() {
   try {
     const res = await fetch(`${API}/api/domains/import`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({csv}) });
     const data = await res.json();
-    resultEl.innerHTML = `<div style="background:var(--green-dim);border:1px solid rgba(34,208,122,0.2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--green)"><i class="fa-solid fa-circle-check"></i> Import สำเร็จ: เพิ่ม ${data.added} โดเมน (ข้าม ${data.skipped} ที่ซ้ำ) รวมทั้งหมด ${data.total} โดเมน</div>`;
+    resultEl.innerHTML = `<div style="background:var(--green-dim);border:1px solid rgba(34,208,122,0.2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--green)"><i class="ti ti-circle-check"></i> Import สำเร็จ: เพิ่ม ${data.added} โดเมน (ข้าม ${data.skipped} ที่ซ้ำ) รวมทั้งหมด ${data.total} โดเมน</div>`;
     await loadData();
   } catch {
     // Demo parse
@@ -1256,7 +1295,7 @@ async function importCSV() {
       allDomains.push({domain,status:'unknown',statusCode:0,responseTime:0,checkedAt:null,error:null,expiryDate:obj.expiry_date||null,daysLeft:obj.days_left?parseInt(obj.days_left):null,notes:obj.notes||'',tags:obj.tags?obj.tags.split(';'):[],gsc:null,addedAt:new Date().toISOString()});
       added++;
     });
-    resultEl.innerHTML = `<div style="background:var(--green-dim);border:1px solid rgba(34,208,122,0.2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--green)"><i class="fa-solid fa-circle-check"></i> (Demo) เพิ่ม ${added} โดเมน ข้าม ${skipped}</div>`;
+    resultEl.innerHTML = `<div style="background:var(--green-dim);border:1px solid rgba(34,208,122,0.2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--green)"><i class="ti ti-circle-check"></i> (Demo) เพิ่ม ${added} โดเมน ข้าม ${skipped}</div>`;
     applyFilters(); renderQuickTable();
     const stats = calcStats(allDomains); updateSidebar(stats); updateStats(stats,{});
   }
@@ -1290,12 +1329,12 @@ async function testConnection() {
   try {
     const res = await fetch(`${url}/api/stats`);
     if (res.ok) {
-      el.innerHTML = '<span class="server-status server-ok"><i class="fa-solid fa-circle-check"></i> เชื่อมต่อสำเร็จ</span>';
+      el.innerHTML = '<span class="server-status server-ok"><i class="ti ti-circle-check"></i> เชื่อมต่อสำเร็จ</span>';
       toast('เชื่อมต่อ Server สำเร็จ', 'success');
       await loadData();
     } else throw new Error();
   } catch {
-    el.innerHTML = '<span class="server-status server-err"><i class="fa-solid fa-circle-xmark"></i> เชื่อมต่อไม่ได้</span>';
+    el.innerHTML = '<span class="server-status server-err"><i class="ti ti-circle-x"></i> เชื่อมต่อไม่ได้</span>';
     toast('เชื่อมต่อ Server ไม่ได้ — ตรวจสอบว่า node server.js รันอยู่', 'error');
   }
 }
@@ -1516,16 +1555,32 @@ function startCountdown() {
 
 function updateRefreshBtn() {
   const btn = document.getElementById('refresh-btn');
-  if (btn) btn.innerHTML = `<i class="fa-solid fa-arrows-rotate"></i> รีเฟรช <span style="opacity:0.6;font-size:11px">(${secondsLeft}s)</span>`;
+  if (btn) btn.innerHTML = `<i class="ti ti-refresh"></i> รีเฟรช <span style="opacity:0.6;font-size:11px">(${secondsLeft}s)</span>`;
+}
+
+// ===== GLOBAL LOADING =====
+function showLoading(title = 'กำลังโหลด...', sub = 'กรุณารอสักครู่') {
+  const el = document.getElementById('global-loading');
+  if (el) {
+    el.style.display = 'flex';
+    document.getElementById('global-loading-title').textContent = title;
+    document.getElementById('global-loading-sub').textContent = sub;
+  }
+}
+function hideLoading() {
+  const el = document.getElementById('global-loading');
+  if (el) el.style.display = 'none';
 }
 
 async function refreshNow() {
   const btn = document.getElementById('refresh-btn');
-  if (btn) btn.innerHTML = `<i class="fa-solid fa-arrows-rotate fa-spin"></i> กำลังโหลด...`;
+  if (btn) btn.innerHTML = `<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...`;
+  showLoading('🔄 กำลังรีเฟรช Dashboard...', 'อัพเดตสถานะโดเมนทั้งหมด');
   await loadData();
+  hideLoading();
   secondsLeft = 30;
   startCountdown();
-  toast('อัพเดตข้อมูลแล้ว', 'success');
+  toast('✅ อัพเดตข้อมูลแล้ว', 'success');
 }
 
 function showPage(name) {
