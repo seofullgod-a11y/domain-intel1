@@ -12,6 +12,23 @@ const PORT = process.env.PORT || 8080;
 const PLESK_HOST = process.env.PLESK_HOST || '';
 const PLESK_USER = process.env.PLESK_USER || 'admin';
 const PLESK_PASS = process.env.PLESK_PASS || '';
+
+// Multi-server support
+let PLESK_SERVERS = [];
+try {
+  if (process.env.PLESK_SERVERS) {
+    PLESK_SERVERS = JSON.parse(process.env.PLESK_SERVERS);
+    console.log(`[Plesk] โหลด ${PLESK_SERVERS.length} servers จาก PLESK_SERVERS`);
+  } else if (PLESK_HOST && PLESK_PASS) {
+    // fallback to single server
+    PLESK_SERVERS = [{ host: PLESK_HOST, user: PLESK_USER, pass: PLESK_PASS, name: 'Server 1' }];
+  }
+} catch(e) {
+  console.error('[Plesk] ไม่สามารถ parse PLESK_SERVERS:', e.message);
+  if (PLESK_HOST && PLESK_PASS) {
+    PLESK_SERVERS = [{ host: PLESK_HOST, user: PLESK_USER, pass: PLESK_PASS, name: 'Server 1' }];
+  }
+}
 const SHEET_ID = process.env.GOOGLE_SHEET_ID || '';
 const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
@@ -176,9 +193,11 @@ async function initSheets() {
 }
 
 // ===== PLESK =====
-function pleskRequest(method, apiPath, body = null) {
+function pleskRequest(method, apiPath, body = null, server = null) {
+  // ถ้าไม่ระบุ server ให้ใช้ server แรก
+  const srv = server || PLESK_SERVERS[0] || { host: PLESK_HOST, user: PLESK_USER, pass: PLESK_PASS };
   return new Promise((resolve, reject) => {
-    const auth = Buffer.from(`${PLESK_USER}:${PLESK_PASS}`).toString('base64');
+    const auth = Buffer.from(`${srv.user}:${srv.pass}`).toString('base64');
     const bodyStr = body ? JSON.stringify(body) : null;
     const headers = {
       'Authorization': `Basic ${auth}`,
@@ -187,13 +206,12 @@ function pleskRequest(method, apiPath, body = null) {
     };
     if (bodyStr) headers['Content-Length'] = Buffer.byteLength(bodyStr);
     const req = https.request({
-      hostname: PLESK_HOST, port: 8443, path: `/api/v2${apiPath}`, method,
+      hostname: srv.host, port: 8443, path: `/api/v2${apiPath}`, method,
       headers, rejectUnauthorized: false
     }, res => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
-        console.log(`[Plesk] ${method} ${apiPath} -> ${res.statusCode}: ${data.slice(0,200)}`);
         try { resolve({ status: res.statusCode, data: JSON.parse(data) }); }
         catch { resolve({ status: res.statusCode, data: {} }); }
       });
@@ -205,34 +223,57 @@ function pleskRequest(method, apiPath, body = null) {
   });
 }
 
-async function fetchPleskDomains() {
-  if (!PLESK_HOST || !PLESK_PASS) return [];
+async function fetchPleskDomainsFromServer(srv) {
   try {
-    console.log(`[Plesk] ดึงโดเมนจาก ${PLESK_HOST}...`);
-    const domsRes = await pleskRequest('GET', '/domains');
-    if (domsRes.status !== 200) { console.log(`[Plesk] error: ${domsRes.status}`); return []; }
+    console.log(`[Plesk] ดึงโดเมนจาก ${srv.name} (${srv.host})...`);
+    const domsRes = await pleskRequest('GET', '/domains', null, srv);
+    if (domsRes.status !== 200) {
+      console.log(`[Plesk] ${srv.name} error: ${domsRes.status}`);
+      return [];
+    }
     const domains = Array.isArray(domsRes.data) ? domsRes.data : [];
-    console.log(`[Plesk] พบ ${domains.length} โดเมน`);
+    console.log(`[Plesk] ${srv.name} พบ ${domains.length} โดเมน`);
     const results = [];
     for (const d of domains) {
       const domainName = d.name || d.ascii_name || '';
       if (!domainName) continue;
       let sslExpiry = null, sslDaysLeft = null;
       try {
-        const sslRes = await pleskRequest('GET', `/domains/${d.id}/ssl-certificate`);
+        const sslRes = await pleskRequest('GET', `/domains/${d.id}/ssl-certificate`, null, srv);
         if (sslRes.status === 200 && sslRes.data?.valid_to) {
           const expDate = new Date(sslRes.data.valid_to);
           sslExpiry = expDate.toISOString().split('T')[0];
           sslDaysLeft = Math.floor((expDate - new Date()) / 86400000);
         }
       } catch {}
-      results.push({ domain: domainName, pleskId: d.id, pleskStatus: d.status || 'unknown', pleskActive: d.status === 0 || d.status === '0', hostingType: d.hosting_type || '', sslExpiry, sslDaysLeft, pleskSyncedAt: new Date().toISOString() });
+      results.push({
+        domain: domainName,
+        pleskId: d.id,
+        pleskServer: srv.name,
+        pleskHost: srv.host,
+        pleskStatus: d.status || 'unknown',
+        pleskActive: d.status === 0 || d.status === '0',
+        hostingType: d.hosting_type || '',
+        sslExpiry, sslDaysLeft,
+        pleskSyncedAt: new Date().toISOString()
+      });
     }
     return results;
   } catch (err) {
-    console.error('[Plesk] Error:', err.message);
+    console.error(`[Plesk] ${srv.name} Error:`, err.message);
     return [];
   }
+}
+
+async function fetchPleskDomains() {
+  if (!PLESK_SERVERS.length) return [];
+  const allResults = [];
+  for (const srv of PLESK_SERVERS) {
+    const domains = await fetchPleskDomainsFromServer(srv);
+    allResults.push(...domains);
+  }
+  console.log(`[Plesk] รวมทั้งหมด ${allResults.length} โดเมนจาก ${PLESK_SERVERS.length} servers`);
+  return allResults;
 }
 
 async function syncPleskDomains() {
@@ -247,7 +288,8 @@ async function syncPleskDomains() {
       if (!memoryDomains[idx].tags.includes('plesk')) memoryDomains[idx].tags.push('plesk');
       updated++;
     } else {
-      memoryDomains.push({ domain: pd.domain, status: 'unknown', statusCode: 0, responseTime: 0, checkedAt: null, error: null, expiryDate: pd.sslExpiry, daysLeft: pd.sslDaysLeft, notes: 'นำเข้าจาก Plesk', tags: ['plesk'], gsc: null, addedAt: new Date().toISOString(), ...pd });
+      const serverTag = pd.pleskServer ? pd.pleskServer.toLowerCase().replace(/\s+/g,'-') : 'plesk';
+      memoryDomains.push({ domain: pd.domain, status: 'unknown', statusCode: 0, responseTime: 0, checkedAt: null, error: null, expiryDate: pd.sslExpiry, daysLeft: pd.sslDaysLeft, notes: `นำเข้าจาก ${pd.pleskServer || 'Plesk'}`, tags: ['plesk', serverTag], gsc: null, addedAt: new Date().toISOString(), ...pd });
       added++;
     }
   }
@@ -351,7 +393,7 @@ async function autoFix(domainObj, prevStatus) {
   // 1. Plesk Suspended -> Unsuspend อัตโนมัติ
   if (domainObj.pleskId && !domainObj.pleskActive) {
     console.log(`[AutoFix] Unsuspend ${domain}...`);
-    const ok = await pleskUnsuspend(domainObj.pleskId);
+    const ok = await pleskUnsuspend(domainObj.pleskId, domainObj.pleskHost);
     if (ok) {
       const idx = memoryDomains.findIndex(d => d.domain === domain);
       if (idx !== -1) { memoryDomains[idx].pleskActive = true; memoryDomains[idx].pleskStatus = 0; }
@@ -410,23 +452,20 @@ async function autoFix(domainObj, prevStatus) {
 }
 
 // ===== PLESK UNSUSPEND =====
-async function pleskUnsuspend(pleskId) {
-  if (!PLESK_HOST || !PLESK_PASS) return false;
+async function pleskUnsuspend(pleskId, pleskHost = null) {
+  if (!PLESK_SERVERS.length) return false;
+  // หา server ที่ถูกต้องจาก pleskHost
+  const srv = pleskHost
+    ? PLESK_SERVERS.find(s => s.host === pleskHost) || PLESK_SERVERS[0]
+    : PLESK_SERVERS[0];
   try {
-    // วิธีที่ 1: PUT with status=0 (Plesk 18+)
-    let result = await pleskRequest('PUT', `/domains/${pleskId}`, { status: 0 });
+    console.log(`[Plesk] Unsuspend domain ${pleskId} บน ${srv.name}...`);
+    let result = await pleskRequest('PUT', `/domains/${pleskId}`, { status: 0 }, srv);
     if (result?.status === 200) return true;
-    console.log(`[Plesk] PUT status=0 failed (${result?.status}), trying enable endpoint...`);
-
-    // วิธีที่ 2: POST to enable endpoint
-    result = await pleskRequest('POST', `/domains/${pleskId}/enable`);
+    result = await pleskRequest('POST', `/domains/${pleskId}/enable`, null, srv);
     if (result?.status === 200) return true;
-    console.log(`[Plesk] enable failed (${result?.status}), trying hosting enable...`);
-
-    // วิธีที่ 3: เปิด hosting
-    result = await pleskRequest('POST', `/domains/${pleskId}/hosting/enable`);
+    result = await pleskRequest('POST', `/domains/${pleskId}/hosting/enable`, null, srv);
     if (result?.status === 200) return true;
-
     console.log(`[Plesk] All unsuspend methods failed for pleskId ${pleskId}`);
     return false;
   } catch(e) {
@@ -651,11 +690,17 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === 'GET' && url === '/api/plesk/status') {
-    if (!PLESK_HOST || !PLESK_PASS) { json(res, { connected: false }); return; }
-    try {
-      const r = await pleskRequest('GET', '/server');
-      json(res, { connected: r.status === 200, hostname: r.data?.hostname, version: r.data?.panel_version });
-    } catch (e) { json(res, { connected: false, reason: e.message }); }
+    if (!PLESK_SERVERS.length) { json(res, { connected: false, servers: [] }); return; }
+    const statuses = [];
+    for (const srv of PLESK_SERVERS) {
+      try {
+        const r = await pleskRequest('GET', '/server', null, srv);
+        statuses.push({ name: srv.name, host: srv.host, connected: r.status === 200, hostname: r.data?.hostname, version: r.data?.panel_version });
+      } catch (e) {
+        statuses.push({ name: srv.name, host: srv.host, connected: false, reason: e.message });
+      }
+    }
+    json(res, { connected: statuses.some(s => s.connected), servers: statuses });
     return;
   }
 
@@ -764,7 +809,7 @@ async function handleRequest(req, res) {
       if (domainObj.status !== 'down') { results.push({ domain, success: false, message: 'ไม่ใช่สถานะ Down' }); continue; }
       const actions = [];
       if (domainObj.pleskId && !domainObj.pleskActive) {
-        const ok = await pleskUnsuspend(domainObj.pleskId);
+        const ok = await pleskUnsuspend(domainObj.pleskId, domainObj.pleskHost);
         if (ok) { memoryDomains[idx].pleskActive = true; actions.push('Unsuspend Plesk OK'); }
         else actions.push('Unsuspend Plesk FAILED');
       }
@@ -797,7 +842,7 @@ async function handleRequest(req, res) {
 
     // 1. Plesk Unsuspend
     if (domainObj.pleskId && !domainObj.pleskActive) {
-      const ok = await pleskUnsuspend(domainObj.pleskId);
+      const ok = await pleskUnsuspend(domainObj.pleskId, domainObj.pleskHost);
       if (ok) {
         memoryDomains[idx].pleskActive = true;
         memoryDomains[idx].pleskStatus = 0;
