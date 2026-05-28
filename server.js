@@ -313,49 +313,81 @@ function checkDomain(domain) {
   return new Promise(resolve => {
     const clean = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     const start = Date.now();
-    // ใช้ User-Agent จริงๆ เพื่อไม่ให้ถูกบล็อก
     const headers = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'th,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate, br',
       'Connection': 'keep-alive',
+      'Cache-Control': 'no-cache',
     };
     const req = https.get(`https://${clean}`, { timeout: 12000, headers, rejectUnauthorized: false }, res => {
       const responseTime = Date.now() - start;
-      res.destroy();
       const code = res.statusCode;
-      // ตรวจสอบ x-deny-reason header (Railway proxy block)
+      const cfRay = res.headers['cf-ray'];
+      const server = res.headers['server'] || '';
       const denyReason = res.headers['x-deny-reason'];
-      if (denyReason) {
-        // Railway บล็อก outbound — ไม่นับว่าโดเมนล่ม ให้เป็น unknown
-        resolve({ domain: clean, status: 'unknown', statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: `Proxy block: ${denyReason}` });
-        return;
-      }
-      let status = 'up', errorLabel = null;
-      // 200-399 = up (รวม redirect)
-      if (code >= 200 && code < 400) { status = 'up'; }
-      // Cloudflare specific errors = down
-      else if (CF_DOWN_CODES.has(code)) { status = 'down'; errorLabel = getErrorLabel(code); }
-      // 403 Forbidden = up (เว็บทำงานแต่บล็อก bot)
-      else if (code === 403) { status = 'up'; errorLabel = 'HTTP 403 (bot blocked)'; }
-      // 404 = up (เว็บทำงานแต่ไม่พบหน้า)
-      else if (code === 404) { status = 'up'; }
-      // 5xx = down
-      else if (code >= 500) { status = 'down'; errorLabel = getErrorLabel(code); }
-      // CF warn codes
-      else if (CF_WARN_CODES.has(code)) { status = 'warn'; errorLabel = getErrorLabel(code); }
-      // อื่นๆ
-      else { status = 'warn'; errorLabel = `HTTP ${code}`; }
-      resolve({ domain: clean, status, statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: errorLabel });
+
+      // อ่าน body เล็กน้อยเพื่อตรวจ error page จาก Cloudflare
+      let body = '';
+      res.on('data', chunk => { if (body.length < 2000) body += chunk.toString(); });
+      res.on('end', () => {
+        // Railway proxy block
+        if (denyReason) {
+          resolve({ domain: clean, status: 'unknown', statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: `Proxy block: ${denyReason}` });
+          return;
+        }
+
+        let status = 'up', errorLabel = null;
+
+        // Cloudflare error codes = down
+        if (CF_DOWN_CODES.has(code)) {
+          status = 'down';
+          errorLabel = getErrorLabel(code);
+        }
+        // ตรวจ CF error page ใน body แม้ code จะเป็น 200/530
+        else if (cfRay && (
+          body.includes('Error 521') || body.includes('Web server is down') ||
+          body.includes('Error 522') || body.includes('Error 523') ||
+          body.includes('Error 524') || body.includes('Error 530') ||
+          body.includes('Ray ID') && body.includes('origin') && body.includes('error')
+        )) {
+          status = 'down';
+          const cfErr = body.match(/Error (5\d{2})/);
+          errorLabel = cfErr ? `CF ${cfErr[1]} — Web server is down` : 'Cloudflare error page';
+        }
+        // 5xx จาก origin = down
+        else if (code >= 500) {
+          status = 'down';
+          errorLabel = getErrorLabel(code);
+        }
+        // CF warn
+        else if (CF_WARN_CODES.has(code)) {
+          status = 'warn';
+          errorLabel = getErrorLabel(code);
+        }
+        // 403 = up (บล็อก bot แต่เว็บทำงาน)
+        else if (code === 403) {
+          status = 'up';
+          errorLabel = 'HTTP 403 (bot blocked)';
+        }
+        // 404 = up (เว็บทำงานแต่ไม่พบหน้า)
+        else if (code === 404) {
+          status = 'up';
+        }
+        // 200-399 = up
+        else if (code >= 200 && code < 400) {
+          status = 'up';
+        }
+        else {
+          status = 'warn';
+          errorLabel = `HTTP ${code}`;
+        }
+
+        resolve({ domain: clean, status, statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: errorLabel });
+      });
     });
     req.on('error', err => {
-      const msg = err.message || '';
-      // ENOTFOUND = DNS ไม่เจอ = domain หมดหรือ config ผิด
-      // ECONNREFUSED = server ปิด
-      // ETIMEDOUT = timeout
-      const errLabel = getErrorLabel(0, msg);
-      resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: Date.now() - start, checkedAt: new Date().toISOString(), error: errLabel });
+      resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: Date.now() - start, checkedAt: new Date().toISOString(), error: getErrorLabel(0, err.message) });
     });
     req.on('timeout', () => {
       req.destroy();
