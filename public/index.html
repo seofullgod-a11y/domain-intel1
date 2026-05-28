@@ -434,7 +434,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="tab" onclick="setDomainTab('ranked',this)">มี Keyword ติด <span class="tab-count" id="tab-ranked">0</span></div>
         </div>
         <!-- Bulk Action Bar (แสดงเมื่อติ๊กโดเมน) -->
-        <div id="bulk-bar" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;margin-bottom:12px;display:none;flex-direction:column;gap:8px">
+        <div id="bulk-bar" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;margin-bottom:12px;flex-direction:column;gap:8px">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <span id="bulk-count" style="font-size:13px;color:var(--text2)">เลือก 0 โดเมน</span>
             <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
@@ -451,7 +451,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
             </div>
           </div>
           <!-- Select all filtered banner -->
-          <div id="select-all-banner" style="display:none;background:var(--blue-dim);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--blue);display:none;align-items:center;gap:8px">
+          <div id="select-all-banner" style="display:none;background:var(--blue-dim);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--blue);align-items:center;gap:8px">
             <i class="ti ti-info-circle"></i>
             <span id="select-all-banner-text">เลือกแค่ 25 โดเมนในหน้านี้</span>
             <button onclick="selectAllDomains()" style="background:var(--blue);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:var(--font-sans)" id="select-all-btn">
@@ -1510,6 +1510,7 @@ function updateBulkBar() {
 
   if (selected.length > 0 || isSelectAllFiltered) {
     bar.style.display = 'flex';
+    bar.style.flexDirection = 'column';
     if (isSelectAllFiltered) {
       count.textContent = `เลือกทั้งหมด ${filteredDomains.length} โดเมน ✓`;
       banner.style.display = 'none';
