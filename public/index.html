@@ -475,7 +475,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="settings-section-title"><i class="fa-solid fa-server"></i> Backend Server</div>
           <p style="font-size:13px;color:var(--text2);margin-bottom:12px">URL ของ Backend Server (node server.js)</p>
           <div style="display:flex;gap:10px;align-items:center">
-            <input class="form-input" id="server-url" style="max-width:320px" placeholder="http://localhost:3001" value="http://localhost:3001" />
+            <input class="form-input" id="server-url" style="max-width:320px" placeholder="https://your-app.up.railway.app" value="" />
             <button class="btn" onclick="testConnection()"><i class="fa-solid fa-plug"></i> ทดสอบ</button>
             <span id="conn-status"></span>
           </div>
@@ -597,10 +597,23 @@ let sortDir = 1;
 
 // ===== INIT =====
 document.addEventListener('DOMContentLoaded', async () => {
+  // โหลด saved settings จาก localStorage
   const saved = localStorage.getItem('api_url');
-  if (saved) { API = saved; document.getElementById('server-url').value = saved; }
+  const defaultUrl = window.location.origin.includes('localhost') ? 'http://localhost:8080' : window.location.origin;
+  const apiUrl = saved || defaultUrl;
+  API = apiUrl;
+  const urlEl = document.getElementById('server-url');
+  if (urlEl) urlEl.value = apiUrl;
+  if (!saved) localStorage.setItem('api_url', apiUrl);
+
+  // โหลด telegram settings ถ้ามี
+  const tgToken = localStorage.getItem('tg_token');
+  const tgChat = localStorage.getItem('tg_chat');
+  if (tgToken) { const el = document.getElementById('telegram-token'); if(el) el.value = tgToken; }
+  if (tgChat) { const el = document.getElementById('telegram-chat'); if(el) el.value = tgChat; }
+
   await loadData();
-  setInterval(loadData, 60000); // refresh ทุก 1 นาที
+  setInterval(loadData, 60000);
 });
 
 // ===== DATA =====
@@ -1186,7 +1199,7 @@ function exportCSV() {
 
 // ===== SETTINGS =====
 async function testConnection() {
-  const url = document.getElementById('server-url').value;
+  const url = document.getElementById('server-url').value.trim().replace(/\/$/, '');
   API = url;
   localStorage.setItem('api_url', url);
   const el = document.getElementById('conn-status');
@@ -1214,18 +1227,30 @@ async function saveGSC() {
 
 async function saveSettings() {
   await saveGSC();
-  const body = { alerts: { telegramToken: document.getElementById('telegram-token').value, telegramChatId: document.getElementById('telegram-chat').value, notifyOnDown: document.getElementById('notify-down').checked, notifyOnExpiry: document.getElementById('notify-expiry').checked, expiryDaysThreshold: parseInt(document.getElementById('expiry-threshold').value) } };
+  const tgToken = document.getElementById('telegram-token').value.trim();
+  const tgChat = document.getElementById('telegram-chat').value.trim();
+  if (tgToken) localStorage.setItem('tg_token', tgToken);
+  if (tgChat) localStorage.setItem('tg_chat', tgChat);
+  const body = { alerts: { telegramToken: tgToken, telegramChatId: tgChat, notifyOnDown: document.getElementById('notify-down').checked, notifyOnExpiry: document.getElementById('notify-expiry').checked, expiryDaysThreshold: parseInt(document.getElementById('expiry-threshold').value) } };
   try {
     await fetch(`${API}/api/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     toast('บันทึก Settings แล้ว', 'success');
-  } catch { toast('Demo Mode', 'info'); }
+  } catch { toast('บันทึกใน Local แล้ว', 'success'); }
 }
 
 async function testLineAlert() {
+  const tgToken = document.getElementById('telegram-token').value.trim() || localStorage.getItem('tg_token');
+  const tgChat = document.getElementById('telegram-chat').value.trim() || localStorage.getItem('tg_chat');
   try {
-    await fetch(`${API}/api/test-alert`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message: 'DomainIntel Test Alert'}) });
-    toast('ส่งแจ้งเตือน Telegram Test แล้ว!', 'success');
-  } catch { toast('ต้องใส่ Telegram Token และ Chat ID ก่อน', 'error'); }
+    const res = await fetch(`${API}/api/test-alert`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ message: 'DomainIntel Test Alert', telegramToken: tgToken, telegramChatId: tgChat })
+    });
+    const data = await res.json();
+    if (data.success) toast('ส่งแจ้งเตือน Telegram สำเร็จ! เช็ค Telegram ได้เลย', 'success');
+    else toast(data.error || 'ส่งไม่สำเร็จ', 'error');
+  } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
 }
 
 // ===== NAVIGATION =====
