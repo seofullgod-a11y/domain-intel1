@@ -752,6 +752,42 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Bulk auto-fix
+  if (req.method === 'POST' && url === '/api/autofix-all') {
+    const body = await parseBody(req);
+    const domains = body.domains || [];
+    const results = [];
+    for (const domain of domains) {
+      const idx = memoryDomains.findIndex(d => d.domain === domain);
+      if (idx === -1) { results.push({ domain, success: false, message: 'ไม่พบโดเมน' }); continue; }
+      const domainObj = memoryDomains[idx];
+      if (domainObj.status !== 'down') { results.push({ domain, success: false, message: 'ไม่ใช่สถานะ Down' }); continue; }
+      const actions = [];
+      if (domainObj.pleskId && !domainObj.pleskActive) {
+        const ok = await pleskUnsuspend(domainObj.pleskId);
+        if (ok) { memoryDomains[idx].pleskActive = true; actions.push('Unsuspend Plesk OK'); }
+        else actions.push('Unsuspend Plesk FAILED');
+      }
+      if (CF_API_TOKEN && [521,522,523,524].includes(domainObj.statusCode)) {
+        const zoneId = await pauseCloudflareZone(domain);
+        if (zoneId) actions.push('Pause CF OK');
+        else actions.push('Pause CF ไม่พบ zone');
+      }
+      results.push({ domain, success: true, message: actions.join(', ') || 'ไม่มีการแก้ไข' });
+    }
+    await saveToSheets(memoryDomains);
+    // แจ้ง Telegram สรุป
+    const fixed = results.filter(r => r.success && r.message !== 'ไม่มีการแก้ไข').length;
+    if (fixed > 0) {
+      sendTelegram(`🔧 <b>Bulk Auto-Fix สำเร็จ!</b>
+✅ แก้ไขได้: ${fixed} โดเมน
+📋 ทั้งหมด: ${domains.length} โดเมน
+🕐 ${new Date().toLocaleString('th-TH')}`);
+    }
+    json(res, { success: true, results });
+    return;
+  }
+
   if (req.method === 'POST' && url.startsWith('/api/autofix/')) {
     const domain = decodeURIComponent(url.split('/api/autofix/')[1]);
     const idx = memoryDomains.findIndex(d => d.domain === domain);
