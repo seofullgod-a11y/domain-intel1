@@ -603,6 +603,47 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
 <div class="toast-container" id="toast-container"></div>
 
+<!-- PROGRESS MODAL -->
+<div id="progress-modal" class="modal-overlay" style="display:none">
+  <div class="modal" style="max-width:480px;text-align:center">
+    <div style="font-size:28px;margin-bottom:12px">⚡</div>
+    <div class="modal-title" style="justify-content:center;font-size:16px" id="progress-title">กำลัง Auto-fix...</div>
+    <div style="font-size:13px;color:var(--text2);margin-bottom:20px" id="progress-subtitle">กรุณารอสักครู่</div>
+    
+    <!-- Progress Bar -->
+    <div style="background:var(--bg4);border-radius:8px;overflow:hidden;height:10px;margin-bottom:12px">
+      <div id="progress-bar-fill" style="height:100%;background:linear-gradient(90deg,var(--green),#34d399);border-radius:8px;width:0%;transition:width 0.3s;"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:20px">
+      <span id="progress-count">0 / 0 โดเมน</span>
+      <span id="progress-pct">0%</span>
+    </div>
+    
+    <!-- Log -->
+    <div id="progress-log" style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;max-height:200px;overflow-y:auto;text-align:left;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.7"></div>
+    
+    <!-- Stats -->
+    <div id="progress-stats" style="display:flex;gap:12px;margin-top:16px;justify-content:center">
+      <div style="text-align:center;background:var(--green-dim);border-radius:var(--radius-sm);padding:8px 16px">
+        <div style="font-size:20px;font-weight:600;color:var(--green)" id="stat-fixed">0</div>
+        <div style="font-size:11px;color:var(--text2)">แก้สำเร็จ</div>
+      </div>
+      <div style="text-align:center;background:var(--red-dim);border-radius:var(--radius-sm);padding:8px 16px">
+        <div style="font-size:20px;font-weight:600;color:var(--red)" id="stat-failed">0</div>
+        <div style="font-size:11px;color:var(--text2)">ไม่สำเร็จ</div>
+      </div>
+      <div style="text-align:center;background:var(--bg3);border-radius:var(--radius-sm);padding:8px 16px">
+        <div style="font-size:20px;font-weight:600;color:var(--text2)" id="stat-skipped">0</div>
+        <div style="font-size:11px;color:var(--text2)">ข้าม</div>
+      </div>
+    </div>
+    
+    <button id="progress-close-btn" class="btn btn-green" style="margin-top:20px;display:none;width:100%" onclick="closeProgressModal()">
+      <i class="fa-solid fa-check"></i> เสร็จสิ้น — ปิด
+    </button>
+  </div>
+</div>
+
 <script>
 // ===== STATE =====
 let API = 'http://localhost:3001';
@@ -1101,17 +1142,25 @@ async function deleteDomain(domain) {
 }
 
 async function autoFixDomain(domain) {
-  toast(`Auto-fix กำลังทำงานสำหรับ ${domain}...`, 'info');
+  showProgressModal(`⚡ Auto-fix ${domain}`, 1);
   try {
+    updateProgress(0, 1, domain, 'loading', 'กำลังดำเนินการ...');
     const res = await fetch(`${API}/api/autofix/${encodeURIComponent(domain)}`, { method: 'POST' });
     const data = await res.json();
     if (data.success) {
-      toast(`Auto-fix ${domain}: ${data.message}`, 'success');
-      setTimeout(loadData, 5000);
+      updateProgress(1, 1, domain, 'success', data.message || 'สำเร็จ');
+      updateProgressStats(1, 0, 0);
+      finishProgressModal(1, 0, 0);
     } else {
-      toast(data.error || 'Auto-fix ไม่สำเร็จ', 'error');
+      updateProgress(1, 1, domain, 'failed', data.error || 'ไม่สำเร็จ');
+      updateProgressStats(0, 1, 0);
+      finishProgressModal(0, 1, 0);
     }
-  } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
+  } catch {
+    updateProgress(1, 1, domain, 'failed', 'เชื่อมต่อ Server ไม่ได้');
+    updateProgressStats(0, 1, 0);
+    finishProgressModal(0, 1, 0);
+  }
 }
 
 async function checkOne(domain) {
@@ -1312,34 +1361,111 @@ function clearSelection() {
   updateBulkBar();
 }
 
+// Progress Modal helpers
+function showProgressModal(title, total) {
+  document.getElementById('progress-modal').style.display = 'flex';
+  document.getElementById('progress-title').textContent = title;
+  document.getElementById('progress-subtitle').textContent = `กำลังดำเนินการ ${total} โดเมน...`;
+  document.getElementById('progress-bar-fill').style.width = '0%';
+  document.getElementById('progress-count').textContent = `0 / ${total} โดเมน`;
+  document.getElementById('progress-pct').textContent = '0%';
+  document.getElementById('progress-log').innerHTML = '';
+  document.getElementById('stat-fixed').textContent = '0';
+  document.getElementById('stat-failed').textContent = '0';
+  document.getElementById('stat-skipped').textContent = '0';
+  document.getElementById('progress-close-btn').style.display = 'none';
+}
+
+function updateProgress(current, total, domain, status, message) {
+  const pct = Math.round(current / total * 100);
+  document.getElementById('progress-bar-fill').style.width = pct + '%';
+  document.getElementById('progress-count').textContent = `${current} / ${total} โดเมน`;
+  document.getElementById('progress-pct').textContent = pct + '%';
+  document.getElementById('progress-subtitle').textContent = `กำลังดำเนินการ: ${domain}`;
+  
+  // Log entry
+  const log = document.getElementById('progress-log');
+  const icon = status === 'success' ? '✅' : status === 'failed' ? '❌' : status === 'skip' ? '⏭️' : '⚙️';
+  const color = status === 'success' ? 'var(--green)' : status === 'failed' ? 'var(--red)' : status === 'skip' ? 'var(--text3)' : 'var(--amber)';
+  log.innerHTML += `<div style="color:${color}">${icon} <span style="color:var(--text2)">${domain}</span> — ${message}</div>`;
+  log.scrollTop = log.scrollHeight;
+}
+
+function updateProgressStats(fixed, failed, skipped) {
+  document.getElementById('stat-fixed').textContent = fixed;
+  document.getElementById('stat-failed').textContent = failed;
+  document.getElementById('stat-skipped').textContent = skipped;
+}
+
+function finishProgressModal(fixed, failed, skipped) {
+  const total = fixed + failed + skipped;
+  document.getElementById('progress-subtitle').textContent = 
+    fixed > 0 ? `🎉 เสร็จสิ้น! แก้ไขสำเร็จ ${fixed} จาก ${total} โดเมน` : `เสร็จสิ้น — ไม่สามารถแก้ไขได้อัตโนมัติ`;
+  document.getElementById('progress-bar-fill').style.width = '100%';
+  document.getElementById('progress-bar-fill').style.background = fixed > 0 ? 'linear-gradient(90deg,var(--green),#34d399)' : 'var(--red)';
+  document.getElementById('progress-close-btn').style.display = 'block';
+}
+
+function closeProgressModal() {
+  document.getElementById('progress-modal').style.display = 'none';
+  loadData();
+}
+
 async function bulkAutoFix() {
   const domains = getSelectedDomains();
   if (!domains.length) { toast('กรุณาเลือกโดเมนก่อน', 'error'); return; }
   
-  // เฉพาะโดเมนที่ Down
   const downDomains = domains.filter(d => {
     const domObj = allDomains.find(x => x.domain === d);
     return domObj?.status === 'down';
   });
+  const skipDomains = domains.filter(d => {
+    const domObj = allDomains.find(x => x.domain === d);
+    return domObj?.status !== 'down';
+  });
   
   if (!downDomains.length) { toast('ไม่มีโดเมนที่ Down ในรายการที่เลือก', 'error'); return; }
   
-  toast(`กำลัง Auto-fix ${downDomains.length} โดเมน...`, 'info');
+  // แสดง Progress Modal
+  showProgressModal(`⚡ Auto-fix ${downDomains.length} โดเมน`, downDomains.length + skipDomains.length);
+  clearSelection();
   
-  let success = 0, failed = 0;
+  let fixed = 0, failed = 0, skipped = skipDomains.length;
+  let current = 0;
+  
+  // บอกโดเมนที่ข้าม
+  for (const d of skipDomains) {
+    current++;
+    updateProgress(current, downDomains.length + skipDomains.length, d, 'skip', 'ข้าม (ไม่ใช่ Down)');
+    updateProgressStats(fixed, failed, skipped);
+    await new Promise(r => setTimeout(r, 100));
+  }
+  
+  // แก้โดเมนที่ Down
   for (const domain of downDomains) {
+    current++;
+    updateProgress(current, downDomains.length + skipDomains.length, domain, 'loading', 'กำลังดำเนินการ...');
+    
     try {
       const res = await fetch(`${API}/api/autofix/${encodeURIComponent(domain)}`, { method: 'POST' });
       const data = await res.json();
-      if (data.success) success++;
-      else failed++;
-    } catch { failed++; }
-    await new Promise(r => setTimeout(r, 500)); // หน่วงเล็กน้อยไม่ให้ spam
+      if (data.success) {
+        fixed++;
+        updateProgress(current, downDomains.length + skipDomains.length, domain, 'success', data.message || 'สำเร็จ');
+      } else {
+        failed++;
+        updateProgress(current, downDomains.length + skipDomains.length, domain, 'failed', data.error || 'ไม่สำเร็จ');
+      }
+    } catch {
+      failed++;
+      updateProgress(current, downDomains.length + skipDomains.length, domain, 'failed', 'เชื่อมต่อ Server ไม่ได้');
+    }
+    
+    updateProgressStats(fixed, failed, skipped);
+    await new Promise(r => setTimeout(r, 600));
   }
   
-  toast(`Auto-fix เสร็จ: สำเร็จ ${success} ไม่สำเร็จ ${failed} โดเมน`, success > 0 ? 'success' : 'error');
-  clearSelection();
-  setTimeout(loadData, 5000); // รีเฟรชหลัง 5 วินาที
+  finishProgressModal(fixed, failed, skipped);
 }
 
 async function bulkCheck() {
