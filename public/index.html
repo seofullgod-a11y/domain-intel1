@@ -508,9 +508,14 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="settings-section-title"><i class="fa-solid fa-bell"></i> การแจ้งเตือน</div>
           <div class="form-row">
             <div class="form-group">
-              <label class="form-label">LINE Notify Token</label>
-              <input class="form-input" id="line-token" placeholder="xxxxxxxxxxxx..." />
-              <div class="form-hint">ได้จาก <a href="https://notify-bot.line.me/th/" target="_blank" style="color:var(--blue)">notify-bot.line.me</a></div>
+              <label class="form-label">Telegram Bot Token</label>
+              <input class="form-input" id="telegram-token" placeholder="7123456789:AAFxxxxxx" />
+              <div class="form-hint">สร้างจาก <a href="https://t.me/BotFather" target="_blank" style="color:var(--blue)">@BotFather</a> บน Telegram</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Telegram Chat ID</label>
+              <input class="form-input" id="telegram-chat" placeholder="123456789" />
+              <div class="form-hint">เปิด bot แล้วพิมพ์ /start จากนั้นเปิด api.telegram.org/bot[TOKEN]/getUpdates</div>
             </div>
             <div class="form-group">
               <label class="form-label">แจ้งเตือนเมื่อโดเมนหมดอายุก่อน (วัน)</label>
@@ -525,7 +530,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
               <input type="checkbox" id="notify-expiry" checked style="accent-color:var(--green)" /> แจ้งเมื่อโดเมนใกล้หมดอายุ
             </label>
           </div>
-          <button class="btn" style="margin-top:12px" onclick="testLineAlert()"><i class="fa-solid fa-paper-plane"></i> ทดสอบแจ้งเตือน LINE</button>
+          <button class="btn" style="margin-top:12px" onclick="testLineAlert()"><i class="fa-brands fa-telegram"></i> ทดสอบแจ้งเตือน Telegram</button>
         </div>
 
         <div class="settings-section">
@@ -1209,14 +1214,19 @@ async function saveGSC() {
 
 async function saveSettings() {
   await saveGSC();
-  const body = { alerts: { lineToken: document.getElementById('line-token').value, notifyOnDown: document.getElementById('notify-down').checked, notifyOnExpiry: document.getElementById('notify-expiry').checked, expiryDaysThreshold: parseInt(document.getElementById('expiry-threshold').value) } };
+  const body = { alerts: { telegramToken: document.getElementById('telegram-token').value, telegramChatId: document.getElementById('telegram-chat').value, notifyOnDown: document.getElementById('notify-down').checked, notifyOnExpiry: document.getElementById('notify-expiry').checked, expiryDaysThreshold: parseInt(document.getElementById('expiry-threshold').value) } };
   try {
     await fetch(`${API}/api/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
     toast('บันทึก Settings แล้ว', 'success');
   } catch { toast('Demo Mode', 'info'); }
 }
 
-function testLineAlert() { toast('ส่งแจ้งเตือน LINE Test แล้ว (ต้องใส่ Token ก่อน)', 'info'); }
+async function testLineAlert() {
+  try {
+    await fetch(`${API}/api/test-alert`, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({message: 'DomainIntel Test Alert'}) });
+    toast('ส่งแจ้งเตือน Telegram Test แล้ว!', 'success');
+  } catch { toast('ต้องใส่ Telegram Token และ Chat ID ก่อน', 'error'); }
+}
 
 // ===== NAVIGATION =====
 let currentPageName = 'dashboard';
