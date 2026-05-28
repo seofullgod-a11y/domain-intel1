@@ -1,35 +1,33 @@
 /**
- * DomainIntel Backend Server
- * ติดตั้ง: npm install
- * รัน:    node server.js
- * Port:   3001
+ * DomainIntel Backend Server + Plesk Integration
+ * รัน: node server.js
  */
 
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
 
-// ===== CONFIG =====
-const PORT = 3001;
+const PORT = process.env.PORT || 3001;
+const PLESK_HOST = process.env.PLESK_HOST || '';
+const PLESK_USER = process.env.PLESK_USER || 'admin';
+const PLESK_PASS = process.env.PLESK_PASS || '';
+
 const DATA_FILE = path.join(__dirname, 'data', 'domains.json');
 const CONFIG_FILE = path.join(__dirname, 'data', 'config.json');
-const CHECK_INTERVAL_MS = 30 * 60 * 1000; // เช็คทุก 30 นาที
+const CHECK_INTERVAL_MS = 30 * 60 * 1000;
+const PLESK_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
-// ===== INIT DATA FILES =====
 if (!fs.existsSync(path.join(__dirname, 'data'))) {
   fs.mkdirSync(path.join(__dirname, 'data'), { recursive: true });
 }
-
 if (!fs.existsSync(DATA_FILE)) {
   fs.writeFileSync(DATA_FILE, JSON.stringify({ domains: [], lastUpdated: null }, null, 2));
 }
-
 if (!fs.existsSync(CONFIG_FILE)) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify({
     gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' },
-    alerts: { lineToken: '', email: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 }
+    alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 }
   }, null, 2));
 }
 
@@ -38,33 +36,27 @@ function loadData() {
   try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); }
   catch { return { domains: [], lastUpdated: null }; }
 }
-
 function saveData(data) {
   data.lastUpdated = new Date().toISOString();
   fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2));
 }
-
 function loadConfig() {
   try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
   catch { return {}; }
 }
-
 function saveConfig(cfg) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2));
 }
-
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
-
 function json(res, data, status = 200) {
   cors(res);
   res.writeHead(status, { 'Content-Type': 'application/json' });
   res.end(JSON.stringify(data));
 }
-
 function parseBody(req) {
   return new Promise(resolve => {
     let body = '';
@@ -73,37 +65,176 @@ function parseBody(req) {
   });
 }
 
+// ===== PLESK API =====
+function pleskRequest(method, apiPath) {
+  return new Promise((resolve, reject) => {
+    const auth = Buffer.from(`${PLESK_USER}:${PLESK_PASS}`).toString('base64');
+    const options = {
+      hostname: PLESK_HOST,
+      port: 8443,
+      path: `/api/v2${apiPath}`,
+      method,
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      rejectUnauthorized: false // Plesk ใช้ self-signed cert ได้
+    };
+    const req = https.request(options, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode, data: JSON.parse(data) }); }
+        catch { resolve({ status: res.statusCode, data: {} }); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+    req.end();
+  });
+}
+
+async function fetchPleskDomains() {
+  if (!PLESK_HOST || !PLESK_PASS) {
+    console.log('[Plesk] ไม่มี credentials — ข้าม');
+    return [];
+  }
+  try {
+    console.log(`[Plesk] กำลังดึงโดเมนจาก ${PLESK_HOST}...`);
+
+    // ดึง subscriptions (แต่ละ subscription มีหลาย domain ได้)
+    const subsRes = await pleskRequest('GET', '/subscriptions');
+    if (subsRes.status !== 200) {
+      console.log(`[Plesk] subscriptions error: ${subsRes.status}`);
+      return [];
+    }
+
+    // ดึง domains ทั้งหมด
+    const domsRes = await pleskRequest('GET', '/domains');
+    if (domsRes.status !== 200) {
+      console.log(`[Plesk] domains error: ${domsRes.status}`);
+      return [];
+    }
+
+    const domains = Array.isArray(domsRes.data) ? domsRes.data : [];
+    console.log(`[Plesk] พบ ${domains.length} โดเมน`);
+
+    const results = [];
+    for (const d of domains) {
+      const domainName = d.name || d.ascii_name || '';
+      if (!domainName) continue;
+
+      // ดึง SSL info ถ้ามี
+      let sslExpiry = null;
+      let sslDaysLeft = null;
+      try {
+        const sslRes = await pleskRequest('GET', `/domains/${d.id}/ssl-certificate`);
+        if (sslRes.status === 200 && sslRes.data?.valid_to) {
+          const expDate = new Date(sslRes.data.valid_to);
+          sslExpiry = expDate.toISOString().split('T')[0];
+          sslDaysLeft = Math.floor((expDate - new Date()) / (1000 * 60 * 60 * 24));
+        }
+      } catch {}
+
+      results.push({
+        domain: domainName,
+        pleskId: d.id,
+        pleskStatus: d.status || 'unknown', // 0=active, 16=suspended
+        pleskActive: d.status === 0 || d.status === '0',
+        hostingType: d.hosting_type || '',
+        sslExpiry,
+        sslDaysLeft,
+        pleskSyncedAt: new Date().toISOString()
+      });
+    }
+    return results;
+  } catch (err) {
+    console.error('[Plesk] Error:', err.message);
+    return [];
+  }
+}
+
+async function syncPleskDomains() {
+  const pleskDomains = await fetchPleskDomains();
+  if (!pleskDomains.length) return 0;
+
+  const data = loadData();
+  let added = 0, updated = 0;
+
+  for (const pd of pleskDomains) {
+    const existing = data.domains.find(d => d.domain === pd.domain);
+    if (existing) {
+      // อัพเดตข้อมูล Plesk
+      existing.pleskId = pd.pleskId;
+      existing.pleskStatus = pd.pleskStatus;
+      existing.pleskActive = pd.pleskActive;
+      existing.hostingType = pd.hostingType;
+      existing.sslExpiry = pd.sslExpiry;
+      existing.sslDaysLeft = pd.sslDaysLeft;
+      existing.pleskSyncedAt = pd.pleskSyncedAt;
+      if (!existing.tags) existing.tags = [];
+      if (!existing.tags.includes('plesk')) existing.tags.push('plesk');
+      updated++;
+    } else {
+      // เพิ่มโดเมนใหม่จาก Plesk
+      data.domains.push({
+        domain: pd.domain,
+        status: 'unknown',
+        statusCode: 0,
+        responseTime: 0,
+        checkedAt: null,
+        error: null,
+        expiryDate: pd.sslExpiry,
+        daysLeft: pd.sslDaysLeft,
+        notes: 'นำเข้าจาก Plesk',
+        tags: ['plesk'],
+        gsc: null,
+        addedAt: new Date().toISOString(),
+        pleskId: pd.pleskId,
+        pleskStatus: pd.pleskStatus,
+        pleskActive: pd.pleskActive,
+        hostingType: pd.hostingType,
+        sslExpiry: pd.sslExpiry,
+        sslDaysLeft: pd.sslDaysLeft,
+        pleskSyncedAt: pd.pleskSyncedAt
+      });
+      added++;
+    }
+  }
+
+  saveData(data);
+  console.log(`[Plesk Sync] เพิ่ม ${added} อัพเดต ${updated} โดเมน`);
+
+  // เช็คสถานะทันทีหลัง sync
+  setTimeout(() => checkAllDomains(), 2000);
+  return added + updated;
+}
+
 // ===== DOMAIN CHECKER =====
 function checkDomain(domain) {
   return new Promise(resolve => {
     const clean = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     const url = `https://${clean}`;
     const start = Date.now();
-    const req = https.get(url, { timeout: 8000, headers: { 'User-Agent': 'DomainIntel/1.0' } }, res => {
+    const req = https.get(url, { timeout: 10000, headers: { 'User-Agent': 'DomainIntel/1.0' } }, res => {
       const responseTime = Date.now() - start;
       res.destroy();
-      const statusCode = res.statusCode;
+      const code = res.statusCode;
       let status = 'up';
-      if (statusCode >= 500) status = 'down';
-      else if (statusCode >= 400 && statusCode !== 404) status = 'warn';
-      resolve({ domain: clean, status, statusCode, responseTime, checkedAt: new Date().toISOString(), error: null });
+      if (code >= 500) status = 'down';
+      else if (code >= 400 && code !== 404 && code !== 403) status = 'warn';
+      resolve({ domain: clean, status, statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: null });
     });
-    req.on('error', err => {
-      resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: Date.now() - start, checkedAt: new Date().toISOString(), error: err.message });
-    });
-    req.on('timeout', () => {
-      req.destroy();
-      resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: 8000, checkedAt: new Date().toISOString(), error: 'Timeout' });
-    });
+    req.on('error', err => resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: Date.now() - start, checkedAt: new Date().toISOString(), error: err.message }));
+    req.on('timeout', () => { req.destroy(); resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: 10000, checkedAt: new Date().toISOString(), error: 'Timeout' }); });
   });
 }
 
 async function checkAllDomains() {
   const data = loadData();
   if (!data.domains.length) return;
-  console.log(`[${new Date().toLocaleTimeString()}] เช็ค ${data.domains.length} โดเมน...`);
-
-  // เช็คพร้อมกันสูงสุด 20 โดเมน
+  console.log(`[Check] เช็ค ${data.domains.length} โดเมน...`);
   const BATCH = 20;
   for (let i = 0; i < data.domains.length; i += BATCH) {
     const batch = data.domains.slice(i, i + BATCH);
@@ -112,40 +243,16 @@ async function checkAllDomains() {
       const idx = data.domains.findIndex(d => d.domain === r.domain);
       if (idx !== -1) {
         const prev = data.domains[idx].status;
-        data.domains[idx].status = r.status;
-        data.domains[idx].statusCode = r.statusCode;
-        data.domains[idx].responseTime = r.responseTime;
-        data.domains[idx].checkedAt = r.checkedAt;
-        data.domains[idx].error = r.error;
-        // แจ้งเตือนถ้าสถานะเปลี่ยนเป็น down
-        if (prev === 'up' && r.status === 'down') {
-          sendLineAlert(`🚨 โดเมน ${r.domain} ล่มแล้ว! (${r.error || 'HTTP ' + r.statusCode})`);
-        }
+        Object.assign(data.domains[idx], r);
+        if (prev === 'up' && r.status === 'down') sendLineAlert(`🚨 ${r.domain} ล่มแล้ว!`);
       }
     });
   }
   saveData(data);
-  console.log(`[${new Date().toLocaleTimeString()}] เช็คเสร็จแล้ว`);
+  console.log(`[Check] เสร็จแล้ว`);
 }
 
-// ===== WHOIS / EXPIRY CHECKER =====
-function checkExpiryWhois(domain) {
-  try {
-    const clean = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
-    const result = execSync(`whois ${clean} 2>/dev/null | grep -i "expir" | head -5`, { timeout: 10000 }).toString();
-    const match = result.match(/(\d{4}-\d{2}-\d{2}|\d{2}\/\d{2}\/\d{4})/);
-    if (match) {
-      const expDate = new Date(match[1]);
-      const daysLeft = Math.floor((expDate - new Date()) / (1000 * 60 * 60 * 24));
-      return { expiryDate: expDate.toISOString().split('T')[0], daysLeft };
-    }
-    return { expiryDate: null, daysLeft: null };
-  } catch {
-    return { expiryDate: null, daysLeft: null };
-  }
-}
-
-// ===== GSC API =====
+// ===== GSC =====
 async function refreshGSCToken() {
   const cfg = loadConfig();
   if (!cfg.gsc?.refreshToken) return null;
@@ -155,37 +262,26 @@ async function refreshGSCToken() {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
-        try {
-          const t = JSON.parse(data);
-          if (t.access_token) {
-            cfg.gsc.accessToken = t.access_token;
-            saveConfig(cfg);
-            resolve(t.access_token);
-          } else resolve(null);
-        } catch { resolve(null); }
+        try { const t = JSON.parse(data); if (t.access_token) { cfg.gsc.accessToken = t.access_token; saveConfig(cfg); resolve(t.access_token); } else resolve(null); }
+        catch { resolve(null); }
       });
     });
     req.on('error', () => resolve(null));
-    req.write(body);
-    req.end();
+    req.write(body); req.end();
   });
 }
 
 async function getGSCData(siteUrl, startDate, endDate, accessToken) {
   return new Promise(resolve => {
     const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
-    const path = `/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`;
-    const req = https.request({ hostname: 'www.googleapis.com', path, method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
+    const apiPath = `/webmasters/v3/sites/${encodeURIComponent(siteUrl)}/searchAnalytics/query`;
+    const req = https.request({ hostname: 'www.googleapis.com', path: apiPath, method: 'POST', headers: { 'Authorization': `Bearer ${accessToken}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
       let data = '';
       res.on('data', c => data += c);
-      res.on('end', () => {
-        try { resolve(JSON.parse(data)); }
-        catch { resolve(null); }
-      });
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
     });
     req.on('error', () => resolve(null));
-    req.write(body);
-    req.end();
+    req.write(body); req.end();
   });
 }
 
@@ -194,18 +290,12 @@ async function syncGSCForDomain(domainObj) {
   let token = cfg.gsc?.accessToken;
   if (!token) token = await refreshGSCToken();
   if (!token) return domainObj;
-
   const endDate = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const siteUrl = `https://${domainObj.domain}/`;
-  const result = await getGSCData(siteUrl, startDate, endDate, token);
-
+  const startDate = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const result = await getGSCData(`https://${domainObj.domain}/`, startDate, endDate, token);
   if (result?.rows) {
-    const totalClicks = result.rows.reduce((s, r) => s + (r.clicks || 0), 0);
-    const totalImpressions = result.rows.reduce((s, r) => s + (r.impressions || 0), 0);
     const keywords = result.rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, position: Math.round(r.position * 10) / 10, ctr: Math.round(r.ctr * 10000) / 100 }));
-    const topKw = keywords[0] || null;
-    domainObj.gsc = { clicks: totalClicks, impressions: totalImpressions, avgPosition: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.position, 0) / keywords.length * 10) / 10 : 0, keywords, topKeyword: topKw?.keyword || '-', topPosition: topKw?.position || 0, keywordCount: keywords.length, syncedAt: new Date().toISOString() };
+    domainObj.gsc = { clicks: result.rows.reduce((s, r) => s + r.clicks, 0), impressions: result.rows.reduce((s, r) => s + r.impressions, 0), avgPosition: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.position, 0) / keywords.length * 10) / 10 : 0, keywords, topKeyword: keywords[0]?.keyword || '-', topPosition: keywords[0]?.position || 0, keywordCount: keywords.length, syncedAt: new Date().toISOString() };
   }
   return domainObj;
 }
@@ -217,11 +307,10 @@ function sendLineAlert(message) {
   const body = `message=${encodeURIComponent(message)}`;
   const req = https.request({ hostname: 'notify-api.line.me', path: '/api/notify', method: 'POST', headers: { 'Authorization': `Bearer ${cfg.alerts.lineToken}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) } }, () => {});
   req.on('error', () => {});
-  req.write(body);
-  req.end();
+  req.write(body); req.end();
 }
 
-// ===== CSV PARSER =====
+// ===== CSV =====
 function parseCSV(text) {
   const lines = text.trim().split('\n');
   const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
@@ -238,34 +327,67 @@ async function handleRequest(req, res) {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
   const url = req.url.split('?')[0];
 
-  // GET /api/domains
   if (req.method === 'GET' && url === '/api/domains') {
     const data = loadData();
     const cfg = loadConfig();
-    json(res, { ...data, gscConnected: !!cfg.gsc?.accessToken, lastUpdated: data.lastUpdated });
+    json(res, { ...data, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: !!(PLESK_HOST && PLESK_PASS), pleskHost: PLESK_HOST });
     return;
   }
 
-  // POST /api/domains/add
+  if (req.method === 'GET' && url === '/api/stats') {
+    const data = loadData();
+    const d = data.domains;
+    json(res, {
+      total: d.length,
+      up: d.filter(x => x.status === 'up').length,
+      down: d.filter(x => x.status === 'down').length,
+      warn: d.filter(x => x.status === 'warn').length,
+      unknown: d.filter(x => x.status === 'unknown').length,
+      withTraffic: d.filter(x => x.gsc?.clicks > 0).length,
+      noTraffic: d.filter(x => x.gsc && x.gsc.clicks === 0).length,
+      expiringIn30: d.filter(x => x.sslDaysLeft !== null && x.sslDaysLeft <= 30 && x.sslDaysLeft >= 0).length,
+      pleskActive: d.filter(x => x.pleskActive === true).length,
+      pleskSuspended: d.filter(x => x.pleskActive === false && x.pleskId).length,
+      totalClicks: d.reduce((s, x) => s + (x.gsc?.clicks || 0), 0),
+      totalImpressions: d.reduce((s, x) => s + (x.gsc?.impressions || 0), 0),
+    });
+    return;
+  }
+
+  // Plesk sync
+  if (req.method === 'POST' && url === '/api/plesk/sync') {
+    if (!PLESK_HOST || !PLESK_PASS) { json(res, { error: 'ไม่มี Plesk credentials — ตั้งค่า environment variables ก่อน' }, 400); return; }
+    syncPleskDomains().catch(console.error);
+    json(res, { success: true, message: 'กำลัง sync โดเมนจาก Plesk...' });
+    return;
+  }
+
+  // Plesk status
+  if (req.method === 'GET' && url === '/api/plesk/status') {
+    if (!PLESK_HOST || !PLESK_PASS) { json(res, { connected: false, reason: 'ไม่มี credentials' }); return; }
+    try {
+      const r = await pleskRequest('GET', '/server');
+      json(res, { connected: r.status === 200, hostname: r.data?.hostname, version: r.data?.panel_version, status: r.status });
+    } catch (e) {
+      json(res, { connected: false, reason: e.message });
+    }
+    return;
+  }
+
   if (req.method === 'POST' && url === '/api/domains/add') {
     const body = await parseBody(req);
     const data = loadData();
     const domain = body.domain?.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
     if (!domain) { json(res, { error: 'ต้องระบุ domain' }, 400); return; }
     if (data.domains.find(d => d.domain === domain)) { json(res, { error: 'มีโดเมนนี้อยู่แล้ว' }, 409); return; }
-    const newDomain = { domain, status: 'unknown', statusCode: 0, responseTime: 0, checkedAt: null, error: null, expiryDate: null, daysLeft: null, notes: body.notes || '', tags: body.tags || [], gsc: null, addedAt: new Date().toISOString() };
-    data.domains.push(newDomain);
+    const newD = { domain, status: 'unknown', statusCode: 0, responseTime: 0, checkedAt: null, error: null, sslExpiry: null, sslDaysLeft: null, expiryDate: null, daysLeft: null, notes: body.notes || '', tags: body.tags || [], gsc: null, addedAt: new Date().toISOString() };
+    data.domains.push(newD);
     saveData(data);
-    // เช็คทันที
-    checkDomain(domain).then(r => {
-      const idx = data.domains.findIndex(d => d.domain === domain);
-      if (idx !== -1) { Object.assign(data.domains[idx], r); saveData(data); }
-    });
-    json(res, { success: true, domain: newDomain });
+    checkDomain(domain).then(r => { const idx = data.domains.findIndex(d => d.domain === domain); if (idx !== -1) { Object.assign(data.domains[idx], r); saveData(data); } });
+    json(res, { success: true, domain: newD });
     return;
   }
 
-  // POST /api/domains/import (CSV)
   if (req.method === 'POST' && url === '/api/domains/import') {
     const body = await parseBody(req);
     const rows = parseCSV(body.csv || '');
@@ -273,19 +395,16 @@ async function handleRequest(req, res) {
     let added = 0, skipped = 0;
     rows.forEach(row => {
       const domain = (row.domain || row['domain name'] || row['url'] || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase().trim();
-      if (!domain) { skipped++; return; }
-      if (data.domains.find(d => d.domain === domain)) { skipped++; return; }
-      data.domains.push({ domain, status: 'unknown', statusCode: 0, responseTime: 0, checkedAt: null, error: null, expiryDate: row.expiry_date || null, daysLeft: row.days_left ? parseInt(row.days_left) : null, notes: row.notes || '', tags: row.tags ? row.tags.split(';') : [], gsc: null, addedAt: new Date().toISOString() });
+      if (!domain || data.domains.find(d => d.domain === domain)) { skipped++; return; }
+      data.domains.push({ domain, status: 'unknown', statusCode: 0, responseTime: 0, checkedAt: null, error: null, sslExpiry: null, sslDaysLeft: null, expiryDate: row.expiry_date || null, daysLeft: row.days_left ? parseInt(row.days_left) : null, notes: row.notes || '', tags: row.tags ? row.tags.split(';') : [], gsc: null, addedAt: new Date().toISOString() });
       added++;
     });
     saveData(data);
-    // เช็คสถานะทั้งหมดที่เพิ่งเพิ่ม background
     setTimeout(() => checkAllDomains(), 500);
     json(res, { success: true, added, skipped, total: data.domains.length });
     return;
   }
 
-  // DELETE /api/domains/:domain
   if (req.method === 'DELETE' && url.startsWith('/api/domains/')) {
     const domain = decodeURIComponent(url.split('/api/domains/')[1]);
     const data = loadData();
@@ -296,7 +415,6 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // POST /api/check/:domain (เช็คเดี่ยว)
   if (req.method === 'POST' && url.startsWith('/api/check/')) {
     const domain = decodeURIComponent(url.split('/api/check/')[1]);
     const result = await checkDomain(domain);
@@ -307,25 +425,12 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // POST /api/check-all
   if (req.method === 'POST' && url === '/api/check-all') {
     checkAllDomains().catch(console.error);
     json(res, { success: true, message: 'กำลังเช็คทุกโดเมน...' });
     return;
   }
 
-  // POST /api/whois/:domain
-  if (req.method === 'POST' && url.startsWith('/api/whois/')) {
-    const domain = decodeURIComponent(url.split('/api/whois/')[1]);
-    const expiry = checkExpiryWhois(domain);
-    const data = loadData();
-    const idx = data.domains.findIndex(d => d.domain === domain);
-    if (idx !== -1) { Object.assign(data.domains[idx], expiry); saveData(data); }
-    json(res, expiry);
-    return;
-  }
-
-  // POST /api/gsc/sync/:domain
   if (req.method === 'POST' && url.startsWith('/api/gsc/sync/')) {
     const domain = decodeURIComponent(url.split('/api/gsc/sync/')[1]);
     const data = loadData();
@@ -337,32 +442,27 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // POST /api/gsc/sync-all
   if (req.method === 'POST' && url === '/api/gsc/sync-all') {
     const data = loadData();
-    // sync แบบ async background
     (async () => {
       for (let i = 0; i < data.domains.length; i++) {
         data.domains[i] = await syncGSCForDomain(data.domains[i]);
         if (i % 10 === 0) saveData(data);
       }
       saveData(data);
-      console.log('GSC sync เสร็จแล้ว');
     })().catch(console.error);
-    json(res, { success: true, message: `กำลัง sync GSC สำหรับ ${data.domains.length} โดเมน...` });
+    json(res, { success: true, message: `Sync GSC ${data.domains.length} โดเมน...` });
     return;
   }
 
-  // GET/POST /api/config
   if (url === '/api/config') {
     if (req.method === 'GET') {
       const cfg = loadConfig();
-      // ซ่อน secret
       const safe = JSON.parse(JSON.stringify(cfg));
       if (safe.gsc?.clientSecret) safe.gsc.clientSecret = '***';
       if (safe.gsc?.refreshToken) safe.gsc.refreshToken = safe.gsc.refreshToken.slice(0, 10) + '...';
       if (safe.alerts?.lineToken) safe.alerts.lineToken = safe.alerts.lineToken.slice(0, 8) + '...';
-      json(res, safe);
+      json(res, { ...safe, pleskHost: PLESK_HOST, pleskConnected: !!(PLESK_HOST && PLESK_PASS) });
     } else {
       const body = await parseBody(req);
       const cfg = loadConfig();
@@ -374,32 +474,13 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // GET /api/stats
-  if (req.method === 'GET' && url === '/api/stats') {
-    const data = loadData();
-    const domains = data.domains;
-    json(res, {
-      total: domains.length,
-      up: domains.filter(d => d.status === 'up').length,
-      down: domains.filter(d => d.status === 'down').length,
-      warn: domains.filter(d => d.status === 'warn').length,
-      unknown: domains.filter(d => d.status === 'unknown').length,
-      withTraffic: domains.filter(d => d.gsc?.clicks > 0).length,
-      noTraffic: domains.filter(d => d.gsc && d.gsc.clicks === 0).length,
-      expiringIn30: domains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft >= 0).length,
-      totalClicks: domains.reduce((s, d) => s + (d.gsc?.clicks || 0), 0),
-      totalImpressions: domains.reduce((s, d) => s + (d.gsc?.impressions || 0), 0),
-    });
-    return;
-  }
-
   // Static files
   if (req.method === 'GET') {
     const filePath = url === '/' ? '/public/index.html' : `/public${url}`;
     const fullPath = path.join(__dirname, filePath);
     if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
       const ext = path.extname(fullPath);
-      const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript', '.json': 'application/json' };
+      const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript' };
       cors(res);
       res.writeHead(200, { 'Content-Type': types[ext] || 'text/plain' });
       res.end(fs.readFileSync(fullPath));
@@ -410,16 +491,25 @@ async function handleRequest(req, res) {
   json(res, { error: 'Not found' }, 404);
 }
 
-// ===== START SERVER =====
+// ===== START =====
 const server = http.createServer(handleRequest);
-server.listen(PORT, () => {
-  console.log(`
-╔══════════════════════════════════════╗
-║   DomainIntel Server v1.0            ║
-║   http://localhost:${PORT}               ║
-╚══════════════════════════════════════╝
-  `);
-  // เริ่ม Auto-check ทุก 30 นาที
+server.listen(PORT, async () => {
+  console.log(`\n╔══════════════════════════════════════╗`);
+  console.log(`║   DomainIntel + Plesk Integration    ║`);
+  console.log(`║   http://localhost:${PORT}               ║`);
+  console.log(`╚══════════════════════════════════════╝\n`);
+
+  if (PLESK_HOST && PLESK_PASS) {
+    console.log(`[Plesk] เชื่อมต่อ ${PLESK_HOST}`);
+    // Sync Plesk ทันทีตอน start
+    await syncPleskDomains();
+    // Auto sync ทุก 6 ชั่วโมง
+    setInterval(() => syncPleskDomains(), PLESK_SYNC_INTERVAL_MS);
+  } else {
+    console.log('[Plesk] ไม่มี credentials — ข้าม');
+  }
+
+  // Auto check ทุก 30 นาที
   setInterval(checkAllDomains, CHECK_INTERVAL_MS);
-  console.log(`[Auto-check] จะเช็คโดเมนทุก ${CHECK_INTERVAL_MS / 60000} นาที`);
+  console.log(`[Auto-check] ทุก ${CHECK_INTERVAL_MS / 60000} นาที`);
 });
