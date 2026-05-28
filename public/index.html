@@ -938,47 +938,50 @@ function expiryCell(d) {
 }
 
 function serverInfoCell(d) {
-  if (!d.pleskHost && !d.pleskServer) return '<span style="color:var(--text3);font-size:11px">—</span>';
+  // หา server config จาก pleskHost หรือ pleskServer
+  const srv = getServerConfig(d.pleskHost) || getServerConfigByName(d.pleskServer);
+  const ip = d.pleskHost || srv?.host || '—';
+  const name = d.pleskServer || srv?.name || 'Server';
   
-  // หา server config จาก pleskHost
-  const srv = getServerConfig(d.pleskHost);
-  const ip = d.pleskHost || '—';
+  if (!ip || ip === '—') return '<span style="color:var(--text3);font-size:11px">—</span>';
+  
   const user = srv?.user || 'admin';
-  const pass = srv?.pass || '—';
-  const name = d.pleskServer || 'Server';
-  const uid = `srv-${d.domain.replace(/[^a-z0-9]/g,'-')}`;
+  const pass = srv?.pass || '';
+  const uid = 'p' + Math.random().toString(36).slice(2,8) + d.domain.replace(/[^a-z0-9]/g,'').slice(0,6);
+  const passB64 = pass ? btoa(unescape(encodeURIComponent(pass))) : '';
   
-  return `<div style="font-size:11px">
-    <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
-      <span style="background:var(--blue-dim);color:var(--blue);padding:1px 6px;border-radius:3px;font-size:10px">${name}</span>
-      <span style="font-family:var(--mono);color:var(--text2)">${ip}</span>
+  return `<div style="font-size:11px;min-width:160px">
+    <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">
+      <span style="background:var(--blue-dim);color:var(--blue);padding:1px 6px;border-radius:3px;font-size:10px;white-space:nowrap">${name}</span>
+      <span style="font-family:var(--mono);color:var(--text2);font-size:11px">${ip}</span>
     </div>
-    <div style="display:flex;align-items:center;gap:4px">
-      <span style="color:var(--text3)">user:</span>
-      <span style="font-family:var(--mono);color:var(--text2)">${user}</span>
+    <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
+      <span style="color:var(--text3);min-width:32px">user:</span>
+      <span style="font-family:var(--mono);color:var(--text)">${user}</span>
+      <button onclick="navigator.clipboard.writeText('${user}');toast('Copy user แล้ว','success')" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:0 2px"><i class="ti ti-copy" style="font-size:11px"></i></button>
     </div>
-    <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
-      <span style="color:var(--text3)">pass:</span>
-      <span id="pass-${uid}" style="font-family:var(--mono);color:var(--text3);cursor:pointer;user-select:none" 
-        onmousedown="showPass('${uid}','${btoa(pass)}')" 
-        onmouseup="hidePass('${uid}')" 
-        onmouseleave="hidePass('${uid}')"
-        ontouchstart="showPass('${uid}','${btoa(pass)}')"
-        ontouchend="hidePass('${uid}')"
-        title="กดค้างเพื่อดู password">
-        <span class="pass-dots">••••••••</span>
-      </span>
-      <button onclick="copyPass('${btoa(pass)}')" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:0 2px" title="copy password">
-        <i class="ti ti-copy" style="font-size:11px"></i>
-      </button>
-    </div>
+    ${pass ? `<div style="display:flex;align-items:center;gap:4px">
+      <span style="color:var(--text3);min-width:32px">pass:</span>
+      <span id="pd-${uid}" style="font-family:var(--mono);color:var(--text3);cursor:pointer;letter-spacing:1px" 
+        onmousedown="document.getElementById('pd-${uid}').textContent=decodeURIComponent(escape(atob('${passB64}')))"
+        onmouseup="document.getElementById('pd-${uid}').textContent='••••••••'"
+        onmouseleave="document.getElementById('pd-${uid}').textContent='••••••••'"
+        title="กดค้างเพื่อดู">••••••••</span>
+      <button onclick="navigator.clipboard.writeText(decodeURIComponent(escape(atob('${passB64}'))));toast('Copy password แล้ว','success')" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:0 2px"><i class="ti ti-copy" style="font-size:11px"></i></button>
+    </div>` : ''}
   </div>`;
 }
 
 function getServerConfig(host) {
-  // ดึงจาก PLESK_SERVERS ที่ฝังไว้
+  if (!host) return null;
   const servers = window._pleskServers || [];
-  return servers.find(s => s.host === host);
+  return servers.find(s => s.host === host) || null;
+}
+
+function getServerConfigByName(name) {
+  if (!name) return null;
+  const servers = window._pleskServers || [];
+  return servers.find(s => s.name === name) || null;
 }
 
 function showPass(uid, b64) {
@@ -1047,7 +1050,7 @@ function renderDomainTable() {
               <div class="action-group">
                 <button class="action-btn" title="ดูรายละเอียด" onclick="viewDetail('${d.domain}')"><i class="ti ti-eye"></i></button>
                 <button class="action-btn" title="เช็คสถานะ" onclick="checkOne('${d.domain}')"><i class="ti ti-refresh"></i></button>
-                ${d.status === 'down' ? `<button class="action-btn" title="Auto-fix (Unsuspend Plesk + Pause CF)" onclick="autoFixDomain('${d.domain}')" style="color:var(--amber);border-color:var(--amber)"><i class="ti ti-wand"></i></button>` : ''}
+                ${(d.status === 'down' || (d.pleskId && !d.pleskActive)) ? `<button class="action-btn" title="Auto-fix (Unsuspend Plesk + Pause CF)" onclick="autoFixDomain('${d.domain}')" style="color:var(--amber);border-color:rgba(245,158,11,0.5);background:var(--amber-dim)"><i class="ti ti-wand"></i></button>` : ''}
                 <button class="action-btn" title="Sync GSC" onclick="syncGSCOne('${d.domain}')"><i class="ti ti-brand-google"></i></button>
                 <button class="action-btn danger" title="ลบ" onclick="deleteDomain('${d.domain}')"><i class="ti ti-trash"></i></button>
               </div>
