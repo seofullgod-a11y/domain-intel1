@@ -42,8 +42,8 @@ try {
   console.error('[Sheets] ไม่สามารถ parse GOOGLE_SERVICE_ACCOUNT ได้');
 }
 
-const CHECK_INTERVAL_MS = 30 * 60 * 1000;
-const PLESK_SYNC_INTERVAL_MS = 6 * 60 * 60 * 1000;
+const CHECK_INTERVAL_MS = 5 * 60 * 1000; // เช็คทุก 5 นาที
+const PLESK_SYNC_INTERVAL_MS = 1 * 60 * 60 * 1000; // Sync Plesk ทุก 1 ชั่วโมง
 const CF_DOWN_CODES = new Set([521, 522, 523, 524, 525, 526, 530]);
 const CF_WARN_CODES = new Set([520, 527, 528, 529]);
 
@@ -296,9 +296,13 @@ async function syncPleskDomains() {
   for (const pd of pleskDomains) {
     const idx = memoryDomains.findIndex(d => d.domain === pd.domain);
     if (idx !== -1) {
-      Object.assign(memoryDomains[idx], pd);
+      // อัพเดตเฉพาะข้อมูล Plesk ไม่แตะ HTTP status ที่เช็คไว้แล้ว
+      const pleskFields = ['pleskId','pleskServer','pleskHost','pleskStatus','pleskActive','hostingType','sslExpiry','sslDaysLeft','pleskSyncedAt'];
+      pleskFields.forEach(f => { if (pd[f] !== undefined) memoryDomains[idx][f] = pd[f]; });
       if (!memoryDomains[idx].tags) memoryDomains[idx].tags = [];
       if (!memoryDomains[idx].tags.includes('plesk')) memoryDomains[idx].tags.push('plesk');
+      const serverTag = pd.pleskServer ? pd.pleskServer.toLowerCase().replace(/\s+/g,'-') : null;
+      if (serverTag && !memoryDomains[idx].tags.includes(serverTag)) memoryDomains[idx].tags.push(serverTag);
       updated++;
     } else {
       const serverTag = pd.pleskServer ? pd.pleskServer.toLowerCase().replace(/\s+/g,'-') : 'plesk';
@@ -595,6 +599,116 @@ async function unpauseCloudflareZone(domain, zoneId) {
   } catch {}
 }
 
+
+// ===== TELEGRAM BOT COMMANDS =====
+async function handleTelegramMessage(msg) {
+  const chatId = msg.chat?.id?.toString();
+  const text = (msg.text || '').trim();
+  if (!text) return;
+
+  console.log(`[TG Bot] ข้อความจาก ${chatId}: ${text}`);
+
+  // /status - สรุปภาพรวม
+  if (text === '/status' || text === '/start') {
+    const d = memoryDomains;
+    const up = d.filter(x => x.status === 'up').length;
+    const down = d.filter(x => x.status === 'down').length;
+    const warn = d.filter(x => x.status === 'warn').length;
+    const unknown = d.filter(x => x.status === 'unknown').length;
+    const suspended = d.filter(x => x.pleskId && !x.pleskActive).length;
+    sendTelegramTo(chatId, '📊 <b>DomainIntel สรุปภาพรวม</b>\n🌐 โดเมนทั้งหมด: '+d.length+'\n✅ Up: '+up+'\n🔴 Down: '+down+'\n⚠️ Warning: '+warn+'\n❓ Unknown: '+unknown+'\n🚫 Plesk Suspended: '+suspended+'\n🕐 อัพเดตล่าสุด: '+new Date().toLocaleString('th-TH'));
+    return;
+  }
+
+  // /down - รายการโดเมนที่ Down
+  if (text === '/down') {
+    const downs = memoryDomains.filter(d => d.status === 'down').slice(0, 20);
+    if (!downs.length) { sendTelegramTo(chatId, '✅ ไม่มีโดเมนที่ Down ตอนนี้'); return; }
+    const list = downs.map((d,i) => (i+1)+'. '+d.domain+' - '+(d.error||'HTTP '+d.statusCode)).join('\n');
+    const _downTotal = memoryDomains.filter(d=>d.status==='down').length;
+    sendTelegramTo(chatId, '🔴 <b>โดเมนที่ Down ('+downs.length+' ตัว)</b>\n'+list+(_downTotal>20?'\n...และอีก '+(_downTotal-20)+' ตัว':''));
+    return;
+  }
+
+  // /suspended - รายการ Plesk Suspended
+  if (text === '/suspended') {
+    const sus = memoryDomains.filter(d => d.pleskId && !d.pleskActive).slice(0, 20);
+    if (!sus.length) { sendTelegramTo(chatId, '✅ ไม่มีโดเมนที่ Suspended'); return; }
+    const list = sus.map((d,i) => (i+1)+'. '+d.domain+' - '+(d.pleskServer||'Plesk')).join('\n');
+    sendTelegramTo(chatId, '🚫 <b>Plesk Suspended ('+sus.length+' ตัว)</b>\n'+list);
+    return;
+  }
+
+  // /server1 /server2 /server3 /server4
+  const serverMatch = text.match(/^\/server([1-4])$/);
+  if (serverMatch) {
+    const num = serverMatch[1];
+    const srv = PLESK_SERVERS[parseInt(num)-1];
+    const domains = memoryDomains.filter(d => d.pleskServer === `Server ${num}`);
+    if (!srv) { sendTelegramTo(chatId, `❌ ไม่พบ Server ${num}`); return; }
+    const up = domains.filter(d => d.status === 'up').length;
+    const down = domains.filter(d => d.status === 'down').length;
+    sendTelegramTo(chatId, '🖥️ <b>Server '+num+' ('+srv.host+')</b>\n📦 โดเมนทั้งหมด: '+domains.length+'\n✅ Up: '+up+'\n🔴 Down: '+down+'\n🚫 Suspended: '+domains.filter(d=>d.pleskId&&!d.pleskActive).length);
+    return;
+  }
+
+  // /fix domain.com - Auto-fix โดเมน
+  if (text.startsWith('/fix ')) {
+    const domain = text.replace('/fix ', '').trim().toLowerCase();
+    const domainObj = memoryDomains.find(d => d.domain === domain);
+    if (!domainObj) { sendTelegramTo(chatId, `❌ ไม่พบโดเมน <code>${domain}</code>`); return; }
+    sendTelegramTo(chatId, `⚙️ กำลัง Auto-fix <code>${domain}</code>...`);
+    const actions = [];
+    if (domainObj.pleskId && !domainObj.pleskActive) {
+      const ok = await pleskUnsuspend(domainObj.pleskId, domainObj.pleskHost);
+      if (ok) { const i = memoryDomains.findIndex(d=>d.domain===domain); if(i!==-1){memoryDomains[i].pleskActive=true;} actions.push('Unsuspend Plesk OK'); }
+      else actions.push('Unsuspend Plesk FAILED');
+    }
+    if (CF_API_TOKEN && [521,522,523,524].includes(domainObj.statusCode)) {
+      const zoneId = await pauseCloudflareZone(domain);
+      if (zoneId) actions.push('Pause CF OK');
+      else actions.push('CF zone not found');
+    }
+    await saveToSheets(memoryDomains);
+    sendTelegramTo(chatId, actions.length ? `✅ Fix <code>${domain}</code>: ${actions.join(', ')}` : `⚠️ ไม่พบการแก้ไขอัตโนมัติสำหรับ <code>${domain}</code>`);
+    return;
+  }
+
+  // ค้นหาโดเมน (พิมพ์ชื่อโดเมนตรงๆ)
+  const searchTerm = text.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const found = memoryDomains.filter(d => d.domain.includes(searchTerm)).slice(0, 5);
+  if (found.length === 0) {
+    sendTelegramTo(chatId, `❌ ไม่พบโดเมน <code>${searchTerm}</code>`);
+    return;
+  }
+  if (found.length === 1) {
+    const d = found[0];
+    const statusIcon = d.status === 'up' ? '✅' : d.status === 'down' ? '🔴' : d.status === 'warn' ? '⚠️' : '❓';
+    const pleskStatus = d.pleskActive ? '✅ Active' : d.pleskId ? '🚫 Suspended' : '—';
+    const srv = PLESK_SERVERS.find(s => s.host === d.pleskHost);
+    const errLine = d.error ? '❌ Error: '+d.error+'\n' : '';
+    const fixLine = (d.status==='down'||(d.pleskId&&!d.pleskActive)) ? '\n💡 พิมพ์ /fix '+d.domain+' เพื่อ Auto-fix' : '';
+    const sslLine = d.sslDaysLeft!==null ? '('+d.sslDaysLeft+' วัน)' : '';
+    sendTelegramTo(chatId, '🌐 <b>'+d.domain+'</b>\n'+statusIcon+' สถานะ: '+(d.status||'').toUpperCase()+' '+(d.statusCode?'('+d.statusCode+')':'')+' '+(d.responseTime?d.responseTime+'ms':'')+'\n'+errLine+'🖥️ Server: '+(d.pleskServer||'—')+' ('+(d.pleskHost||'—')+')\n👤 User: '+(srv?.user||'admin')+'\n⚡ Plesk: '+pleskStatus+'\n🔒 SSL: '+(d.sslExpiry||'—')+' '+sslLine+'\n🕐 เช็คล่าสุด: '+(d.checkedAt?new Date(d.checkedAt).toLocaleString('th-TH'):'—')+fixLine);
+  } else {
+    const list = found.map(d => (d.status==='up'?'✅':d.status==='down'?'🔴':'⚠️')+' '+d.domain+' - '+(d.pleskServer||'—')).join('\n');
+    sendTelegramTo(chatId, '🔍 พบ '+found.length+' โดเมนที่ตรงกับ "'+searchTerm+'":\n'+list+'\n\n💡 พิมพ์ชื่อโดเมนแบบเต็มเพื่อดูรายละเอียด');
+  }
+}
+
+function sendTelegramTo(chatId, message) {
+  const token = TG_TOKEN;
+  if (!token || !chatId) return;
+  const body = JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' });
+  const req = https.request({
+    hostname: 'api.telegram.org',
+    path: `/bot${token}/sendMessage`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  }, () => {});
+  req.on('error', () => {});
+  req.write(body); req.end();
+}
 
 // ===== TELEGRAM ALERT =====
 function sendLineAlert(message) {
@@ -954,6 +1068,15 @@ async function handleRequest(req, res) {
     }
     const msg = actions.length ? actions.join(', ') : noFixReason;
     json(res, { success: true, message: msg, actions });
+    return;
+  }
+
+  // Telegram Webhook
+  if (req.method === 'POST' && url === '/api/telegram/webhook') {
+    const body = await parseBody(req);
+    const msg = body.message || body.edited_message;
+    if (msg) await handleTelegramMessage(msg);
+    json(res, { ok: true });
     return;
   }
 
