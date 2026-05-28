@@ -246,11 +246,37 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .progress-bar { height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; margin-top: 8px; }
 .progress-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.3s; }
 
-/* RESPONSIVE */
+/* RESPONSIVE MOBILE */
+.mobile-menu-btn { display:none; position:fixed; top:12px; left:12px; z-index:1000; background:var(--bg2); border:1px solid var(--border2); border-radius:var(--radius-sm); padding:8px 10px; cursor:pointer; color:var(--text); }
+.sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:998; }
+
 @media (max-width: 768px) {
-  .sidebar { width: 200px; min-width: 200px; }
-  .content { padding: 16px; }
+  .app { flex-direction: column; }
+  .mobile-menu-btn { display:flex; align-items:center; gap:6px; }
+  .sidebar { 
+    position: fixed; left: -240px; top: 0; bottom: 0; z-index: 999;
+    width: 240px !important; min-width: 240px !important;
+    transition: left 0.25s ease;
+    box-shadow: 4px 0 20px rgba(0,0,0,0.4);
+  }
+  .sidebar.open { left: 0; }
+  .sidebar-overlay.open { display: block; }
+  .content { padding: 12px; padding-top: 52px; }
   .form-row { grid-template-columns: 1fr; }
+  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+  .stat-card { padding: 12px; }
+  .topbar { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
+  .topbar h2 { font-size: 14px; }
+  .btn { padding: 6px 10px; font-size: 12px; }
+  table { font-size: 12px; }
+  table th, table td { padding: 6px 8px; }
+  /* ซ่อนคอลัมน์ที่ไม่จำเป็นบนมือถือ */
+  .col-traffic, .col-keywords, .col-ssl, .col-clicks { display: none; }
+  .domain-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .modal { margin: 12px; width: calc(100% - 24px); max-width: 100%; }
+  .bulk-bar-inner { flex-wrap: wrap; }
+  #progress-modal .modal { margin: 12px; }
 }
 </style>
 </head>
@@ -258,7 +284,13 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 <div class="app">
 
   <!-- SIDEBAR -->
-  <aside class="sidebar">
+  <!-- Mobile Menu Button -->
+  <button class="mobile-menu-btn" onclick="toggleSidebar()" id="menu-btn">
+    <i class="ti ti-menu-2"></i> เมนู
+  </button>
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+  
+  <aside class="sidebar" id="sidebar">
     <div class="logo">
       <div class="logo-icon">D</div>
       <div class="logo-text">Domain<span>Intel</span></div>
@@ -1799,6 +1831,24 @@ function selectAll(cb) {
   document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c => c.checked = cb.checked);
   updateBulkBar();
 }
+</script>
+<script>
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebar-overlay');
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('open');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('open');
+}
+// ปิด sidebar เมื่อกดเมนู
+document.querySelectorAll('.nav-item').forEach(item => {
+  item.addEventListener('click', () => {
+    if (window.innerWidth <= 768) closeSidebar();
+  });
+});
 </script>
 </body>
 </html>
