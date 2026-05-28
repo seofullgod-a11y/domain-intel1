@@ -78,6 +78,8 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .btn-red { background: var(--red-dim); color: var(--red); border-color: rgba(240,82,82,0.3); }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text2); }
 .btn-ghost:hover { background: var(--bg3); color: var(--text); }
+.btn-red { background: var(--red-dim); color: var(--red); border-color: rgba(240,82,82,0.3); }
+.btn-red:hover { background: rgba(240,82,82,0.2); }
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 .btn-icon { padding: 7px; }
 
@@ -393,6 +395,22 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="tab" onclick="setDomainTab('notraffic',this)">ไม่มีทราฟฟิค <span class="tab-count" id="tab-notraffic">0</span></div>
           <div class="tab" onclick="setDomainTab('expiring',this)">หมดอายุเร็ว <span class="tab-count" id="tab-expiring">0</span></div>
           <div class="tab" onclick="setDomainTab('ranked',this)">มี Keyword ติด <span class="tab-count" id="tab-ranked">0</span></div>
+        </div>
+        <!-- Bulk Action Bar (แสดงเมื่อติ๊กโดเมน) -->
+        <div id="bulk-bar" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:10px;flex-wrap:wrap">
+          <span id="bulk-count" style="font-size:13px;color:var(--text2)">เลือก 0 โดเมน</span>
+          <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-sm" onclick="bulkAutoFix()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.3)">
+              <i class="fa-solid fa-wand-magic-sparkles"></i> Auto-fix ทั้งหมดที่เลือก
+            </button>
+            <button class="btn btn-sm" onclick="bulkCheck()" style="background:var(--blue-dim);color:var(--blue);border-color:rgba(96,165,250,0.3)">
+              <i class="fa-solid fa-rotate"></i> เช็คสถานะ
+            </button>
+            <button class="btn btn-sm btn-red" onclick="bulkDelete()">
+              <i class="fa-solid fa-trash"></i> ลบ
+            </button>
+            <button class="btn btn-sm btn-ghost" onclick="clearSelection()">ยกเลิก</button>
+          </div>
         </div>
         <div id="domain-table-wrap"></div>
       </div>
@@ -873,7 +891,7 @@ function renderDomainTable() {
         <tbody>
           ${rows.map(d => `
           <tr>
-            <td><input type="checkbox" style="accent-color:var(--green)" /></td>
+            <td><input type="checkbox" style="accent-color:var(--green)" onchange="updateBulkBar()" data-domain="${d.domain}" /></td>
             <td>
               <div class="domain-name"><a href="https://${d.domain}" target="_blank">${d.domain} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px;opacity:0.5"></i></a></div>
               ${d.tags?.length ? `<div style="margin-top:3px">${d.tags.map(t=>`<span style="background:var(--bg4);color:var(--text3);font-size:10px;padding:1px 5px;border-radius:3px;margin-right:3px">${t}</span>`).join('')}</div>` : ''}
@@ -1270,6 +1288,91 @@ async function testLineAlert() {
 }
 
 // ===== NAVIGATION =====
+// ===== BULK ACTIONS =====
+function getSelectedDomains() {
+  return [...document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]:checked')]
+    .map(cb => cb.getAttribute('data-domain')).filter(Boolean);
+}
+
+function updateBulkBar() {
+  const selected = getSelectedDomains();
+  const bar = document.getElementById('bulk-bar');
+  const count = document.getElementById('bulk-count');
+  if (selected.length > 0) {
+    bar.style.display = 'flex';
+    count.textContent = `เลือก ${selected.length} โดเมน`;
+  } else {
+    bar.style.display = 'none';
+  }
+}
+
+function clearSelection() {
+  document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c => c.checked = false);
+  document.querySelectorAll('#domain-table-wrap thead input[type=checkbox]').forEach(c => c.checked = false);
+  updateBulkBar();
+}
+
+async function bulkAutoFix() {
+  const domains = getSelectedDomains();
+  if (!domains.length) { toast('กรุณาเลือกโดเมนก่อน', 'error'); return; }
+  
+  // เฉพาะโดเมนที่ Down
+  const downDomains = domains.filter(d => {
+    const domObj = allDomains.find(x => x.domain === d);
+    return domObj?.status === 'down';
+  });
+  
+  if (!downDomains.length) { toast('ไม่มีโดเมนที่ Down ในรายการที่เลือก', 'error'); return; }
+  
+  toast(`กำลัง Auto-fix ${downDomains.length} โดเมน...`, 'info');
+  
+  let success = 0, failed = 0;
+  for (const domain of downDomains) {
+    try {
+      const res = await fetch(`${API}/api/autofix/${encodeURIComponent(domain)}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) success++;
+      else failed++;
+    } catch { failed++; }
+    await new Promise(r => setTimeout(r, 500)); // หน่วงเล็กน้อยไม่ให้ spam
+  }
+  
+  toast(`Auto-fix เสร็จ: สำเร็จ ${success} ไม่สำเร็จ ${failed} โดเมน`, success > 0 ? 'success' : 'error');
+  clearSelection();
+  setTimeout(loadData, 5000); // รีเฟรชหลัง 5 วินาที
+}
+
+async function bulkCheck() {
+  const domains = getSelectedDomains();
+  if (!domains.length) { toast('กรุณาเลือกโดเมนก่อน', 'error'); return; }
+  toast(`กำลังเช็ค ${domains.length} โดเมน...`, 'info');
+  let done = 0;
+  for (const domain of domains) {
+    try {
+      await fetch(`${API}/api/check/${encodeURIComponent(domain)}`, { method: 'POST' });
+      done++;
+    } catch {}
+    await new Promise(r => setTimeout(r, 300));
+  }
+  toast(`เช็คเสร็จ ${done} โดเมน`, 'success');
+  clearSelection();
+  setTimeout(loadData, 2000);
+}
+
+async function bulkDelete() {
+  const domains = getSelectedDomains();
+  if (!domains.length) { toast('กรุณาเลือกโดเมนก่อน', 'error'); return; }
+  if (!confirm(`ลบ ${domains.length} โดเมนนี้ออกจากระบบ?`)) return;
+  for (const domain of domains) {
+    try { await fetch(`${API}/api/domains/${encodeURIComponent(domain)}`, { method: 'DELETE' }); } catch {}
+    allDomains = allDomains.filter(d => d.domain !== domain);
+  }
+  toast(`ลบ ${domains.length} โดเมนแล้ว`, 'success');
+  clearSelection();
+  applyFilters();
+  renderQuickTable();
+}
+
 let currentPageName = 'dashboard';
 let countdownInterval = null;
 let secondsLeft = 30;
@@ -1400,7 +1503,10 @@ function toast(msg, type='info') {
   setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(20px)'; t.style.transition='all 0.2s'; setTimeout(()=>t.remove(),200); }, 3500);
 }
 
-function selectAll(cb) { document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c=>c.checked=cb.checked); }
+function selectAll(cb) {
+  document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c => c.checked = cb.checked);
+  updateBulkBar();
+}
 </script>
 </body>
 </html>
