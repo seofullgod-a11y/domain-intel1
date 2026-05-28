@@ -103,17 +103,18 @@ async function fetchPleskDomains() {
   try {
     console.log(`[Plesk] กำลังดึงโดเมนจาก ${PLESK_HOST}...`);
 
+    // ดึง subscriptions (แต่ละ subscription มีหลาย domain ได้)
+    const subsRes = await pleskRequest('GET', '/subscriptions');
+    if (subsRes.status !== 200) {
+      console.log(`[Plesk] subscriptions error: ${subsRes.status}`);
+      return [];
+    }
+
     // ดึง domains ทั้งหมด
     const domsRes = await pleskRequest('GET', '/domains');
     if (domsRes.status !== 200) {
-      console.log(`[Plesk] domains error: ${domsRes.status} — ลอง /webspaces`);
-      // fallback ลอง webspaces
-      const wsRes = await pleskRequest('GET', '/webspaces');
-      if (wsRes.status !== 200) {
-        console.log(`[Plesk] webspaces error: ${wsRes.status}`);
-        return [];
-      }
-      domsRes.data = wsRes.data;
+      console.log(`[Plesk] domains error: ${domsRes.status}`);
+      return [];
     }
 
     const domains = Array.isArray(domsRes.data) ? domsRes.data : [];
@@ -211,22 +212,84 @@ async function syncPleskDomains() {
 }
 
 // ===== DOMAIN CHECKER =====
+// Cloudflare error codes ที่แปลว่า origin server ดับ
+const CF_DOWN_CODES = new Set([521, 522, 523, 524, 525, 526, 530]);
+const CF_WARN_CODES = new Set([520, 527, 528, 529]);
+
+function getErrorLabel(code, errMsg) {
+  const labels = {
+    521: 'CF 521 — Web server is down',
+    522: 'CF 522 — Connection timed out',
+    523: 'CF 523 — Origin unreachable',
+    524: 'CF 524 — Timeout occurred',
+    525: 'CF 525 — SSL handshake failed',
+    526: 'CF 526 — Invalid SSL certificate',
+    530: 'CF 530 — Origin DNS error',
+    520: 'CF 520 — Unknown error',
+    527: 'CF 527 — Railgun error',
+    528: 'CF 528 — Timeout',
+    529: 'CF 529 — Site overloaded',
+    500: 'HTTP 500 — Internal server error',
+    502: 'HTTP 502 — Bad gateway',
+    503: 'HTTP 503 — Service unavailable',
+    504: 'HTTP 504 — Gateway timeout',
+  };
+  if (labels[code]) return labels[code];
+  if (errMsg?.includes('ECONNREFUSED')) return 'Connection refused';
+  if (errMsg?.includes('ENOTFOUND')) return 'Domain not found (DNS)';
+  if (errMsg?.includes('ETIMEDOUT')) return 'Connection timeout';
+  if (errMsg?.includes('CERT') || errMsg?.includes('SSL')) return 'SSL error';
+  return errMsg || null;
+}
+
 function checkDomain(domain) {
   return new Promise(resolve => {
     const clean = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     const url = `https://${clean}`;
     const start = Date.now();
-    const req = https.get(url, { timeout: 10000, headers: { 'User-Agent': 'DomainIntel/1.0' } }, res => {
+    const req = https.get(url, {
+      timeout: 10000,
+      headers: { 'User-Agent': 'Mozilla/5.0 DomainIntel/1.0' }
+    }, res => {
       const responseTime = Date.now() - start;
       res.destroy();
       const code = res.statusCode;
       let status = 'up';
-      if (code >= 500) status = 'down';
-      else if (code >= 400 && code !== 404 && code !== 403) status = 'warn';
-      resolve({ domain: clean, status, statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: null });
+      let errorLabel = null;
+
+      if (CF_DOWN_CODES.has(code)) {
+        status = 'down';
+        errorLabel = getErrorLabel(code);
+      } else if (CF_WARN_CODES.has(code)) {
+        status = 'warn';
+        errorLabel = getErrorLabel(code);
+      } else if (code >= 500) {
+        status = 'down';
+        errorLabel = getErrorLabel(code);
+      } else if (code >= 400 && code !== 404 && code !== 403) {
+        status = 'warn';
+      }
+
+      resolve({
+        domain: clean, status, statusCode: code, responseTime,
+        checkedAt: new Date().toISOString(), error: errorLabel
+      });
     });
-    req.on('error', err => resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: Date.now() - start, checkedAt: new Date().toISOString(), error: err.message }));
-    req.on('timeout', () => { req.destroy(); resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: 10000, checkedAt: new Date().toISOString(), error: 'Timeout' }); });
+    req.on('error', err => {
+      resolve({
+        domain: clean, status: 'down', statusCode: 0,
+        responseTime: Date.now() - start,
+        checkedAt: new Date().toISOString(),
+        error: getErrorLabel(0, err.message)
+      });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({
+        domain: clean, status: 'down', statusCode: 0, responseTime: 10000,
+        checkedAt: new Date().toISOString(), error: 'Connection timeout'
+      });
+    });
   });
 }
 
