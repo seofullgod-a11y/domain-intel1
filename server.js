@@ -8,7 +8,7 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 8080;
 const PLESK_HOST = process.env.PLESK_HOST || '';
 const PLESK_USER = process.env.PLESK_USER || 'admin';
 const PLESK_PASS = process.env.PLESK_PASS || '';
@@ -103,18 +103,17 @@ async function fetchPleskDomains() {
   try {
     console.log(`[Plesk] กำลังดึงโดเมนจาก ${PLESK_HOST}...`);
 
-    // ดึง subscriptions (แต่ละ subscription มีหลาย domain ได้)
-    const subsRes = await pleskRequest('GET', '/subscriptions');
-    if (subsRes.status !== 200) {
-      console.log(`[Plesk] subscriptions error: ${subsRes.status}`);
-      return [];
-    }
-
     // ดึง domains ทั้งหมด
     const domsRes = await pleskRequest('GET', '/domains');
     if (domsRes.status !== 200) {
-      console.log(`[Plesk] domains error: ${domsRes.status}`);
-      return [];
+      console.log(`[Plesk] domains error: ${domsRes.status} — ลอง /webspaces`);
+      // fallback ลอง webspaces
+      const wsRes = await pleskRequest('GET', '/webspaces');
+      if (wsRes.status !== 200) {
+        console.log(`[Plesk] webspaces error: ${wsRes.status}`);
+        return [];
+      }
+      domsRes.data = wsRes.data;
     }
 
     const domains = Array.isArray(domsRes.data) ? domsRes.data : [];
