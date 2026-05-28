@@ -176,20 +176,31 @@ async function initSheets() {
 }
 
 // ===== PLESK =====
-function pleskRequest(method, apiPath) {
+function pleskRequest(method, apiPath, body = null) {
   return new Promise((resolve, reject) => {
     const auth = Buffer.from(`${PLESK_USER}:${PLESK_PASS}`).toString('base64');
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const headers = {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+    if (bodyStr) headers['Content-Length'] = Buffer.byteLength(bodyStr);
     const req = https.request({
       hostname: PLESK_HOST, port: 8443, path: `/api/v2${apiPath}`, method,
-      headers: { 'Authorization': `Basic ${auth}`, 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      rejectUnauthorized: false
+      headers, rejectUnauthorized: false
     }, res => {
       let data = '';
       res.on('data', c => data += c);
-      res.on('end', () => { try { resolve({ status: res.statusCode, data: JSON.parse(data) }); } catch { resolve({ status: res.statusCode, data: {} }); } });
+      res.on('end', () => {
+        console.log(`[Plesk] ${method} ${apiPath} -> ${res.statusCode}: ${data.slice(0,200)}`);
+        try { resolve({ status: res.statusCode, data: JSON.parse(data) }); }
+        catch { resolve({ status: res.statusCode, data: {} }); }
+      });
     });
     req.on('error', reject);
     req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+    if (bodyStr) req.write(bodyStr);
     req.end();
   });
 }
@@ -390,9 +401,26 @@ async function autoFix(domainObj, prevStatus) {
 async function pleskUnsuspend(pleskId) {
   if (!PLESK_HOST || !PLESK_PASS) return false;
   try {
-    const result = await pleskRequest('PUT', `/domains/${pleskId}`, { status: 0 });
-    return result?.status === 200;
-  } catch { return false; }
+    // วิธีที่ 1: PUT with status=0 (Plesk 18+)
+    let result = await pleskRequest('PUT', `/domains/${pleskId}`, { status: 0 });
+    if (result?.status === 200) return true;
+    console.log(`[Plesk] PUT status=0 failed (${result?.status}), trying enable endpoint...`);
+
+    // วิธีที่ 2: POST to enable endpoint
+    result = await pleskRequest('POST', `/domains/${pleskId}/enable`);
+    if (result?.status === 200) return true;
+    console.log(`[Plesk] enable failed (${result?.status}), trying hosting enable...`);
+
+    // วิธีที่ 3: เปิด hosting
+    result = await pleskRequest('POST', `/domains/${pleskId}/hosting/enable`);
+    if (result?.status === 200) return true;
+
+    console.log(`[Plesk] All unsuspend methods failed for pleskId ${pleskId}`);
+    return false;
+  } catch(e) {
+    console.error(`[Plesk] Unsuspend error:`, e.message);
+    return false;
+  }
 }
 
 // ===== CLOUDFLARE =====
