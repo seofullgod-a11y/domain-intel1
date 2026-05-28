@@ -321,6 +321,11 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         <i class="ti ti-award"></i> Keyword Rankings
       </div>
       <div class="nav-section">Tools</div>
+      <div class="nav-item" onclick="showPageFiltered('domains','cannot-fix')">
+        <i class="ti ti-alert-circle"></i>
+        <span>แก้ไขไม่ได้</span>
+        <span class="badge" id="nav-cannotfix">0</span>
+      </div>
       <div class="nav-item" onclick="showPage('import')">
         <i class="ti ti-file-import"></i> Import CSV
       </div>
@@ -753,16 +758,16 @@ async function loadData() {
     const domainsData = await domainsRes.json();
     const stats = await statsRes.json();
     allDomains = domainsData.domains || [];
-    // เก็บ server configs สำหรับแสดง credentials
     if (domainsData.pleskServerConfigs) {
       window._pleskServers = domainsData.pleskServerConfigs;
     }
     updateSidebar(stats);
     updateStats(stats, domainsData);
-    applyFilters();
-    renderQuickTable();
-    renderTrafficPage();
-    renderKeywordsPage();
+    // อัพเดต UI เฉพาะหน้าที่กำลังดูอยู่เท่านั้น ไม่สลับหน้าเอง
+    if (currentPageName === 'domains') { applyFilters(); }
+    if (currentPageName === 'dashboard') renderQuickTable();
+    if (currentPageName === 'traffic') renderTrafficPage();
+    if (currentPageName === 'keywords') renderKeywordsPage();
     setServerStatus(true, domainsData.lastUpdated);
     if (dot) dot.style.background = 'var(--green)';
   } catch (e) {
@@ -888,6 +893,7 @@ function applyFilters() {
     if (currentTab === 'notraffic' && !(d.gsc && d.gsc.clicks === 0)) return false;
     if (currentTab === 'expiring' && !(d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft >= 0)) return false;
     if (currentTab === 'ranked' && !(d.gsc?.keywordCount > 0)) return false;
+    if (currentTab === 'cannot-fix' && !isCannotFix(d)) return false;
     return true;
   });
 
@@ -1727,10 +1733,18 @@ async function refreshNow() {
 
 function showPage(name) {
   document.querySelectorAll('[id^="page-"]').forEach(p => p.style.display = 'none');
-  document.getElementById(`page-${name}`).style.display = 'flex';
-  document.getElementById(`page-${name}`).style.flexDirection = 'column';
+  const pageEl = document.getElementById(`page-${name}`);
+  if (pageEl) { pageEl.style.display = 'flex'; pageEl.style.flexDirection = 'column'; }
+  // set nav active
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => {
+    const onclick = n.getAttribute('onclick') || '';
+    if (onclick.includes(`showPage('${name}')`) || onclick.includes(`showPageFiltered('${name}'`)) {
+      if (name !== 'domains' || onclick === `showPage('domains')`) n.classList.add('active');
+    }
+  });
   currentPageName = name;
+  if (name === 'domains') applyFilters();
   if (name === 'dashboard') renderQuickTable();
   if (name === 'traffic') renderTrafficPage();
   if (name === 'keywords') renderKeywordsPage();
