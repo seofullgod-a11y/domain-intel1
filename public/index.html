@@ -1404,6 +1404,12 @@ async function syncGSCAll() {
 }
 
 async function syncPlesk() {
+  const pin = prompt('🔒 กรุณาใส่ PIN เพื่อ Sync Plesk:');
+  if (pin === null) return;
+  if (pin !== '123456za') {
+    toast('❌ PIN ไม่ถูกต้อง', 'error');
+    return;
+  }
   showLoading('🔄 กำลัง Sync Plesk...', 'ดึงโดเมนจากทุก Server กรุณารอสักครู่');
   try {
     const res = await fetch(`${API}/api/plesk/sync`, { method:'POST' });
