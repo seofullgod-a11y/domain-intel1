@@ -407,26 +407,36 @@ function sendLineAlert(message) {
 }
 
 function sendTelegram(message) {
-  const token = TG_TOKEN || loadConfig().alerts?.telegramToken;
-  const chatId = TG_CHAT || loadConfig().alerts?.telegramChatId;
-  if (!token || !chatId) return;
-  const body = JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' });
-  const req = https.request({
-    hostname: 'api.telegram.org',
-    path: `/bot${token}/sendMessage`,
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-  }, res => {
-    let data = '';
-    res.on('data', c => data += c);
-    res.on('end', () => {
-      const r = JSON.parse(data || '{}');
-      if (!r.ok) console.error('[Telegram] Error:', r.description);
+  const token = TG_TOKEN;
+  const chatId = TG_CHAT;
+  if (!token || !chatId) { console.log('[Telegram] No token/chat configured'); return; }
+  sendTelegramDirect(message, token, chatId);
+}
+
+function sendTelegramDirect(message, token, chatId) {
+  return new Promise(resolve => {
+    const body = JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' });
+    const req = https.request({
+      hostname: 'api.telegram.org',
+      path: `/bot${token}/sendMessage`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(data);
+          if (!r.ok) console.error('[Telegram] Error:', r.description);
+          else console.log('[Telegram] Sent OK');
+          resolve(r.ok);
+        } catch { resolve(false); }
+      });
     });
+    req.on('error', err => { console.error('[Telegram] Error:', err.message); resolve(false); });
+    req.write(body);
+    req.end();
   });
-  req.on('error', err => console.error('[Telegram] Error:', err.message));
-  req.write(body);
-  req.end();
 }
 
 // ===== CONFIG (local file — เล็กพอ) =====
@@ -633,8 +643,16 @@ async function handleRequest(req, res) {
 
   if (req.method === 'POST' && url === '/api/test-alert') {
     const body = await parseBody(req);
-    sendTelegram(body.message || 'DomainIntel Test Alert');
-    json(res, { success: true });
+    const msg = body.message || 'DomainIntel Test Alert';
+    // ใช้ token จาก request body ถ้ามี (สำหรับทดสอบ) หรือจาก env
+    const testToken = body.telegramToken || TG_TOKEN;
+    const testChat = body.telegramChatId || TG_CHAT;
+    if (testToken && testChat) {
+      await sendTelegramDirect(msg, testToken, testChat);
+      json(res, { success: true });
+    } else {
+      json(res, { error: 'ไม่มี Telegram Token หรือ Chat ID' }, 400);
+    }
     return;
   }
 
