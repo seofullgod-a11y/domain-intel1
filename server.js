@@ -260,17 +260,54 @@ function checkDomain(domain) {
   return new Promise(resolve => {
     const clean = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     const start = Date.now();
-    const req = https.get(`https://${clean}`, { timeout: 10000, headers: { 'User-Agent': 'Mozilla/5.0 DomainIntel/1.0' } }, res => {
+    // ใช้ User-Agent จริงๆ เพื่อไม่ให้ถูกบล็อก
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'th,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+    };
+    const req = https.get(`https://${clean}`, { timeout: 12000, headers, rejectUnauthorized: false }, res => {
       const responseTime = Date.now() - start;
       res.destroy();
       const code = res.statusCode;
+      // ตรวจสอบ x-deny-reason header (Railway proxy block)
+      const denyReason = res.headers['x-deny-reason'];
+      if (denyReason) {
+        // Railway บล็อก outbound — ไม่นับว่าโดเมนล่ม ให้เป็น unknown
+        resolve({ domain: clean, status: 'unknown', statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: `Proxy block: ${denyReason}` });
+        return;
+      }
       let status = 'up', errorLabel = null;
-      if (CF_DOWN_CODES.has(code) || code >= 500) { status = 'down'; errorLabel = getErrorLabel(code); }
-      else if (CF_WARN_CODES.has(code) || (code >= 400 && code !== 404 && code !== 403)) { status = 'warn'; errorLabel = getErrorLabel(code); }
+      // 200-399 = up (รวม redirect)
+      if (code >= 200 && code < 400) { status = 'up'; }
+      // Cloudflare specific errors = down
+      else if (CF_DOWN_CODES.has(code)) { status = 'down'; errorLabel = getErrorLabel(code); }
+      // 403 Forbidden = up (เว็บทำงานแต่บล็อก bot)
+      else if (code === 403) { status = 'up'; errorLabel = 'HTTP 403 (bot blocked)'; }
+      // 404 = up (เว็บทำงานแต่ไม่พบหน้า)
+      else if (code === 404) { status = 'up'; }
+      // 5xx = down
+      else if (code >= 500) { status = 'down'; errorLabel = getErrorLabel(code); }
+      // CF warn codes
+      else if (CF_WARN_CODES.has(code)) { status = 'warn'; errorLabel = getErrorLabel(code); }
+      // อื่นๆ
+      else { status = 'warn'; errorLabel = `HTTP ${code}`; }
       resolve({ domain: clean, status, statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: errorLabel });
     });
-    req.on('error', err => resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: Date.now() - start, checkedAt: new Date().toISOString(), error: getErrorLabel(0, err.message) }));
-    req.on('timeout', () => { req.destroy(); resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: 10000, checkedAt: new Date().toISOString(), error: 'Connection timeout' }); });
+    req.on('error', err => {
+      const msg = err.message || '';
+      // ENOTFOUND = DNS ไม่เจอ = domain หมดหรือ config ผิด
+      // ECONNREFUSED = server ปิด
+      // ETIMEDOUT = timeout
+      const errLabel = getErrorLabel(0, msg);
+      resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: Date.now() - start, checkedAt: new Date().toISOString(), error: errLabel });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: 12000, checkedAt: new Date().toISOString(), error: 'Connection timeout' });
+    });
   });
 }
 
@@ -638,6 +675,60 @@ async function handleRequest(req, res) {
       saveConfig(cfg);
       json(res, { success: true });
     }
+    return;
+  }
+
+  if (req.method === 'POST' && url.startsWith('/api/autofix/')) {
+    const domain = decodeURIComponent(url.split('/api/autofix/')[1]);
+    const idx = memoryDomains.findIndex(d => d.domain === domain);
+    if (idx === -1) { json(res, { error: 'ไม่พบโดเมน' }, 404); return; }
+    const domainObj = memoryDomains[idx];
+    const actions = [];
+
+    // 1. Plesk Unsuspend
+    if (domainObj.pleskId && !domainObj.pleskActive) {
+      const ok = await pleskUnsuspend(domainObj.pleskId);
+      if (ok) {
+        memoryDomains[idx].pleskActive = true;
+        memoryDomains[idx].pleskStatus = 0;
+        actions.push('Unsuspend Plesk สำเร็จ');
+        sendTelegram(`Auto-fix: Unsuspend ${domain} via Plesk OK`);
+      } else {
+        actions.push('Unsuspend Plesk ไม่สำเร็จ');
+      }
+    }
+
+    // 2. Cloudflare Pause ถ้าเป็น CF error
+    if (CF_API_TOKEN && [521, 522, 523, 524].includes(domainObj.statusCode)) {
+      const zoneId = await pauseCloudflareZone(domain);
+      if (zoneId) {
+        actions.push('Pause Cloudflare สำเร็จ');
+        sendTelegram(`Auto-fix: Pause CF ${domain} (${domainObj.statusCode})`);
+        // Unpause หลัง 10 นาทีถ้าเว็บกลับมา
+        setTimeout(async () => {
+          const r = await checkDomain(domain);
+          if (r.status === 'up') {
+            await unpauseCloudflareZone(domain, zoneId);
+            sendTelegram(`${domain} กลับมาปกติแล้ว Unpause CF แล้ว`);
+          }
+          const i = memoryDomains.findIndex(d => d.domain === domain);
+          if (i !== -1) { Object.assign(memoryDomains[i], r); await saveToSheets(memoryDomains); }
+        }, 10 * 60 * 1000);
+      } else {
+        actions.push('Pause Cloudflare ไม่พบ zone');
+      }
+    }
+
+    // เช็คสถานะใหม่หลัง 30 วินาที
+    setTimeout(async () => {
+      const r = await checkDomain(domain);
+      const i = memoryDomains.findIndex(d => d.domain === domain);
+      if (i !== -1) { Object.assign(memoryDomains[i], r); await saveToSheets(memoryDomains); }
+    }, 30000);
+
+    await saveToSheets(memoryDomains);
+    const msg = actions.length ? actions.join(', ') : 'ไม่มีการแก้ไขอัตโนมัติ (ตรวจสอบเอง)';
+    json(res, { success: true, message: msg, actions });
     return;
   }
 
