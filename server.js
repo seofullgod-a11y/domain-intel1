@@ -233,31 +233,44 @@ async function fetchPleskDomainsFromServer(srv) {
     }
     const domains = Array.isArray(domsRes.data) ? domsRes.data : [];
     console.log(`[Plesk] ${srv.name} พบ ${domains.length} โดเมน`);
-    const results = [];
-    for (const d of domains) {
-      const domainName = d.name || d.ascii_name || '';
-      if (!domainName) continue;
-      let sslExpiry = null, sslDaysLeft = null;
-      try {
-        const sslRes = await pleskRequest('GET', `/domains/${d.id}/ssl-certificate`, null, srv);
-        if (sslRes.status === 200 && sslRes.data?.valid_to) {
-          const expDate = new Date(sslRes.data.valid_to);
-          sslExpiry = expDate.toISOString().split('T')[0];
-          sslDaysLeft = Math.floor((expDate - new Date()) / 86400000);
-        }
-      } catch {}
-      results.push({
-        domain: domainName,
+
+    // สร้าง domain list ก่อนโดยไม่รอ SSL
+    const results = domains
+      .filter(d => d.name || d.ascii_name)
+      .map(d => ({
+        domain: d.name || d.ascii_name,
         pleskId: d.id,
         pleskServer: srv.name,
         pleskHost: srv.host,
         pleskStatus: d.status || 'unknown',
         pleskActive: d.status === 0 || d.status === '0',
         hostingType: d.hosting_type || '',
-        sslExpiry, sslDaysLeft,
+        sslExpiry: null,
+        sslDaysLeft: null,
         pleskSyncedAt: new Date().toISOString()
-      });
-    }
+      }));
+
+    // ดึง SSL แบบ parallel batch 20 ตัวพร้อมกัน (background ไม่บล็อก)
+    const SSL_BATCH = 20;
+    (async () => {
+      for (let i = 0; i < results.length; i += SSL_BATCH) {
+        const batch = results.slice(i, i + SSL_BATCH);
+        await Promise.all(batch.map(async (r, bi) => {
+          try {
+            const d = domains.find(x => (x.name || x.ascii_name) === r.domain);
+            if (!d) return;
+            const sslRes = await pleskRequest('GET', `/domains/${d.id}/ssl-certificate`, null, srv);
+            if (sslRes.status === 200 && sslRes.data?.valid_to) {
+              const expDate = new Date(sslRes.data.valid_to);
+              results[i + bi].sslExpiry = expDate.toISOString().split('T')[0];
+              results[i + bi].sslDaysLeft = Math.floor((expDate - new Date()) / 86400000);
+            }
+          } catch {}
+        }));
+      }
+      console.log(`[Plesk] ${srv.name} SSL sync เสร็จ`);
+    })();
+
     return results;
   } catch (err) {
     console.error(`[Plesk] ${srv.name} Error:`, err.message);
