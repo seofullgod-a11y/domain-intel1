@@ -925,7 +925,14 @@ async function handleRequest(req, res) {
     }, 30000);
 
     await saveToSheets(memoryDomains);
-    const msg = actions.length ? actions.join(', ') : 'ไม่มีการแก้ไขอัตโนมัติ (ตรวจสอบเอง)';
+    let noFixReason = 'ไม่พบสาเหตุที่แก้ไขอัตโนมัติได้';
+    if (!domainObj.pleskId) noFixReason = 'ไม่พบข้อมูล Plesk — กรุณา Sync Plesk ใหม่';
+    else if (domainObj.pleskActive && ![521,522,523,524].includes(domainObj.statusCode)) {
+      noFixReason = `Plesk Active แล้ว และ Error ${domainObj.statusCode || 'Timeout'} — ปัญหาที่ Origin Server กรุณาตรวจสอบ`;
+    } else if (!CF_API_TOKEN) {
+      noFixReason = 'ไม่มี Cloudflare API Token — กรุณาตั้งค่าใน Railway Variables';
+    }
+    const msg = actions.length ? actions.join(', ') : noFixReason;
     json(res, { success: true, message: msg, actions });
     return;
   }
