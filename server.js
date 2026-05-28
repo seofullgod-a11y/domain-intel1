@@ -103,13 +103,6 @@ async function fetchPleskDomains() {
   try {
     console.log(`[Plesk] กำลังดึงโดเมนจาก ${PLESK_HOST}...`);
 
-    // ดึง subscriptions (แต่ละ subscription มีหลาย domain ได้)
-    const subsRes = await pleskRequest('GET', '/subscriptions');
-    if (subsRes.status !== 200) {
-      console.log(`[Plesk] subscriptions error: ${subsRes.status}`);
-      return [];
-    }
-
     // ดึง domains ทั้งหมด
     const domsRes = await pleskRequest('GET', '/domains');
     if (domsRes.status !== 200) {
