@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>DomainIntel — SEO Domain Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+<style>
+:root {
+  --bg: #0d0f14;
+  --bg2: #13161e;
+  --bg3: #1a1e28;
+  --bg4: #222736;
+  --border: rgba(255,255,255,0.07);
+  --border2: rgba(255,255,255,0.13);
+  --text: #e8eaf0;
+  --text2: #8b93a8;
+  --text3: #555e75;
+  --green: #22d07a;
+  --green-dim: rgba(34,208,122,0.12);
+  --red: #f05252;
+  --red-dim: rgba(240,82,82,0.12);
+  --amber: #f59e0b;
+  --amber-dim: rgba(245,158,11,0.12);
+  --blue: #60a5fa;
+  --blue-dim: rgba(96,165,250,0.12);
+  --purple: #a78bfa;
+  --purple-dim: rgba(167,139,250,0.1);
+  --radius: 10px;
+  --radius-sm: 6px;
+  --font: 'IBM Plex Sans Thai', sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+/* SCROLLBAR */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+
+/* LAYOUT */
+.app { display: flex; height: 100vh; overflow: hidden; }
+.sidebar { width: 220px; min-width: 220px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; overflow-y: auto; }
+.main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+
+/* SIDEBAR */
+.logo { padding: 22px 20px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.logo-icon { width: 32px; height: 32px; background: var(--green); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #000; font-weight: 700; }
+.logo-text { font-size: 16px; font-weight: 600; color: var(--text); }
+.logo-text span { color: var(--green); }
+.nav { padding: 12px 10px; flex: 1; }
+.nav-section { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); padding: 8px 10px 4px; }
+.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; color: var(--text2); font-size: 13px; transition: all 0.15s; margin-bottom: 2px; }
+.nav-item:hover { background: var(--bg3); color: var(--text); }
+.nav-item.active { background: var(--green-dim); color: var(--green); }
+.nav-item i { width: 16px; text-align: center; font-size: 14px; }
+.nav-badge { margin-left: auto; background: var(--red-dim); color: var(--red); font-size: 11px; padding: 1px 6px; border-radius: 20px; font-weight: 600; }
+.nav-badge.amber { background: var(--amber-dim); color: var(--amber); }
+.sidebar-footer { padding: 12px 10px; border-top: 1px solid var(--border); }
+.status-indicator { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); padding: 8px 10px; }
+.dot-live { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+/* TOPBAR */
+.topbar { display: flex; align-items: center; padding: 16px 24px; gap: 12px; border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0; }
+.topbar-title { font-size: 17px; font-weight: 600; color: var(--text); }
+.topbar-sub { font-size: 12px; color: var(--text3); margin-top: 1px; }
+.topbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.btn { padding: 7px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg3); color: var(--text); font-size: 13px; cursor: pointer; font-family: var(--font); display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; white-space: nowrap; }
+.btn:hover { background: var(--bg4); border-color: var(--border2); }
+.btn-green { background: var(--green); color: #000; border-color: var(--green); font-weight: 600; }
+.btn-green:hover { background: #1ab668; border-color: #1ab668; }
+.btn-red { background: var(--red-dim); color: var(--red); border-color: rgba(240,82,82,0.3); }
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text2); }
+.btn-ghost:hover { background: var(--bg3); color: var(--text); }
+.btn-sm { padding: 4px 10px; font-size: 12px; }
+.btn-icon { padding: 7px; }
+
+/* CONTENT */
+.content { padding: 24px; flex: 1; }
+
+/* METRIC CARDS */
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin-bottom: 24px; }
+.metric-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+.metric-card.highlight-green { border-color: rgba(34,208,122,0.25); }
+.metric-card.highlight-red { border-color: rgba(240,82,82,0.25); }
+.metric-card.highlight-amber { border-color: rgba(245,158,11,0.25); }
+.metric-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
+.metric-val { font-size: 28px; font-weight: 600; color: var(--text); font-family: var(--mono); }
+.metric-val.green { color: var(--green); }
+.metric-val.red { color: var(--red); }
+.metric-val.amber { color: var(--amber); }
+.metric-val.blue { color: var(--blue); }
+.metric-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+/* TOOLBAR */
+.toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
+.search-box { position: relative; flex: 1; min-width: 220px; }
+.search-box i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 13px; }
+.search-box input { width: 100%; padding: 8px 12px 8px 34px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
+.search-box input:focus { border-color: var(--green); }
+.search-box input::placeholder { color: var(--text3); }
+select.sel { padding: 8px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; cursor: pointer; }
+select.sel:focus { border-color: var(--green); }
+
+/* TABS */
+.tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.tab { padding: 9px 16px; font-size: 13px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--green); border-bottom-color: var(--green); font-weight: 500; }
+.tab-count { background: var(--bg3); border-radius: 20px; font-size: 11px; padding: 1px 6px; }
+.tab.active .tab-count { background: var(--green-dim); color: var(--green); }
+
+/* TABLE */
+.table-container { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; }
+thead th { padding: 11px 14px; text-align: left; font-size: 11px; color: var(--text3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; background: var(--bg3); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+thead th:hover { color: var(--text2); }
+thead th.sort-asc::after { content: ' ↑'; color: var(--green); }
+thead th.sort-desc::after { content: ' ↓'; color: var(--green); }
+tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: var(--bg3); }
+tbody td { padding: 10px 14px; font-size: 13px; color: var(--text); vertical-align: middle; }
+.domain-name { font-family: var(--mono); font-size: 13px; color: var(--text); font-weight: 500; }
+.domain-name a { color: inherit; text-decoration: none; }
+.domain-name a:hover { color: var(--green); }
+
+/* BADGES */
+.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
+.badge-up { background: var(--green-dim); color: var(--green); }
+.badge-down { background: var(--red-dim); color: var(--red); }
+.badge-warn { background: var(--amber-dim); color: var(--amber); }
+.badge-unknown { background: var(--bg4); color: var(--text3); }
+.badge-blue { background: var(--blue-dim); color: var(--blue); }
+
+/* TRAFFIC BAR */
+.traffic-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
+.traffic-bar-bg { flex: 1; height: 5px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
+.traffic-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+.traffic-val { font-family: var(--mono); font-size: 12px; min-width: 40px; text-align: right; color: var(--text2); }
+
+/* KW BADGES */
+.kw-pos { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.kw-top1 { color: var(--green); }
+.kw-top3 { color: #34d399; }
+.kw-top10 { color: var(--blue); }
+.kw-top30 { color: var(--amber); }
+.kw-none { color: var(--text3); }
+
+/* EXPIRY */
+.expiry-ok { color: var(--text2); font-size: 12px; }
+.expiry-warn { color: var(--amber); font-size: 12px; font-weight: 500; }
+.expiry-danger { color: var(--red); font-size: 12px; font-weight: 600; }
+
+/* ACTIONS */
+.action-group { display: flex; gap: 4px; }
+.action-btn { width: 28px; height: 28px; border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent; color: var(--text3); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: all 0.15s; }
+.action-btn:hover { background: var(--bg4); color: var(--text); border-color: var(--border); }
+.action-btn.danger:hover { background: var(--red-dim); color: var(--red); border-color: rgba(240,82,82,0.3); }
+
+/* PAGINATION */
+.pagination { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text3); }
+.page-btns { display: flex; gap: 4px; }
+.page-btn { padding: 4px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text2); cursor: pointer; font-size: 12px; font-family: var(--font); }
+.page-btn:hover { background: var(--bg4); }
+.page-btn.active { background: var(--green); color: #000; border-color: var(--green); font-weight: 600; }
+.page-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* MODAL */
+.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: 14px; padding: 28px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
+.modal-title { font-size: 17px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+.form-group { margin-bottom: 16px; }
+.form-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; display: block; font-weight: 500; }
+.form-input { width: 100%; padding: 9px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
+.form-input:focus { border-color: var(--green); }
+.form-input::placeholder { color: var(--text3); }
+textarea.form-input { resize: vertical; min-height: 80px; }
+.form-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+.close-btn { position: absolute; right: 20px; top: 20px; }
+
+/* LOADING */
+.loading { display: flex; align-items: center; gap: 8px; color: var(--text3); font-size: 13px; padding: 40px; justify-content: center; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--bg4); border-top-color: var(--green); border-radius: 50%; animation: spin 0.7s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* TOAST */
+.toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
+.toast { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; display: flex; align-items: center; gap: 10px; min-width: 280px; animation: slideIn 0.2s ease; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+.toast.success { border-color: rgba(34,208,122,0.3); }
+.toast.error { border-color: rgba(240,82,82,0.3); }
+.toast i { font-size: 16px; }
+.toast.success i { color: var(--green); }
+.toast.error i { color: var(--red); }
+.toast.info i { color: var(--blue); }
+@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+
+/* DETAIL PANEL */
+.detail-panel { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 16px; }
+.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
+.detail-item { background: var(--bg3); border-radius: var(--radius-sm); padding: 12px; }
+.detail-item-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
+.detail-item-val { font-size: 15px; font-weight: 600; font-family: var(--mono); }
+.kw-table-wrap { max-height: 300px; overflow-y: auto; }
+.kw-table-wrap table th { position: sticky; top: 0; z-index: 1; }
+
+/* GSC CONNECT BANNER */
+.gsc-banner { background: linear-gradient(135deg, #1a1e28, #1e2535); border: 1px solid rgba(96,165,250,0.2); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 16px; }
+.gsc-banner-icon { font-size: 28px; }
+.gsc-banner-text h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
+.gsc-banner-text p { font-size: 12px; color: var(--text2); }
+.gsc-banner-action { margin-left: auto; }
+
+/* SETTINGS PAGE */
+.settings-section { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+.settings-section-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; color: var(--text); }
+.settings-section-title i { color: var(--green); }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.server-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 20px; }
+.server-ok { background: var(--green-dim); color: var(--green); }
+.server-err { background: var(--red-dim); color: var(--red); }
+
+/* EMPTY STATE */
+.empty-state { padding: 60px 20px; text-align: center; color: var(--text3); }
+.empty-state i { font-size: 40px; margin-bottom: 12px; display: block; }
+.empty-state h3 { font-size: 15px; color: var(--text2); margin-bottom: 6px; }
+.empty-state p { font-size: 13px; }
+
+/* PROGRESS */
+.progress-bar { height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+.progress-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.3s; }
+
+/* RESPONSIVE */
+@media (max-width: 768px) {
+  .sidebar { width: 200px; min-width: 200px; }
+  .content { padding: 16px; }
+  .form-row { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">D</div>
+      <div class="logo-text">Domain<span>Intel</span></div>
+    </div>
+    <nav class="nav">
+      <div class="nav-section">Overview</div>
+      <div class="nav-item active" onclick="showPage('dashboard')">
+        <i class="fa-solid fa-gauge-high"></i> Dashboard
+      </div>
+      <div class="nav-section">Monitoring</div>
+      <div class="nav-item" onclick="showPage('domains')">
+        <i class="fa-solid fa-globe"></i> โดเมนทั้งหมด
+        <span class="nav-badge" id="nav-total">0</span>
+      </div>
+      <div class="nav-item" onclick="showPageFiltered('domains','down')">
+        <i class="fa-solid fa-circle-exclamation"></i> Down / Error
+        <span class="nav-badge" id="nav-down">0</span>
+      </div>
+      <div class="nav-item" onclick="showPageFiltered('domains','expiring')">
+        <i class="fa-solid fa-clock"></i> หมดอายุเร็วๆ
+        <span class="nav-badge amber" id="nav-expiring">0</span>
+      </div>
+      <div class="nav-section">Analytics</div>
+      <div class="nav-item" onclick="showPage('traffic')">
+        <i class="fa-solid fa-chart-line"></i> Traffic & GSC
+      </div>
+      <div class="nav-item" onclick="showPage('keywords')">
+        <i class="fa-solid fa-ranking-star"></i> Keyword Rankings
+      </div>
+      <div class="nav-section">Tools</div>
+      <div class="nav-item" onclick="showPage('import')">
+        <i class="fa-solid fa-file-import"></i> Import CSV
+      </div>
+      <div class="nav-item" onclick="showPage('settings')">
+        <i class="fa-solid fa-gear"></i> Settings
+      </div>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="status-indicator">
+        <div class="dot-live" id="live-dot"></div>
+        <span id="server-status-text">กำลังเชื่อมต่อ...</span>
+      </div>
+      <div style="font-size:11px;color:var(--text3);padding:4px 10px" id="last-updated-text"></div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- DASHBOARD PAGE -->
+    <div id="page-dashboard">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">Dashboard</div>
+          <div class="topbar-sub" id="dash-subtitle">โหลดข้อมูล...</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="checkAllNow()"><i class="fa-solid fa-rotate"></i> เช็คทุกโดเมน</button>
+          <button class="btn" onclick="syncGSCAll()"><i class="fa-brands fa-google"></i> Sync GSC</button>
+          <button class="btn btn-green" onclick="openAddModal()"><i class="fa-solid fa-plus"></i> เพิ่มโดเมน</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="metrics-grid">
+          <div class="metric-card"><div class="metric-label"><i class="fa-solid fa-globe"></i> โดเมนทั้งหมด</div><div class="metric-val blue" id="stat-total">—</div><div class="metric-sub" id="stat-last">—</div></div>
+          <div class="metric-card highlight-green"><div class="metric-label"><i class="fa-solid fa-circle-check"></i> Up</div><div class="metric-val green" id="stat-up">—</div><div class="metric-sub" id="stat-up-pct">—</div></div>
+          <div class="metric-card highlight-red"><div class="metric-label"><i class="fa-solid fa-circle-xmark"></i> Down</div><div class="metric-val red" id="stat-down">—</div><div class="metric-sub">ต้องตรวจสอบด่วน</div></div>
+          <div class="metric-card highlight-amber"><div class="metric-label"><i class="fa-solid fa-triangle-exclamation"></i> Warning</div><div class="metric-val amber" id="stat-warn">—</div><div class="metric-sub">ตอบสนองช้า / error</div></div>
+          <div class="metric-card highlight-green"><div class="metric-label"><i class="fa-solid fa-chart-bar"></i> มีทราฟฟิค (GSC)</div><div class="metric-val green" id="stat-traffic">—</div><div class="metric-sub" id="stat-clicks">—</div></div>
+          <div class="metric-card highlight-amber"><div class="metric-label"><i class="fa-solid fa-ban"></i> ไม่มีทราฟฟิค</div><div class="metric-val amber" id="stat-notraffic">—</div><div class="metric-sub">0 คลิกใน 30 วัน</div></div>
+          <div class="metric-card highlight-red"><div class="metric-label"><i class="fa-solid fa-calendar-xmark"></i> หมดอายุใน 30 วัน</div><div class="metric-val red" id="stat-expiring">—</div><div class="metric-sub">ต้องต่ออายุด่วน</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="fa-solid fa-eye"></i> Total Impressions</div><div class="metric-val" id="stat-impressions">—</div><div class="metric-sub">30 วันล่าสุด</div></div>
+        </div>
+
+        <div id="gsc-banner-wrap"></div>
+
+        <!-- Quick domain list -->
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div style="font-size:14px;font-weight:600">โดเมนล่าสุด / ต้องดูแล</div>
+          <button class="btn btn-sm" onclick="showPage('domains')">ดูทั้งหมด →</button>
+        </div>
+        <div id="quick-table-wrap"></div>
+      </div>
+    </div>
+
+    <!-- DOMAINS PAGE -->
+    <div id="page-domains" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">โดเมนทั้งหมด</div>
+          <div class="topbar-sub" id="domains-count-text">—</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="exportCSV()"><i class="fa-solid fa-download"></i> Export CSV</button>
+          <button class="btn" onclick="checkAllNow()"><i class="fa-solid fa-rotate"></i> เช็คทั้งหมด</button>
+          <button class="btn btn-green" onclick="openAddModal()"><i class="fa-solid fa-plus"></i> เพิ่มโดเมน</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="toolbar">
+          <div class="search-box">
+            <i class="fa-solid fa-search"></i>
+            <input type="text" placeholder="ค้นหาโดเมน..." id="search-input" oninput="applyFilters()" />
+          </div>
+          <select class="sel" id="filter-status" onchange="applyFilters()">
+            <option value="">สถานะทั้งหมด</option>
+            <option value="up">Up</option>
+            <option value="down">Down</option>
+            <option value="warn">Warning</option>
+            <option value="unknown">Unknown</option>
+          </select>
+          <select class="sel" id="filter-traffic" onchange="applyFilters()">
+            <option value="">ทราฟฟิคทั้งหมด</option>
+            <option value="high">สูง (&gt;1k/เดือน)</option>
+            <option value="mid">กลาง (100–1k)</option>
+            <option value="low">ต่ำ (&lt;100)</option>
+            <option value="none">ไม่มีทราฟฟิค</option>
+          </select>
+          <select class="sel" id="filter-expiry" onchange="applyFilters()">
+            <option value="">อายุโดเมน</option>
+            <option value="7">หมดใน 7 วัน</option>
+            <option value="30">หมดใน 30 วัน</option>
+            <option value="90">หมดใน 90 วัน</option>
+          </select>
+        </div>
+        <div class="tabs" id="domain-tabs">
+          <div class="tab active" onclick="setDomainTab('all',this)">ทั้งหมด <span class="tab-count" id="tab-all">0</span></div>
+          <div class="tab" onclick="setDomainTab('down',this)"><i class="fa-solid fa-circle-xmark"></i> Down <span class="tab-count" id="tab-down">0</span></div>
+          <div class="tab" onclick="setDomainTab('warn',this)"><i class="fa-solid fa-triangle-exclamation"></i> Warning <span class="tab-count" id="tab-warn">0</span></div>
+          <div class="tab" onclick="setDomainTab('notraffic',this)">ไม่มีทราฟฟิค <span class="tab-count" id="tab-notraffic">0</span></div>
+          <div class="tab" onclick="setDomainTab('expiring',this)">หมดอายุเร็ว <span class="tab-count" id="tab-expiring">0</span></div>
+          <div class="tab" onclick="setDomainTab('ranked',this)">มี Keyword ติด <span class="tab-count" id="tab-ranked">0</span></div>
+        </div>
+        <div id="domain-table-wrap"></div>
+      </div>
+    </div>
+
+    <!-- TRAFFIC PAGE -->
+    <div id="page-traffic" style="display:none">
+      <div class="topbar">
+        <div><div class="topbar-title">Traffic & Google Search Console</div><div class="topbar-sub">ข้อมูล 30 วันล่าสุด</div></div>
+        <div class="topbar-right">
+          <button class="btn btn-green" onclick="syncGSCAll()"><i class="fa-brands fa-google"></i> Sync GSC ทั้งหมด</button>
+        </div>
+      </div>
+      <div class="content" id="traffic-content">
+        <div class="loading"><div class="spinner"></div> โหลดข้อมูล...</div>
+      </div>
+    </div>
+
+    <!-- KEYWORDS PAGE -->
+    <div id="page-keywords" style="display:none">
+      <div class="topbar">
+        <div><div class="topbar-title">Keyword Rankings</div><div class="topbar-sub">จาก Google Search Console</div></div>
+        <div class="topbar-right">
+          <button class="btn btn-green" onclick="syncGSCAll()"><i class="fa-brands fa-google"></i> Sync GSC</button>
+        </div>
+      </div>
+      <div class="content" id="keywords-content">
+        <div class="loading"><div class="spinner"></div> โหลดข้อมูล...</div>
+      </div>
+    </div>
+
+    <!-- IMPORT PAGE -->
+    <div id="page-import" style="display:none">
+      <div class="topbar">
+        <div><div class="topbar-title">Import CSV</div><div class="topbar-sub">นำเข้าโดเมนจาก CSV แบบ Bulk</div></div>
+      </div>
+      <div class="content">
+        <div class="settings-section">
+          <div class="settings-section-title"><i class="fa-solid fa-file-csv"></i> รูปแบบ CSV ที่รองรับ</div>
+          <p style="font-size:13px;color:var(--text2);margin-bottom:12px">คอลัมน์ที่รองรับ (บรรทัดแรกต้องเป็น header):</p>
+          <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:14px;font-family:var(--mono);font-size:12px;color:var(--text2);margin-bottom:16px;overflow-x:auto">
+            <div style="color:var(--green);margin-bottom:4px">domain,notes,tags,expiry_date,days_left</div>
+            <div>example.com,เว็บหลัก,seo;lead,2026-12-31,217</div>
+            <div>example2.net,แคมเปญ Q1,ppc,2026-06-30,32</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn" onclick="downloadTemplate()"><i class="fa-solid fa-download"></i> ดาวน์โหลด Template</button>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title"><i class="fa-solid fa-upload"></i> อัพโหลด CSV</div>
+          <div id="drop-zone" style="border:2px dashed var(--border2);border-radius:var(--radius);padding:40px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px" ondragover="event.preventDefault();this.style.borderColor='var(--green)'" ondragleave="this.style.borderColor='var(--border2)'" ondrop="handleDrop(event)">
+            <i class="fa-solid fa-cloud-upload" style="font-size:32px;color:var(--text3);display:block;margin-bottom:12px"></i>
+            <div style="font-size:14px;color:var(--text2);margin-bottom:6px">ลากไฟล์มาวางตรงนี้</div>
+            <div style="font-size:12px;color:var(--text3);margin-bottom:16px">หรือ</div>
+            <button class="btn" onclick="document.getElementById('file-input').click()"><i class="fa-solid fa-folder-open"></i> เลือกไฟล์</button>
+            <input type="file" id="file-input" accept=".csv" style="display:none" onchange="handleFileSelect(this)" />
+          </div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:12px">หรือวาง CSV โดยตรง:</div>
+          <textarea class="form-input" id="csv-text" rows="8" placeholder="domain,notes,tags&#10;example.com,เว็บหลัก,seo&#10;example2.net,,ppc"></textarea>
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button class="btn btn-green" onclick="importCSV()"><i class="fa-solid fa-file-import"></i> Import โดเมน</button>
+            <button class="btn" onclick="document.getElementById('csv-text').value=''">ล้าง</button>
+          </div>
+          <div id="import-result" style="margin-top:12px"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SETTINGS PAGE -->
+    <div id="page-settings" style="display:none">
+      <div class="topbar">
+        <div><div class="topbar-title">Settings</div><div class="topbar-sub">ตั้งค่า GSC API และการแจ้งเตือน</div></div>
+        <div class="topbar-right">
+          <button class="btn btn-green" onclick="saveSettings()"><i class="fa-solid fa-save"></i> บันทึก</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="settings-section">
+          <div class="settings-section-title"><i class="fa-solid fa-server"></i> Backend Server</div>
+          <p style="font-size:13px;color:var(--text2);margin-bottom:12px">URL ของ Backend Server (node server.js)</p>
+          <div style="display:flex;gap:10px;align-items:center">
+            <input class="form-input" id="server-url" style="max-width:320px" placeholder="http://localhost:3001" value="http://localhost:3001" />
+            <button class="btn" onclick="testConnection()"><i class="fa-solid fa-plug"></i> ทดสอบ</button>
+            <span id="conn-status"></span>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title"><i class="fa-brands fa-google"></i> Google Search Console API</div>
+          <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
+            ขั้นตอน: <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue)">Google Cloud Console</a> → สร้าง Project → เปิด Search Console API → สร้าง OAuth 2.0 Credentials
+          </p>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Client ID</label>
+              <input class="form-input" id="gsc-client-id" placeholder="xxxx.apps.googleusercontent.com" />
+            </div>
+            <div class="form-group">
+              <label class="form-label">Client Secret</label>
+              <input class="form-input" id="gsc-client-secret" type="password" placeholder="GOCSPX-..." />
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Refresh Token</label>
+            <input class="form-input" id="gsc-refresh-token" placeholder="1//..." />
+            <div class="form-hint">ได้จาก OAuth Playground: <a href="https://developers.google.com/oauthplayground/" target="_blank" style="color:var(--blue)">developers.google.com/oauthplayground</a> → scope: https://www.googleapis.com/auth/webmasters.readonly</div>
+          </div>
+          <button class="btn" onclick="saveGSC()"><i class="fa-solid fa-save"></i> บันทึก GSC Config</button>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title"><i class="fa-solid fa-bell"></i> การแจ้งเตือน</div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">LINE Notify Token</label>
+              <input class="form-input" id="line-token" placeholder="xxxxxxxxxxxx..." />
+              <div class="form-hint">ได้จาก <a href="https://notify-bot.line.me/th/" target="_blank" style="color:var(--blue)">notify-bot.line.me</a></div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">แจ้งเตือนเมื่อโดเมนหมดอายุก่อน (วัน)</label>
+              <input class="form-input" id="expiry-threshold" type="number" value="30" min="1" max="365" />
+            </div>
+          </div>
+          <div style="display:flex;gap:16px;margin-top:4px">
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer">
+              <input type="checkbox" id="notify-down" checked style="accent-color:var(--green)" /> แจ้งเมื่อโดเมนล่ม
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer">
+              <input type="checkbox" id="notify-expiry" checked style="accent-color:var(--green)" /> แจ้งเมื่อโดเมนใกล้หมดอายุ
+            </label>
+          </div>
+          <button class="btn" style="margin-top:12px" onclick="testLineAlert()"><i class="fa-solid fa-paper-plane"></i> ทดสอบแจ้งเตือน LINE</button>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-section-title"><i class="fa-solid fa-clock-rotate-left"></i> Auto-check Schedule</div>
+          <p style="font-size:13px;color:var(--text2)">Server จะเช็คโดเมนอัตโนมัติทุก <strong>30 นาที</strong> และ Sync GSC ทุก <strong>6 ชั่วโมง</strong> (ต้องรัน server.js)</p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- MODALS -->
+<div id="add-modal" class="modal-overlay" style="display:none">
+  <div class="modal">
+    <div class="modal-title"><i class="fa-solid fa-plus-circle" style="color:var(--green)"></i> เพิ่มโดเมนใหม่</div>
+    <div class="form-group">
+      <label class="form-label">Domain *</label>
+      <input class="form-input" id="add-domain" placeholder="example.com" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <input class="form-input" id="add-notes" placeholder="หมายเหตุ..." />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tags (คั่นด้วย ;)</label>
+      <input class="form-input" id="add-tags" placeholder="seo;lead;campaign" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">วันหมดอายุ (ถ้ามี)</label>
+      <input class="form-input" id="add-expiry" type="date" />
+    </div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('add-modal')">ยกเลิก</button>
+      <button class="btn btn-green" onclick="addDomain()"><i class="fa-solid fa-plus"></i> เพิ่มโดเมน</button>
+    </div>
+  </div>
+</div>
+
+<div id="detail-modal" class="modal-overlay" style="display:none">
+  <div class="modal" style="max-width:700px">
+    <div class="modal-title" id="detail-modal-title">—</div>
+    <div id="detail-modal-content"></div>
+    <div class="modal-footer">
+      <button class="btn" onclick="closeModal('detail-modal')">ปิด</button>
+      <button class="btn btn-green" id="detail-sync-btn">Sync GSC</button>
+      <button class="btn" id="detail-check-btn">เช็คสถานะ</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<script>
+// ===== STATE =====
+let API = 'http://localhost:3001';
+let allDomains = [];
+let filteredDomains = [];
+let currentPage = 1;
+const PER_PAGE = 25;
+let currentTab = 'all';
+let sortKey = 'domain';
+let sortDir = 1;
+
+// ===== INIT =====
+document.addEventListener('DOMContentLoaded', async () => {
+  const saved = localStorage.getItem('api_url');
+  if (saved) { API = saved; document.getElementById('server-url').value = saved; }
+  await loadData();
+  setInterval(loadData, 60000); // refresh ทุก 1 นาที
+});
+
+// ===== DATA =====
+async function loadData() {
+  try {
+    const [domainsRes, statsRes] = await Promise.all([
+      fetch(`${API}/api/domains`),
+      fetch(`${API}/api/stats`)
+    ]);
+    const domainsData = await domainsRes.json();
+    const stats = await statsRes.json();
+    allDomains = domainsData.domains || [];
+    updateSidebar(stats);
+    updateStats(stats, domainsData);
+    applyFilters();
+    renderQuickTable();
+    renderTrafficPage();
+    renderKeywordsPage();
+    setServerStatus(true, domainsData.lastUpdated);
+  } catch (e) {
+    setServerStatus(false);
+    // Show demo data if server not available
+    if (allDomains.length === 0) loadDemoData();
+  }
+}
+
+function loadDemoData() {
+  allDomains = [
+    {domain:'bangkokrealty.co.th',status:'up',statusCode:200,responseTime:340,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-12-01',daysLeft:187,notes:'เว็บหลัก',tags:['seo','lead'],gsc:{clicks:520,impressions:6800,avgPosition:3.2,keywordCount:89,topKeyword:'อสังหาริมทรัพย์กรุงเทพ',topPosition:1},addedAt:'2025-01-01'},
+    {domain:'example-seo.com',status:'up',statusCode:200,responseTime:280,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-06-30',daysLeft:32,notes:'',tags:['seo'],gsc:{clicks:312,impressions:4200,avgPosition:5.1,keywordCount:47,topKeyword:'ซื้อบ้านกรุงเทพ',topPosition:2},addedAt:'2025-01-01'},
+    {domain:'buyhome-th.net',status:'up',statusCode:200,responseTime:520,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-09-15',daysLeft:109,notes:'',tags:['lead'],gsc:{clicks:198,impressions:2800,avgPosition:7.4,keywordCount:31,topKeyword:'บ้านมือสอง',topPosition:5},addedAt:'2025-01-01'},
+    {domain:'realestate-bkk.com',status:'down',statusCode:0,responseTime:8000,checkedAt:new Date().toISOString(),error:'Connection refused',expiryDate:'2026-08-20',daysLeft:83,notes:'ต้องแก้ไขด่วน',tags:['broken'],gsc:null,addedAt:'2025-01-01'},
+    {domain:'condothailand.co',status:'warn',statusCode:503,responseTime:4200,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-06-12',daysLeft:14,notes:'',tags:['condo'],gsc:{clicks:34,impressions:980,avgPosition:14,keywordCount:9,topKeyword:'คอนโดราคาถูก',topPosition:14},addedAt:'2025-01-01'},
+    {domain:'sellcondo-hua.com',status:'down',statusCode:0,responseTime:8000,checkedAt:new Date().toISOString(),error:'Timeout',expiryDate:'2026-06-05',daysLeft:7,notes:'',tags:['condo'],gsc:null,addedAt:'2025-01-01'},
+    {domain:'homesale-phuket.com',status:'up',statusCode:200,responseTime:410,checkedAt:new Date().toISOString(),error:null,expiryDate:'2027-01-10',daysLeft:226,notes:'',tags:['phuket'],gsc:{clicks:88,impressions:1500,avgPosition:8.9,keywordCount:18,topKeyword:'บ้านภูเก็ต',topPosition:3},addedAt:'2025-01-01'},
+    {domain:'pathumthani-land.net',status:'warn',statusCode:302,responseTime:1100,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-06-02',daysLeft:4,notes:'',tags:['land'],gsc:{clicks:8,impressions:420,avgPosition:27,keywordCount:2,topKeyword:'ที่ดินปทุมธานี',topPosition:27},addedAt:'2025-01-01'},
+    {domain:'nonthaburi-home.com',status:'up',statusCode:200,responseTime:610,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-07-20',daysLeft:52,notes:'',tags:['nonthaburi'],gsc:{clicks:15,impressions:580,avgPosition:22,keywordCount:4,topKeyword:'บ้านนนทบุรี',topPosition:22},addedAt:'2025-01-01'},
+    {domain:'property-chiangmai.net',status:'up',statusCode:200,responseTime:780,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-11-30',daysLeft:185,notes:'',tags:['chiangmai'],gsc:{clicks:25,impressions:730,avgPosition:19,keywordCount:5,topKeyword:'บ้านเชียงใหม่',topPosition:19},addedAt:'2025-01-01'},
+    {domain:'samutprakan-estate.com',status:'up',statusCode:200,responseTime:330,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-10-10',daysLeft:134,notes:'',tags:['samutprakan'],gsc:{clicks:72,impressions:1200,avgPosition:6,keywordCount:14,topKeyword:'บ้านสมุทรปราการ',topPosition:6},addedAt:'2025-01-01'},
+    {domain:'thaiproperty99.com',status:'up',statusCode:200,responseTime:460,checkedAt:new Date().toISOString(),error:null,expiryDate:'2027-03-01',daysLeft:276,notes:'',tags:['property'],gsc:{clicks:140,impressions:1900,avgPosition:11,keywordCount:22,topKeyword:'คอนโดใกล้รถไฟฟ้า',topPosition:8},addedAt:'2025-01-01'},
+  ];
+  const stats = calcStats(allDomains);
+  updateSidebar(stats);
+  updateStats(stats, {lastUpdated: null});
+  applyFilters();
+  renderQuickTable();
+  renderTrafficPage();
+  renderKeywordsPage();
+}
+
+function calcStats(domains) {
+  return {
+    total: domains.length,
+    up: domains.filter(d=>d.status==='up').length,
+    down: domains.filter(d=>d.status==='down').length,
+    warn: domains.filter(d=>d.status==='warn').length,
+    unknown: domains.filter(d=>d.status==='unknown').length,
+    withTraffic: domains.filter(d=>d.gsc?.clicks>0).length,
+    noTraffic: domains.filter(d=>d.gsc&&d.gsc.clicks===0).length,
+    expiringIn30: domains.filter(d=>d.daysLeft!==null&&d.daysLeft<=30&&d.daysLeft>=0).length,
+    totalClicks: domains.reduce((s,d)=>s+(d.gsc?.clicks||0),0),
+    totalImpressions: domains.reduce((s,d)=>s+(d.gsc?.impressions||0),0),
+  };
+}
+
+function setServerStatus(ok, lastUpdated) {
+  const dot = document.getElementById('live-dot');
+  const text = document.getElementById('server-status-text');
+  const lu = document.getElementById('last-updated-text');
+  if (ok) {
+    dot.style.background = 'var(--green)';
+    text.textContent = 'Server Online';
+    if (lastUpdated) lu.textContent = 'อัพเดต ' + timeAgo(lastUpdated);
+  } else {
+    dot.style.background = 'var(--amber)';
+    text.textContent = 'Demo Mode';
+    lu.textContent = 'รัน server.js เพื่อใช้งานจริง';
+  }
+}
+
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const secs = Math.floor((Date.now() - new Date(iso)) / 1000);
+  if (secs < 60) return `${secs} วินาทีที่แล้ว`;
+  if (secs < 3600) return `${Math.floor(secs/60)} นาทีที่แล้ว`;
+  return `${Math.floor(secs/3600)} ชั่วโมงที่แล้ว`;
+}
+
+function updateSidebar(stats) {
+  document.getElementById('nav-total').textContent = stats.total;
+  document.getElementById('nav-down').textContent = stats.down;
+  document.getElementById('nav-expiring').textContent = stats.expiringIn30;
+}
+
+function updateStats(stats, extra) {
+  const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+  set('stat-total', stats.total.toLocaleString());
+  set('stat-up', stats.up.toLocaleString());
+  set('stat-down', stats.down.toLocaleString());
+  set('stat-warn', stats.warn.toLocaleString());
+  set('stat-traffic', stats.withTraffic.toLocaleString());
+  set('stat-notraffic', stats.noTraffic.toLocaleString());
+  set('stat-expiring', stats.expiringIn30.toLocaleString());
+  set('stat-impressions', stats.totalImpressions.toLocaleString());
+  set('stat-up-pct', stats.total > 0 ? `${Math.round(stats.up/stats.total*100)}% ของทั้งหมด` : '—');
+  set('stat-clicks', `${stats.totalClicks.toLocaleString()} คลิกรวม`);
+  set('stat-last', extra.lastUpdated ? `อัพเดต ${timeAgo(extra.lastUpdated)}` : 'Demo Mode');
+  set('dash-subtitle', `${stats.total} โดเมน · Down ${stats.down} · หมดอายุ ${stats.expiringIn30}`);
+  // GSC banner
+  const bannerWrap = document.getElementById('gsc-banner-wrap');
+  if (bannerWrap && stats.withTraffic === 0 && stats.total > 0) {
+    bannerWrap.innerHTML = `<div class="gsc-banner"><div class="gsc-banner-icon">🔗</div><div class="gsc-banner-text"><h3>เชื่อมต่อ Google Search Console</h3><p>ยังไม่มีข้อมูล GSC — ตั้งค่า API เพื่อดู Traffic, Clicks และ Keyword Rankings</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="fa-solid fa-gear"></i> ตั้งค่า GSC</button></div></div>`;
+  } else if (bannerWrap) bannerWrap.innerHTML = '';
+}
+
+// ===== FILTERS =====
+function applyFilters() {
+  const q = (document.getElementById('search-input')?.value || '').toLowerCase();
+  const st = document.getElementById('filter-status')?.value || '';
+  const tr = document.getElementById('filter-traffic')?.value || '';
+  const ex = document.getElementById('filter-expiry')?.value || '';
+
+  filteredDomains = allDomains.filter(d => {
+    if (q && !d.domain.includes(q) && !(d.notes||'').toLowerCase().includes(q)) return false;
+    if (st && d.status !== st) return false;
+    if (tr === 'high' && !(d.gsc?.clicks >= 1000)) return false;
+    if (tr === 'mid' && !(d.gsc?.clicks >= 100 && d.gsc?.clicks < 1000)) return false;
+    if (tr === 'low' && !(d.gsc?.clicks > 0 && d.gsc?.clicks < 100)) return false;
+    if (tr === 'none' && !(d.gsc && d.gsc.clicks === 0)) return false;
+    if (ex && !(d.daysLeft !== null && d.daysLeft <= parseInt(ex))) return false;
+    if (currentTab === 'down' && d.status !== 'down') return false;
+    if (currentTab === 'warn' && d.status !== 'warn') return false;
+    if (currentTab === 'notraffic' && !(d.gsc && d.gsc.clicks === 0)) return false;
+    if (currentTab === 'expiring' && !(d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft >= 0)) return false;
+    if (currentTab === 'ranked' && !(d.gsc?.keywordCount > 0)) return false;
+    return true;
+  });
+
+  // Sort
+  filteredDomains.sort((a,b) => {
+    let av = a[sortKey], bv = b[sortKey];
+    if (sortKey === 'clicks') { av = a.gsc?.clicks||0; bv = b.gsc?.clicks||0; }
+    if (sortKey === 'position') { av = a.gsc?.avgPosition||999; bv = b.gsc?.avgPosition||999; }
+    if (sortKey === 'keywords') { av = a.gsc?.keywordCount||0; bv = b.gsc?.keywordCount||0; }
+    if (typeof av === 'string') return sortDir * av.localeCompare(bv||'');
+    return sortDir * ((av||0) - (bv||0));
+  });
+
+  // Tab counts
+  const countTab = (fn) => allDomains.filter(fn).length;
+  const setEl = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+  setEl('tab-all', allDomains.length);
+  setEl('tab-down', countTab(d=>d.status==='down'));
+  setEl('tab-warn', countTab(d=>d.status==='warn'));
+  setEl('tab-notraffic', countTab(d=>d.gsc&&d.gsc.clicks===0));
+  setEl('tab-expiring', countTab(d=>d.daysLeft!==null&&d.daysLeft<=30&&d.daysLeft>=0));
+  setEl('tab-ranked', countTab(d=>d.gsc?.keywordCount>0));
+
+  const countEl = document.getElementById('domains-count-text');
+  if (countEl) countEl.textContent = `${filteredDomains.length} โดเมน`;
+
+  currentPage = 1;
+  renderDomainTable();
+}
+
+function setDomainTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  applyFilters();
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortDir *= -1;
+  else { sortKey = key; sortDir = -1; }
+  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sort-asc','sort-desc'));
+  const th = document.querySelector(`[data-sort="${key}"]`);
+  if (th) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
+  applyFilters();
+}
+
+// ===== RENDER TABLE =====
+function statusBadge(d) {
+  const map = { up: ['badge-up','fa-circle-check','Up'], down: ['badge-down','fa-circle-xmark','Down'], warn: ['badge-warn','fa-triangle-exclamation','Warn'], unknown: ['badge-unknown','fa-circle-question','?'] };
+  const [cls, icon, label] = map[d.status] || map.unknown;
+  const rt = d.responseTime ? `<span style="color:var(--text3);font-size:10px;margin-left:4px">${d.responseTime}ms</span>` : '';
+  return `<span class="badge ${cls}"><i class="fa-solid ${icon}"></i> ${label}</span>${rt}`;
+}
+
+function trafficBar(d) {
+  if (!d.gsc) return `<span style="color:var(--text3);font-size:12px">—</span>`;
+  const clicks = d.gsc.clicks;
+  const max = Math.max(...allDomains.map(x=>x.gsc?.clicks||0), 1);
+  const pct = Math.min(100, Math.round(clicks/max*100));
+  const color = clicks === 0 ? 'var(--red)' : clicks < 100 ? 'var(--amber)' : 'var(--green)';
+  const label = clicks >= 1000 ? (clicks/1000).toFixed(1)+'k' : clicks;
+  return `<div class="traffic-wrap"><div class="traffic-bar-bg"><div class="traffic-bar-fill" style="width:${pct}%;background:${color}"></div></div><span class="traffic-val">${label}</span></div>`;
+}
+
+function kwBadge(d) {
+  if (!d.gsc || d.gsc.keywordCount === 0) return `<span style="color:var(--text3);font-size:12px">ไม่ติด</span>`;
+  const pos = d.gsc.topPosition;
+  const cls = pos <= 1 ? 'kw-top1' : pos <= 3 ? 'kw-top3' : pos <= 10 ? 'kw-top10' : 'kw-top30';
+  const icon = pos <= 3 ? '🏆' : pos <= 10 ? '✅' : '📊';
+  return `<span class="kw-pos ${cls}">${icon} #${pos} <span style="color:var(--text3);font-size:11px">· ${d.gsc.keywordCount} kw</span></span>`;
+}
+
+function expiryCell(d) {
+  if (d.daysLeft === null || d.daysLeft === undefined) return '<span style="color:var(--text3);font-size:12px">—</span>';
+  const label = d.daysLeft < 0 ? 'หมดแล้ว' : d.daysLeft === 0 ? 'วันนี้' : `${d.daysLeft} วัน`;
+  const cls = d.daysLeft <= 7 ? 'expiry-danger' : d.daysLeft <= 30 ? 'expiry-warn' : 'expiry-ok';
+  return `<span class="${cls}">${label}</span>`;
+}
+
+function renderDomainTable() {
+  const wrap = document.getElementById('domain-table-wrap');
+  if (!wrap) return;
+  if (filteredDomains.length === 0) {
+    wrap.innerHTML = `<div class="empty-state"><i class="fa-solid fa-inbox"></i><h3>ไม่พบโดเมน</h3><p>ลองปรับตัวกรองหรือเพิ่มโดเมนใหม่</p></div>`;
+    return;
+  }
+  const start = (currentPage-1)*PER_PAGE;
+  const rows = filteredDomains.slice(start, start+PER_PAGE);
+  wrap.innerHTML = `
+  <div class="table-container">
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th><input type="checkbox" onchange="selectAll(this)" style="accent-color:var(--green)" /></th>
+            <th data-sort="domain" onclick="sortBy('domain')">โดเมน</th>
+            <th data-sort="status" onclick="sortBy('status')">สถานะ</th>
+            <th data-sort="clicks" onclick="sortBy('clicks')">Traffic (GSC)</th>
+            <th>Clicks / Imp</th>
+            <th data-sort="keywords" onclick="sortBy('keywords')">Keywords</th>
+            <th data-sort="daysLeft" onclick="sortBy('daysLeft')">หมดอายุ</th>
+            <th>จัดการ</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.map(d => `
+          <tr>
+            <td><input type="checkbox" style="accent-color:var(--green)" /></td>
+            <td>
+              <div class="domain-name"><a href="https://${d.domain}" target="_blank">${d.domain} <i class="fa-solid fa-arrow-up-right-from-square" style="font-size:10px;opacity:0.5"></i></a></div>
+              ${d.tags?.length ? `<div style="margin-top:3px">${d.tags.map(t=>`<span style="background:var(--bg4);color:var(--text3);font-size:10px;padding:1px 5px;border-radius:3px;margin-right:3px">${t}</span>`).join('')}</div>` : ''}
+            </td>
+            <td>${statusBadge(d)}</td>
+            <td>${trafficBar(d)}</td>
+            <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${d.gsc ? `${d.gsc.clicks.toLocaleString()} / ${d.gsc.impressions.toLocaleString()}` : '—'}</td>
+            <td>${kwBadge(d)}</td>
+            <td>${expiryCell(d)}</td>
+            <td>
+              <div class="action-group">
+                <button class="action-btn" title="ดูรายละเอียด" onclick="viewDetail('${d.domain}')"><i class="fa-solid fa-eye"></i></button>
+                <button class="action-btn" title="เช็คสถานะ" onclick="checkOne('${d.domain}')"><i class="fa-solid fa-rotate"></i></button>
+                <button class="action-btn" title="Sync GSC" onclick="syncGSCOne('${d.domain}')"><i class="fa-brands fa-google"></i></button>
+                <button class="action-btn danger" title="ลบ" onclick="deleteDomain('${d.domain}')"><i class="fa-solid fa-trash"></i></button>
+              </div>
+            </td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="pagination">
+      <span>แสดง ${start+1}–${Math.min(start+PER_PAGE,filteredDomains.length)} จาก ${filteredDomains.length} โดเมน</span>
+      <div class="page-btns">${renderPaginationBtns()}</div>
+    </div>
+  </div>`;
+}
+
+function renderPaginationBtns() {
+  const total = Math.ceil(filteredDomains.length / PER_PAGE);
+  let html = `<button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>`;
+  const pages = [];
+  for (let i=1;i<=total;i++) {
+    if (i===1||i===total||Math.abs(i-currentPage)<=2) pages.push(i);
+    else if (pages[pages.length-1]!=='…') pages.push('…');
+  }
+  pages.forEach(p => {
+    if (p==='…') html += `<span style="padding:4px 6px;color:var(--text3)">…</span>`;
+    else html += `<button class="page-btn${p===currentPage?' active':''}" onclick="goPage(${p})">${p}</button>`;
+  });
+  html += `<button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===Math.ceil(filteredDomains.length/PER_PAGE)?'disabled':''}>›</button>`;
+  return html;
+}
+
+function goPage(p) {
+  const total = Math.ceil(filteredDomains.length/PER_PAGE);
+  if (p<1||p>total) return;
+  currentPage = p;
+  renderDomainTable();
+  document.getElementById('page-domains')?.scrollTo(0,0);
+}
+
+function renderQuickTable() {
+  const wrap = document.getElementById('quick-table-wrap');
+  if (!wrap) return;
+  const urgent = [...allDomains].filter(d=>d.status==='down'||d.daysLeft<=7).slice(0,5);
+  const recent = [...allDomains].sort((a,b)=>new Date(b.addedAt)-new Date(a.addedAt)).slice(0,5);
+  const list = [...new Map([...urgent,...recent].map(d=>[d.domain,d])).values()].slice(0,8);
+  if (!list.length) { wrap.innerHTML='<div class="empty-state" style="padding:30px"><i class="fa-solid fa-party-horn"></i><h3>ทุกอย่างปกติดี!</h3></div>'; return; }
+  wrap.innerHTML = `<div class="table-container"><div class="table-wrap"><table><thead><tr><th>โดเมน</th><th>สถานะ</th><th>Traffic</th><th>หมดอายุ</th><th></th></tr></thead><tbody>${list.map(d=>`<tr><td class="domain-name">${d.domain}</td><td>${statusBadge(d)}</td><td>${trafficBar(d)}</td><td>${expiryCell(d)}</td><td><button class="action-btn" onclick="viewDetail('${d.domain}')"><i class="fa-solid fa-eye"></i></button></td></tr>`).join('')}</tbody></table></div></div>`;
+}
+
+// ===== TRAFFIC PAGE =====
+function renderTrafficPage() {
+  const el = document.getElementById('traffic-content');
+  if (!el) return;
+  const withGSC = allDomains.filter(d => d.gsc);
+  if (!withGSC.length) {
+    el.innerHTML = `<div class="gsc-banner"><div class="gsc-banner-icon">📊</div><div class="gsc-banner-text"><h3>ยังไม่มีข้อมูล GSC</h3><p>เชื่อมต่อ Google Search Console API แล้วกด Sync เพื่อดูข้อมูล Traffic</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="fa-solid fa-gear"></i> ตั้งค่า</button></div></div>`; return;
+  }
+  const sorted = [...withGSC].sort((a,b)=>(b.gsc?.clicks||0)-(a.gsc?.clicks||0));
+  const totalClicks = sorted.reduce((s,d)=>s+(d.gsc?.clicks||0),0);
+  el.innerHTML = `
+    <div class="metrics-grid" style="margin-bottom:20px">
+      <div class="metric-card"><div class="metric-label">โดเมนที่มีข้อมูล GSC</div><div class="metric-val blue">${withGSC.length}</div></div>
+      <div class="metric-card"><div class="metric-label">Total Clicks (30 วัน)</div><div class="metric-val green">${totalClicks.toLocaleString()}</div></div>
+      <div class="metric-card"><div class="metric-label">Total Impressions</div><div class="metric-val">${sorted.reduce((s,d)=>s+(d.gsc?.impressions||0),0).toLocaleString()}</div></div>
+      <div class="metric-card highlight-red"><div class="metric-label">ไม่มีทราฟฟิคเลย</div><div class="metric-val red">${withGSC.filter(d=>d.gsc.clicks===0).length}</div></div>
+    </div>
+    <div class="table-container">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>โดเมน</th><th>Clicks</th><th>Impressions</th><th>Avg Position</th><th>Keywords</th><th>Top Keyword</th></tr></thead>
+          <tbody>
+            ${sorted.map(d => `<tr>
+              <td class="domain-name">${d.domain}</td>
+              <td style="font-family:var(--mono)">${d.gsc.clicks.toLocaleString()}</td>
+              <td style="font-family:var(--mono);color:var(--text2)">${d.gsc.impressions.toLocaleString()}</td>
+              <td style="font-family:var(--mono)">${d.gsc.avgPosition ? '#'+d.gsc.avgPosition : '—'}</td>
+              <td style="font-family:var(--mono);color:var(--blue)">${d.gsc.keywordCount}</td>
+              <td style="font-size:12px;color:var(--text2)">${d.gsc.topKeyword || '—'} ${d.gsc.topPosition ? `<span style="color:var(--green)">#${d.gsc.topPosition}</span>` : ''}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ===== KEYWORDS PAGE =====
+function renderKeywordsPage() {
+  const el = document.getElementById('keywords-content');
+  if (!el) return;
+  const withKw = allDomains.filter(d => d.gsc?.keywordCount > 0);
+  if (!withKw.length) {
+    el.innerHTML = `<div class="empty-state"><i class="fa-solid fa-ranking-star"></i><h3>ยังไม่มีข้อมูล Keywords</h3><p>Sync GSC เพื่อดูข้อมูล Keyword Rankings</p></div>`; return;
+  }
+  const sorted = [...withKw].sort((a,b)=>(a.gsc?.topPosition||999)-(b.gsc?.topPosition||999));
+  el.innerHTML = `
+    <div class="table-container">
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>โดเมน</th><th>Top Keyword</th><th>Position</th><th>Keywords ทั้งหมด</th><th>Status</th></tr></thead>
+          <tbody>
+            ${sorted.map(d => {
+              const pos = d.gsc.topPosition;
+              const posClass = pos<=1?'kw-top1':pos<=3?'kw-top3':pos<=10?'kw-top10':'kw-top30';
+              return `<tr>
+                <td class="domain-name">${d.domain}</td>
+                <td style="font-size:13px">${d.gsc.topKeyword}</td>
+                <td class="kw-pos ${posClass}" style="font-family:var(--mono);font-weight:600">#${pos}</td>
+                <td style="font-family:var(--mono);color:var(--blue)">${d.gsc.keywordCount}</td>
+                <td>${statusBadge(d)}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+// ===== DETAIL MODAL =====
+function viewDetail(domain) {
+  const d = allDomains.find(x => x.domain === domain);
+  if (!d) return;
+  document.getElementById('detail-modal-title').innerHTML = `<i class="fa-solid fa-globe" style="color:var(--green)"></i> ${d.domain}`;
+  document.getElementById('detail-sync-btn').onclick = () => syncGSCOne(domain);
+  document.getElementById('detail-check-btn').onclick = () => checkOne(domain);
+  const gsc = d.gsc;
+  document.getElementById('detail-modal-content').innerHTML = `
+    <div class="detail-grid">
+      <div class="detail-item"><div class="detail-item-label">สถานะ</div><div>${statusBadge(d)}</div></div>
+      <div class="detail-item"><div class="detail-item-label">Response Time</div><div class="detail-item-val" style="color:var(--blue)">${d.responseTime ? d.responseTime+'ms' : '—'}</div></div>
+      <div class="detail-item"><div class="detail-item-label">HTTP Status</div><div class="detail-item-val">${d.statusCode || '—'}</div></div>
+      <div class="detail-item"><div class="detail-item-label">เช็คล่าสุด</div><div style="font-size:13px;color:var(--text2)">${d.checkedAt ? timeAgo(d.checkedAt) : '—'}</div></div>
+      <div class="detail-item"><div class="detail-item-label">หมดอายุ</div><div>${expiryCell(d)} ${d.expiryDate ? `<span style="color:var(--text3);font-size:11px">(${d.expiryDate})</span>` : ''}</div></div>
+      <div class="detail-item"><div class="detail-item-label">Tags</div><div style="font-size:13px">${d.tags?.map(t=>`<span style="background:var(--bg4);color:var(--text2);font-size:11px;padding:2px 6px;border-radius:3px;margin-right:3px">${t}</span>`).join('')||'—'}</div></div>
+    </div>
+    ${d.error ? `<div style="background:var(--red-dim);border:1px solid rgba(240,82,82,0.2);border-radius:var(--radius-sm);padding:10px;margin-top:12px;font-size:12px;color:var(--red)"><i class="fa-solid fa-circle-xmark"></i> ${d.error}</div>` : ''}
+    ${gsc ? `
+    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text)"><i class="fa-brands fa-google" style="color:var(--blue)"></i> Google Search Console (30 วันล่าสุด)</div>
+      <div class="detail-grid">
+        <div class="detail-item"><div class="detail-item-label">Clicks</div><div class="detail-item-val green">${gsc.clicks.toLocaleString()}</div></div>
+        <div class="detail-item"><div class="detail-item-label">Impressions</div><div class="detail-item-val">${gsc.impressions.toLocaleString()}</div></div>
+        <div class="detail-item"><div class="detail-item-label">Avg Position</div><div class="detail-item-val blue">${gsc.avgPosition ? '#'+gsc.avgPosition : '—'}</div></div>
+        <div class="detail-item"><div class="detail-item-label">Keywords</div><div class="detail-item-val blue">${gsc.keywordCount}</div></div>
+        <div class="detail-item" style="grid-column:1/-1"><div class="detail-item-label">Top Keyword</div><div style="font-size:14px;color:var(--text);margin-top:2px">${gsc.topKeyword} <span style="color:var(--green);font-family:var(--mono)">#${gsc.topPosition}</span></div></div>
+      </div>
+      ${gsc.keywords?.length ? `
+      <div style="margin-top:12px">
+        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Keywords ทั้งหมด (Top 10)</div>
+        <div class="kw-table-wrap"><table style="width:100%;font-size:12px"><thead><tr style="background:var(--bg3)"><th style="padding:6px 10px;color:var(--text3)">Keyword</th><th style="padding:6px 10px;color:var(--text3)">Position</th><th style="padding:6px 10px;color:var(--text3)">Clicks</th><th style="padding:6px 10px;color:var(--text3)">Imp</th><th style="padding:6px 10px;color:var(--text3)">CTR</th></tr></thead>
+        <tbody>${gsc.keywords.slice(0,10).map(k=>`<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px;color:var(--text)">${k.keyword}</td><td style="padding:6px 10px;font-family:var(--mono);color:var(--green)">#${k.position}</td><td style="padding:6px 10px;font-family:var(--mono)">${k.clicks}</td><td style="padding:6px 10px;font-family:var(--mono);color:var(--text2)">${k.impressions}</td><td style="padding:6px 10px;font-family:var(--mono);color:var(--text2)">${k.ctr}%</td></tr>`).join('')}</tbody></table></div>
+      </div>` : ''}
+    </div>` : `<div style="margin-top:16px;padding:16px;background:var(--bg3);border-radius:var(--radius-sm);text-align:center;font-size:13px;color:var(--text3)"><i class="fa-brands fa-google"></i> ยังไม่มีข้อมูล GSC — คลิก Sync GSC</div>`}`;
+  document.getElementById('detail-modal').style.display = 'flex';
+}
+
+// ===== ACTIONS =====
+async function addDomain() {
+  const domain = document.getElementById('add-domain').value.trim();
+  if (!domain) { toast('กรุณาระบุ domain', 'error'); return; }
+  const notes = document.getElementById('add-notes').value;
+  const tags = document.getElementById('add-tags').value.split(';').map(t=>t.trim()).filter(Boolean);
+  const expiry = document.getElementById('add-expiry').value;
+  const daysLeft = expiry ? Math.floor((new Date(expiry)-new Date())/(86400000)) : null;
+  try {
+    const res = await fetch(`${API}/api/domains/add`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({domain, notes, tags, expiryDate: expiry||null, daysLeft}) });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+    toast(`เพิ่ม ${domain} แล้ว`, 'success');
+    closeModal('add-modal');
+    await loadData();
+  } catch {
+    // Demo mode
+    const clean = domain.replace(/^https?:\/\//,'').replace(/\/.*/,'').toLowerCase();
+    if (allDomains.find(d=>d.domain===clean)) { toast('มีโดเมนนี้อยู่แล้ว','error'); return; }
+    allDomains.unshift({domain:clean,status:'unknown',statusCode:0,responseTime:0,checkedAt:null,error:null,expiryDate:expiry||null,daysLeft,notes,tags,gsc:null,addedAt:new Date().toISOString()});
+    toast(`เพิ่ม ${clean} แล้ว (Demo Mode)`, 'success');
+    closeModal('add-modal');
+    applyFilters(); renderQuickTable();
+  }
+}
+
+async function deleteDomain(domain) {
+  if (!confirm(`ลบ ${domain} ออกจากระบบ?`)) return;
+  try {
+    await fetch(`${API}/api/domains/${encodeURIComponent(domain)}`, { method:'DELETE' });
+  } catch {}
+  allDomains = allDomains.filter(d => d.domain !== domain);
+  toast(`ลบ ${domain} แล้ว`, 'success');
+  applyFilters(); renderQuickTable();
+  const stats = calcStats(allDomains);
+  updateSidebar(stats); updateStats(stats, {});
+}
+
+async function checkOne(domain) {
+  toast(`กำลังเช็ค ${domain}...`, 'info');
+  try {
+    const res = await fetch(`${API}/api/check/${encodeURIComponent(domain)}`, { method:'POST' });
+    const data = await res.json();
+    const idx = allDomains.findIndex(d=>d.domain===domain);
+    if (idx !== -1) Object.assign(allDomains[idx], data);
+    toast(`${domain}: ${data.status.toUpperCase()} (${data.responseTime}ms)`, data.status==='up'?'success':'error');
+    applyFilters();
+  } catch {
+    toast('ไม่สามารถเชื่อมต่อ Server ได้', 'error');
+  }
+}
+
+async function checkAllNow() {
+  toast('กำลังเช็คโดเมนทั้งหมด...', 'info');
+  try {
+    await fetch(`${API}/api/check-all`, { method:'POST' });
+    setTimeout(loadData, 3000);
+  } catch { toast('ต้องรัน server.js ก่อน', 'error'); }
+}
+
+async function syncGSCOne(domain) {
+  toast(`Sync GSC สำหรับ ${domain}...`, 'info');
+  try {
+    const res = await fetch(`${API}/api/gsc/sync/${encodeURIComponent(domain)}`, { method:'POST' });
+    const data = await res.json();
+    if (data.success) { toast(`Sync GSC สำเร็จ`, 'success'); await loadData(); }
+    else toast(data.error || 'Sync ไม่สำเร็จ', 'error');
+  } catch { toast('ต้องตั้งค่า GSC API ก่อน', 'error'); }
+}
+
+async function syncGSCAll() {
+  toast('กำลัง Sync GSC ทั้งหมด...', 'info');
+  try {
+    await fetch(`${API}/api/gsc/sync-all`, { method:'POST' });
+    setTimeout(loadData, 5000);
+    toast('Sync กำลังทำงาน background', 'success');
+  } catch { toast('ต้องตั้งค่า GSC API ก่อน', 'error'); }
+}
+
+// ===== IMPORT =====
+function handleDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').style.borderColor = 'var(--border2)';
+  const file = e.dataTransfer.files[0];
+  if (file) readCSVFile(file);
+}
+function handleFileSelect(input) {
+  if (input.files[0]) readCSVFile(input.files[0]);
+}
+function readCSVFile(file) {
+  const reader = new FileReader();
+  reader.onload = e => { document.getElementById('csv-text').value = e.target.result; };
+  reader.readAsText(file, 'UTF-8');
+}
+async function importCSV() {
+  const csv = document.getElementById('csv-text').value.trim();
+  if (!csv) { toast('กรุณาวาง CSV ก่อน', 'error'); return; }
+  const resultEl = document.getElementById('import-result');
+  resultEl.innerHTML = '<div class="loading"><div class="spinner"></div> กำลัง Import...</div>';
+  try {
+    const res = await fetch(`${API}/api/domains/import`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({csv}) });
+    const data = await res.json();
+    resultEl.innerHTML = `<div style="background:var(--green-dim);border:1px solid rgba(34,208,122,0.2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--green)"><i class="fa-solid fa-circle-check"></i> Import สำเร็จ: เพิ่ม ${data.added} โดเมน (ข้าม ${data.skipped} ที่ซ้ำ) รวมทั้งหมด ${data.total} โดเมน</div>`;
+    await loadData();
+  } catch {
+    // Demo parse
+    const lines = csv.trim().split('\n');
+    const headers = lines[0].split(',').map(h=>h.trim().toLowerCase());
+    let added=0, skipped=0;
+    lines.slice(1).forEach(line => {
+      const vals = line.split(',').map(v=>v.trim());
+      const obj = {};
+      headers.forEach((h,i)=>obj[h]=vals[i]||'');
+      const domain = (obj.domain||'').replace(/^https?:\/\//,'').replace(/\/.*/,'').toLowerCase();
+      if (!domain) { skipped++; return; }
+      if (allDomains.find(d=>d.domain===domain)) { skipped++; return; }
+      allDomains.push({domain,status:'unknown',statusCode:0,responseTime:0,checkedAt:null,error:null,expiryDate:obj.expiry_date||null,daysLeft:obj.days_left?parseInt(obj.days_left):null,notes:obj.notes||'',tags:obj.tags?obj.tags.split(';'):[],gsc:null,addedAt:new Date().toISOString()});
+      added++;
+    });
+    resultEl.innerHTML = `<div style="background:var(--green-dim);border:1px solid rgba(34,208,122,0.2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--green)"><i class="fa-solid fa-circle-check"></i> (Demo) เพิ่ม ${added} โดเมน ข้าม ${skipped}</div>`;
+    applyFilters(); renderQuickTable();
+    const stats = calcStats(allDomains); updateSidebar(stats); updateStats(stats,{});
+  }
+}
+function downloadTemplate() {
+  const csv = 'domain,notes,tags,expiry_date,days_left\nexample.com,เว็บหลัก,seo;lead,2026-12-31,217\nexample2.net,แคมเปญ Q1,ppc,2026-06-30,32\nmyblog.co.th,บล็อก SEO,seo;content,2027-01-15,232';
+  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='domain-template.csv'; a.click();
+  toast('ดาวน์โหลด template แล้ว', 'success');
+}
+
+// ===== EXPORT =====
+function exportCSV() {
+  const headers = ['domain','status','clicks','impressions','avg_position','keyword_count','top_keyword','top_position','days_left','expiry_date','response_time','notes'];
+  const rows = filteredDomains.map(d => [d.domain, d.status, d.gsc?.clicks||0, d.gsc?.impressions||0, d.gsc?.avgPosition||0, d.gsc?.keywordCount||0, d.gsc?.topKeyword||'', d.gsc?.topPosition||0, d.daysLeft??'', d.expiryDate||'', d.responseTime||0, d.notes||''].join(','));
+  const csv = [headers.join(','), ...rows].join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download=`domains-${new Date().toISOString().split('T')[0]}.csv`; a.click();
+  toast('Export CSV แล้ว', 'success');
+}
+
+// ===== SETTINGS =====
+async function testConnection() {
+  const url = document.getElementById('server-url').value;
+  API = url;
+  localStorage.setItem('api_url', url);
+  const el = document.getElementById('conn-status');
+  el.innerHTML = '<div class="spinner" style="width:14px;height:14px;display:inline-block"></div>';
+  try {
+    const res = await fetch(`${url}/api/stats`);
+    if (res.ok) {
+      el.innerHTML = '<span class="server-status server-ok"><i class="fa-solid fa-circle-check"></i> เชื่อมต่อสำเร็จ</span>';
+      toast('เชื่อมต่อ Server สำเร็จ', 'success');
+      await loadData();
+    } else throw new Error();
+  } catch {
+    el.innerHTML = '<span class="server-status server-err"><i class="fa-solid fa-circle-xmark"></i> เชื่อมต่อไม่ได้</span>';
+    toast('เชื่อมต่อ Server ไม่ได้ — ตรวจสอบว่า node server.js รันอยู่', 'error');
+  }
+}
+
+async function saveGSC() {
+  const body = { gsc: { clientId: document.getElementById('gsc-client-id').value, clientSecret: document.getElementById('gsc-client-secret').value, refreshToken: document.getElementById('gsc-refresh-token').value } };
+  try {
+    await fetch(`${API}/api/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    toast('บันทึก GSC Config แล้ว', 'success');
+  } catch { toast('บันทึกใน Demo Mode — ต้องรัน server.js', 'error'); }
+}
+
+async function saveSettings() {
+  await saveGSC();
+  const body = { alerts: { lineToken: document.getElementById('line-token').value, notifyOnDown: document.getElementById('notify-down').checked, notifyOnExpiry: document.getElementById('notify-expiry').checked, expiryDaysThreshold: parseInt(document.getElementById('expiry-threshold').value) } };
+  try {
+    await fetch(`${API}/api/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
+    toast('บันทึก Settings แล้ว', 'success');
+  } catch { toast('Demo Mode', 'info'); }
+}
+
+function testLineAlert() { toast('ส่งแจ้งเตือน LINE Test แล้ว (ต้องใส่ Token ก่อน)', 'info'); }
+
+// ===== NAVIGATION =====
+let currentPageName = 'dashboard';
+function showPage(name) {
+  document.querySelectorAll('[id^="page-"]').forEach(p => p.style.display = 'none');
+  document.getElementById(`page-${name}`).style.display = 'flex';
+  document.getElementById(`page-${name}`).style.flexDirection = 'column';
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  currentPageName = name;
+  if (name === 'dashboard') renderQuickTable();
+  if (name === 'traffic') renderTrafficPage();
+  if (name === 'keywords') renderKeywordsPage();
+}
+
+function showPageFiltered(page, filter) {
+  showPage(page);
+  currentTab = filter;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  const tabEl = document.querySelector(`[onclick="setDomainTab('${filter}',this)"]`);
+  if (tabEl) tabEl.classList.add('active');
+  applyFilters();
+}
+
+// ===== MODAL =====
+function openAddModal() {
+  ['add-domain','add-notes','add-tags','add-expiry'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
+  document.getElementById('add-modal').style.display = 'flex';
+}
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+document.addEventListener('keydown', e => { if(e.key==='Escape') document.querySelectorAll('.modal-overlay').forEach(m=>m.style.display='none'); });
+
+// ===== TOAST =====
+function toast(msg, type='info') {
+  const icons = {success:'fa-circle-check', error:'fa-circle-xmark', info:'fa-circle-info'};
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = `toast ${type}`;
+  t.innerHTML = `<i class="fa-solid ${icons[type]}"></i> ${msg}`;
+  c.appendChild(t);
+  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(20px)'; t.style.transition='all 0.2s'; setTimeout(()=>t.remove(),200); }, 3500);
+}
+
+function selectAll(cb) { document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c=>c.checked=cb.checked); }
+</script>
+</body>
+</html>
