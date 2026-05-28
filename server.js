@@ -356,7 +356,10 @@ async function autoFix(domainObj, prevStatus) {
       const idx = memoryDomains.findIndex(d => d.domain === domain);
       if (idx !== -1) { memoryDomains[idx].pleskActive = true; memoryDomains[idx].pleskStatus = 0; }
       console.log(`[AutoFix] Unsuspend ${domain} OK`);
-      sendLineAlert(`Auto-fix: Unsuspend ${domain} via Plesk OK`);
+      sendTelegram(`🔧 <b>Auto-Fix: Unsuspend Plesk สำเร็จ!</b>
+🌐 โดเมน: <code>${domain}</code>
+✅ เปิดใช้งานแล้ว
+🕐 ${new Date().toLocaleString('th-TH')}`);
       fixed = true;
       setTimeout(async () => {
         const r = await checkDomain(domain);
@@ -374,7 +377,11 @@ async function autoFix(domainObj, prevStatus) {
     const zoneId = await pauseCloudflareZone(domain);
     if (zoneId) {
       console.log(`[AutoFix] Pause CF ${domain} OK`);
-      sendLineAlert(`Auto-fix: Pause Cloudflare ${domain} (CF ${code}) traffic to origin`);
+      sendTelegram(`☁️ <b>Auto-Fix: Pause Cloudflare สำเร็จ!</b>
+🌐 โดเมน: <code>${domain}</code>
+⚡ Error: CF ${code}
+✅ Traffic ไป Origin โดยตรงแล้ว
+🕐 ${new Date().toLocaleString('th-TH')}`);
       fixed = true;
       let attempts = 0;
       const iv = setInterval(async () => {
@@ -394,7 +401,12 @@ async function autoFix(domainObj, prevStatus) {
     }
   }
 
-  if (isNewDown && !fixed) sendLineAlert(`${domain} is down (${domainObj.error || 'HTTP ' + code})`);
+  if (isNewDown && !fixed) sendTelegram(`🚨 <b>โดเมนล่ม!</b>
+🌐 โดเมน: <code>${domain}</code>
+❌ สาเหตุ: ${domainObj.error || 'HTTP ' + code}
+⏱️ Response: ${domainObj.responseTime}ms
+🕐 เวลา: ${new Date().toLocaleString('th-TH')}
+👨‍💻 ไม่สามารถแก้อัตโนมัติได้ กรุณาตรวจสอบ`);
 }
 
 // ===== PLESK UNSUSPEND =====
@@ -443,12 +455,46 @@ async function cfRequest(method, cfPath, body = null) {
 async function pauseCloudflareZone(domain) {
   if (!CF_API_TOKEN) return null;
   try {
-    const zones = await cfRequest('GET', `/zones?name=${domain}`);
-    if (!zones?.result?.length) return null;
-    const zoneId = zones.result[0].id;
-    const r = await cfRequest('PATCH', `/zones/${zoneId}`, { paused: true });
-    return r?.success ? zoneId : null;
-  } catch { return null; }
+    // ลองหา zone หลายวิธี
+    const domainVariants = [
+      domain,
+      domain.replace(/^www\./, ''), // ตัด www ออก
+      domain.split('.').slice(-2).join('.'), // เอาแค่ root domain เช่น example.com
+    ];
+    
+    for (const d of [...new Set(domainVariants)]) {
+      console.log(`[CF] หา zone สำหรับ ${d}...`);
+      const zones = await cfRequest('GET', `/zones?name=${d}&status=active`);
+      if (zones?.result?.length) {
+        const zoneId = zones.result[0].id;
+        console.log(`[CF] พบ zone ${zoneId} สำหรับ ${d}`);
+        const r = await cfRequest('PATCH', `/zones/${zoneId}`, { paused: true });
+        if (r?.success) return zoneId;
+      }
+    }
+    
+    // ลองดึง zone ทั้งหมดแล้วค้นหา
+    console.log(`[CF] ลองดึง zones ทั้งหมด...`);
+    const allZones = await cfRequest('GET', '/zones?per_page=100&status=active');
+    if (allZones?.result?.length) {
+      const rootDomain = domain.split('.').slice(-2).join('.');
+      const match = allZones.result.find(z => 
+        z.name === domain || z.name === rootDomain || domain.endsWith('.' + z.name)
+      );
+      if (match) {
+        console.log(`[CF] พบ zone ${match.id} (${match.name}) จากรายการทั้งหมด`);
+        const r = await cfRequest('PATCH', `/zones/${match.id}`, { paused: true });
+        if (r?.success) return match.id;
+      }
+      console.log(`[CF] Zones ที่มี:`, allZones.result.map(z => z.name).join(', '));
+    }
+    
+    console.log(`[CF] ไม่พบ zone สำหรับ ${domain}`);
+    return null;
+  } catch(e) { 
+    console.error(`[CF] Error:`, e.message);
+    return null; 
+  }
 }
 
 async function unpauseCloudflareZone(domain, zoneId) {
@@ -720,7 +766,11 @@ async function handleRequest(req, res) {
         memoryDomains[idx].pleskActive = true;
         memoryDomains[idx].pleskStatus = 0;
         actions.push('Unsuspend Plesk สำเร็จ');
-        sendTelegram(`Auto-fix: Unsuspend ${domain} via Plesk OK`);
+        sendTelegram(`🔧 <b>Auto-Fix สำเร็จ!</b>
+🌐 โดเมน: <code>${domain}</code>
+⚡ การดำเนินการ: Unsuspend ผ่าน Plesk
+✅ สถานะ: เปิดใช้งานแล้ว
+🕐 เวลา: ${new Date().toLocaleString('th-TH')}`)
       } else {
         actions.push('Unsuspend Plesk ไม่สำเร็จ');
       }
@@ -731,13 +781,20 @@ async function handleRequest(req, res) {
       const zoneId = await pauseCloudflareZone(domain);
       if (zoneId) {
         actions.push('Pause Cloudflare สำเร็จ');
-        sendTelegram(`Auto-fix: Pause CF ${domain} (${domainObj.statusCode})`);
+        sendTelegram(`☁️ <b>Auto-Fix Cloudflare!</b>
+🌐 โดเมน: <code>${domain}</code>
+⚡ การดำเนินการ: Pause Cloudflare (Error ${domainObj.statusCode})
+✅ Traffic ไป Origin โดยตรงแล้ว
+🕐 เวลา: ${new Date().toLocaleString('th-TH')}`);
         // Unpause หลัง 10 นาทีถ้าเว็บกลับมา
         setTimeout(async () => {
           const r = await checkDomain(domain);
           if (r.status === 'up') {
             await unpauseCloudflareZone(domain, zoneId);
-            sendTelegram(`${domain} กลับมาปกติแล้ว Unpause CF แล้ว`);
+            sendTelegram(`✅ <b>โดเมนกลับมาแล้ว!</b>
+🌐 โดเมน: <code>${domain}</code>
+☁️ Unpause Cloudflare แล้ว
+🕐 ${new Date().toLocaleString('th-TH')}`);
           }
           const i = memoryDomains.findIndex(d => d.domain === domain);
           if (i !== -1) { Object.assign(memoryDomains[i], r); await saveToSheets(memoryDomains); }
