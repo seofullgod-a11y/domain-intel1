@@ -887,6 +887,7 @@ function renderDomainTable() {
               <div class="action-group">
                 <button class="action-btn" title="ดูรายละเอียด" onclick="viewDetail('${d.domain}')"><i class="fa-solid fa-eye"></i></button>
                 <button class="action-btn" title="เช็คสถานะ" onclick="checkOne('${d.domain}')"><i class="fa-solid fa-rotate"></i></button>
+                ${d.status === 'down' ? `<button class="action-btn" title="Auto-fix (Unsuspend Plesk + Pause CF)" onclick="autoFixDomain('${d.domain}')" style="color:var(--amber);border-color:var(--amber)"><i class="fa-solid fa-wand-magic-sparkles"></i></button>` : ''}
                 <button class="action-btn" title="Sync GSC" onclick="syncGSCOne('${d.domain}')"><i class="fa-brands fa-google"></i></button>
                 <button class="action-btn danger" title="ลบ" onclick="deleteDomain('${d.domain}')"><i class="fa-solid fa-trash"></i></button>
               </div>
@@ -1078,6 +1079,20 @@ async function deleteDomain(domain) {
   applyFilters(); renderQuickTable();
   const stats = calcStats(allDomains);
   updateSidebar(stats); updateStats(stats, {});
+}
+
+async function autoFixDomain(domain) {
+  toast(`Auto-fix กำลังทำงานสำหรับ ${domain}...`, 'info');
+  try {
+    const res = await fetch(`${API}/api/autofix/${encodeURIComponent(domain)}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      toast(`Auto-fix ${domain}: ${data.message}`, 'success');
+      setTimeout(loadData, 5000);
+    } else {
+      toast(data.error || 'Auto-fix ไม่สำเร็จ', 'error');
+    }
+  } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
 }
 
 async function checkOne(domain) {
