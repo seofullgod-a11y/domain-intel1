@@ -814,6 +814,67 @@ function parseCSV(text) {
 }
 
 // ===== ROUTER =====
+// ===== SERVER HEALTH (Plesk API) =====
+
+async function getServerStats(srv) {
+  try {
+    // ดึงข้อมูล server info
+    const serverInfo = await pleskRequest('GET', '/server', null, srv);
+    
+    // ดึงข้อมูล statistics
+    const stats = await pleskRequest('GET', '/server/statistics', null, srv);
+    
+    // ดึง services status
+    const services = await pleskRequest('GET', '/server/services', null, srv);
+
+    return {
+      name: srv.name,
+      host: srv.host,
+      connected: true,
+      hostname: serverInfo?.data?.hostname,
+      version: serverInfo?.data?.panel_version,
+      stats: stats?.data || null,
+      services: services?.data || null,
+    };
+  } catch(e) {
+    return { name: srv.name, host: srv.host, connected: false, error: e.message };
+  }
+}
+
+async function restartService(srv, serviceName) {
+  try {
+    console.log(`[Server] Restart ${serviceName} on ${srv.name}...`);
+    // Plesk API: POST /server/services/{name}/restart
+    const result = await pleskRequest('POST', `/server/services/${serviceName}/restart`, null, srv);
+    if (result?.status === 200) {
+      sendTelegram(`🔄 Restart ${serviceName} บน ${srv.name} สำเร็จ`);
+      return { success: true };
+    }
+    return { success: false, error: result?.data };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ตรวจสอบ server health ทุก 5 นาที
+async function checkServerHealth() {
+  for (const srv of PLESK_SERVERS) {
+    try {
+      const services = await pleskRequest('GET', '/server/services', null, srv);
+      if (!services?.data) continue;
+      
+      const stopped = (services.data || []).filter(s => s.status !== 'running' && s.status !== 'active');
+      for (const svc of stopped) {
+        console.log(`[Health] ${srv.name}: ${svc.name} หยุดทำงาน! กำลัง restart...`);
+        sendTelegram(`⚠️ <b>${srv.name}</b>: service <code>${svc.name}</code> หยุดทำงาน\nกำลัง restart อัตโนมัติ...`);
+        await restartService(srv, svc.name);
+      }
+    } catch(e) {
+      console.error(`[Health] ${srv.name}:`, e.message);
+    }
+  }
+}
+
 async function handleRequest(req, res) {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
   const url = req.url.split('?')[0];
@@ -1098,6 +1159,45 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Server Health
+  if (req.method === 'GET' && url === '/api/server/health') {
+    const results = await Promise.all(PLESK_SERVERS.map(srv => getServerStats(srv)));
+    json(res, { servers: results });
+    return;
+  }
+
+  if (req.method === 'GET' && url.startsWith('/api/server/stats/')) {
+    const serverName = decodeURIComponent(url.split('/api/server/stats/')[1]);
+    const srv = PLESK_SERVERS.find(s => s.name === serverName || s.host === serverName);
+    if (!srv) { json(res, { error: 'ไม่พบ server' }, 404); return; }
+    const result = await getServerStats(srv);
+    json(res, result);
+    return;
+  }
+
+  if (req.method === 'POST' && url.startsWith('/api/server/restart/')) {
+    const parts = url.split('/api/server/restart/')[1].split('/');
+    const serverName = decodeURIComponent(parts[0]);
+    const serviceName = decodeURIComponent(parts[1] || 'httpd');
+    const srv = PLESK_SERVERS.find(s => s.name === serverName || s.host === serverName);
+    if (!srv) { json(res, { error: 'ไม่พบ server' }, 404); return; }
+    const result = await restartService(srv, serviceName);
+    json(res, result);
+    return;
+  }
+
+  if (req.method === 'GET' && url.startsWith('/api/server/logs/')) {
+    const serverName = decodeURIComponent(url.split('/api/server/logs/')[1]);
+    const srv = PLESK_SERVERS.find(s => s.name === serverName || s.host === serverName);
+    if (!srv) { json(res, { error: 'ไม่พบ server' }, 404); return; }
+    try {
+      // ดึง event log จาก Plesk
+      const logs = await pleskRequest('GET', '/eventlog?count=50', null, srv);
+      json(res, { logs: logs?.data || [] });
+    } catch(e) { json(res, { error: e.message }, 500); }
+    return;
+  }
+
   if (req.method === 'GET') {
     const filePath = url === '/' ? '/public/index.html' : `/public${url}`;
     const fullPath = path.join(__dirname, filePath);
@@ -1132,5 +1232,6 @@ server.listen(PORT, async () => {
 
   setInterval(checkAllDomains, CHECK_INTERVAL_MS);
   setInterval(() => syncPleskDomains(), PLESK_SYNC_INTERVAL_MS);
+  setInterval(checkServerHealth, CHECK_INTERVAL_MS); // ตรวจ server health ทุก 5 นาที
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
 });
