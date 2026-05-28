@@ -308,6 +308,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="topbar-sub" id="dash-subtitle">โหลดข้อมูล...</div>
         </div>
         <div class="topbar-right">
+          <button class="btn" onclick="syncPlesk()" id="plesk-sync-btn"><i class="fa-solid fa-server"></i> Sync Plesk</button>
           <button class="btn" onclick="checkAllNow()"><i class="fa-solid fa-rotate"></i> เช็คทุกโดเมน</button>
           <button class="btn" onclick="syncGSCAll()"><i class="fa-brands fa-google"></i> Sync GSC</button>
           <button class="btn btn-green" onclick="openAddModal()"><i class="fa-solid fa-plus"></i> เพิ่มโดเมน</button>
@@ -321,7 +322,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="metric-card highlight-amber"><div class="metric-label"><i class="fa-solid fa-triangle-exclamation"></i> Warning</div><div class="metric-val amber" id="stat-warn">—</div><div class="metric-sub">ตอบสนองช้า / error</div></div>
           <div class="metric-card highlight-green"><div class="metric-label"><i class="fa-solid fa-chart-bar"></i> มีทราฟฟิค (GSC)</div><div class="metric-val green" id="stat-traffic">—</div><div class="metric-sub" id="stat-clicks">—</div></div>
           <div class="metric-card highlight-amber"><div class="metric-label"><i class="fa-solid fa-ban"></i> ไม่มีทราฟฟิค</div><div class="metric-val amber" id="stat-notraffic">—</div><div class="metric-sub">0 คลิกใน 30 วัน</div></div>
-          <div class="metric-card highlight-red"><div class="metric-label"><i class="fa-solid fa-calendar-xmark"></i> หมดอายุใน 30 วัน</div><div class="metric-val red" id="stat-expiring">—</div><div class="metric-sub">ต้องต่ออายุด่วน</div></div>
+          <div class="metric-card highlight-red"><div class="metric-label"><i class="fa-solid fa-calendar-xmark"></i> SSL หมดอายุใน 30 วัน</div><div class="metric-val red" id="stat-expiring">—</div><div class="metric-sub">ต้องต่ออายุด่วน</div></div>
+          <div class="metric-card highlight-green"><div class="metric-label"><i class="fa-solid fa-server"></i> Plesk Active</div><div class="metric-val green" id="stat-plesk-active">—</div><div class="metric-sub" id="stat-plesk-host">—</div></div>
+          <div class="metric-card highlight-red"><div class="metric-label"><i class="fa-solid fa-ban"></i> Plesk Suspended</div><div class="metric-val red" id="stat-plesk-suspended">—</div><div class="metric-sub">โดเมนถูกระงับ</div></div>
           <div class="metric-card"><div class="metric-label"><i class="fa-solid fa-eye"></i> Total Impressions</div><div class="metric-val" id="stat-impressions">—</div><div class="metric-sub">30 วันล่าสุด</div></div>
         </div>
 
@@ -691,15 +694,22 @@ function updateStats(stats, extra) {
   set('stat-notraffic', stats.noTraffic.toLocaleString());
   set('stat-expiring', stats.expiringIn30.toLocaleString());
   set('stat-impressions', stats.totalImpressions.toLocaleString());
+  set('stat-plesk-active', (stats.pleskActive ?? '—').toLocaleString());
+  set('stat-plesk-suspended', (stats.pleskSuspended ?? '—').toLocaleString());
+  set('stat-plesk-host', extra.pleskHost ? extra.pleskHost.replace('interesting-panini.','') : 'ยังไม่เชื่อมต่อ');
   set('stat-up-pct', stats.total > 0 ? `${Math.round(stats.up/stats.total*100)}% ของทั้งหมด` : '—');
   set('stat-clicks', `${stats.totalClicks.toLocaleString()} คลิกรวม`);
   set('stat-last', extra.lastUpdated ? `อัพเดต ${timeAgo(extra.lastUpdated)}` : 'Demo Mode');
-  set('dash-subtitle', `${stats.total} โดเมน · Down ${stats.down} · หมดอายุ ${stats.expiringIn30}`);
-  // GSC banner
+  set('dash-subtitle', `${stats.total} โดเมน · Down ${stats.down} · Plesk ${stats.pleskActive ?? 0} active`);
+  const pleskBtn = document.getElementById('plesk-sync-btn');
+  if (pleskBtn) pleskBtn.style.display = extra.pleskConnected ? 'inline-flex' : 'none';
   const bannerWrap = document.getElementById('gsc-banner-wrap');
-  if (bannerWrap && stats.withTraffic === 0 && stats.total > 0) {
-    bannerWrap.innerHTML = `<div class="gsc-banner"><div class="gsc-banner-icon">🔗</div><div class="gsc-banner-text"><h3>เชื่อมต่อ Google Search Console</h3><p>ยังไม่มีข้อมูล GSC — ตั้งค่า API เพื่อดู Traffic, Clicks และ Keyword Rankings</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="fa-solid fa-gear"></i> ตั้งค่า GSC</button></div></div>`;
-  } else if (bannerWrap) bannerWrap.innerHTML = '';
+  if (bannerWrap) {
+    let banners = '';
+    if (extra.pleskConnected && stats.total === 0) banners += `<div class="gsc-banner" style="margin-bottom:10px"><div class="gsc-banner-icon">🔄</div><div class="gsc-banner-text"><h3>Plesk เชื่อมต่อแล้ว</h3><p>กด Sync Plesk เพื่อดึงโดเมนทั้งหมดจาก ${extra.pleskHost}</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="syncPlesk()"><i class="fa-solid fa-server"></i> Sync Plesk</button></div></div>`;
+    if (stats.withTraffic === 0 && stats.total > 0) banners += `<div class="gsc-banner"><div class="gsc-banner-icon">🔗</div><div class="gsc-banner-text"><h3>เชื่อมต่อ Google Search Console</h3><p>ตั้งค่า API เพื่อดู Traffic, Clicks และ Keyword Rankings</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="fa-solid fa-gear"></i> ตั้งค่า GSC</button></div></div>`;
+    bannerWrap.innerHTML = banners;
+  }
 }
 
 // ===== FILTERS =====
@@ -795,10 +805,18 @@ function kwBadge(d) {
 }
 
 function expiryCell(d) {
-  if (d.daysLeft === null || d.daysLeft === undefined) return '<span style="color:var(--text3);font-size:12px">—</span>';
-  const label = d.daysLeft < 0 ? 'หมดแล้ว' : d.daysLeft === 0 ? 'วันนี้' : `${d.daysLeft} วัน`;
-  const cls = d.daysLeft <= 7 ? 'expiry-danger' : d.daysLeft <= 30 ? 'expiry-warn' : 'expiry-ok';
-  return `<span class="${cls}">${label}</span>`;
+  const days = d.sslDaysLeft !== null && d.sslDaysLeft !== undefined ? d.sslDaysLeft : (d.daysLeft !== null && d.daysLeft !== undefined ? d.daysLeft : null);
+  if (days === null) return '<span style="color:var(--text3);font-size:12px">—</span>';
+  const label = days < 0 ? 'หมดแล้ว' : days === 0 ? 'วันนี้' : `${days} วัน`;
+  const cls = days <= 7 ? 'expiry-danger' : days <= 30 ? 'expiry-warn' : 'expiry-ok';
+  const icon = days <= 30 ? '⚠️ ' : '🔒 ';
+  return `<span class="${cls}">${icon}${label}</span>`;
+}
+
+function pleskBadge(d) {
+  if (!d.pleskId) return '<span style="color:var(--text3);font-size:11px">—</span>';
+  if (d.pleskActive) return '<span class="badge badge-up" style="font-size:10px"><i class="fa-solid fa-circle-check"></i> Active</span>';
+  return '<span class="badge badge-down" style="font-size:10px"><i class="fa-solid fa-ban"></i> Suspended</span>';
 }
 
 function renderDomainTable() {
@@ -818,11 +836,12 @@ function renderDomainTable() {
           <tr>
             <th><input type="checkbox" onchange="selectAll(this)" style="accent-color:var(--green)" /></th>
             <th data-sort="domain" onclick="sortBy('domain')">โดเมน</th>
-            <th data-sort="status" onclick="sortBy('status')">สถานะ</th>
+            <th data-sort="status" onclick="sortBy('status')">สถานะ HTTP</th>
+            <th>Plesk</th>
             <th data-sort="clicks" onclick="sortBy('clicks')">Traffic (GSC)</th>
             <th>Clicks / Imp</th>
             <th data-sort="keywords" onclick="sortBy('keywords')">Keywords</th>
-            <th data-sort="daysLeft" onclick="sortBy('daysLeft')">หมดอายุ</th>
+            <th data-sort="sslDaysLeft" onclick="sortBy('sslDaysLeft')">SSL</th>
             <th>จัดการ</th>
           </tr>
         </thead>
@@ -835,6 +854,7 @@ function renderDomainTable() {
               ${d.tags?.length ? `<div style="margin-top:3px">${d.tags.map(t=>`<span style="background:var(--bg4);color:var(--text3);font-size:10px;padding:1px 5px;border-radius:3px;margin-right:3px">${t}</span>`).join('')}</div>` : ''}
             </td>
             <td>${statusBadge(d)}</td>
+            <td>${pleskBadge(d)}</td>
             <td>${trafficBar(d)}</td>
             <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${d.gsc ? `${d.gsc.clicks.toLocaleString()} / ${d.gsc.impressions.toLocaleString()}` : '—'}</td>
             <td>${kwBadge(d)}</td>
@@ -1075,6 +1095,18 @@ async function syncGSCAll() {
     setTimeout(loadData, 5000);
     toast('Sync กำลังทำงาน background', 'success');
   } catch { toast('ต้องตั้งค่า GSC API ก่อน', 'error'); }
+}
+
+async function syncPlesk() {
+  toast('กำลัง Sync โดเมนจาก Plesk...', 'info');
+  try {
+    const res = await fetch(`${API}/api/plesk/sync`, { method:'POST' });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+    toast('Sync Plesk สำเร็จ — กำลังเช็คสถานะโดเมน...', 'success');
+    setTimeout(loadData, 4000);
+    setTimeout(loadData, 10000);
+  } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
 }
 
 // ===== IMPORT =====
