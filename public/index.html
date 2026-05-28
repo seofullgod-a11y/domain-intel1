@@ -90,6 +90,12 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .metric-card.highlight-green { border-color: rgba(34,208,122,0.25); }
 .metric-card.highlight-red { border-color: rgba(240,82,82,0.25); }
 .metric-card.highlight-amber { border-color: rgba(245,158,11,0.25); }
+.metric-card.clickable { cursor: pointer; transition: all 0.15s; }
+.metric-card.clickable:hover { transform: translateY(-2px); border-color: var(--border2); background: var(--bg3); }
+.metric-card.clickable:hover .metric-label { color: var(--text); }
+.metric-card.clickable::after { content: '→'; position: absolute; bottom: 12px; right: 14px; font-size: 12px; color: var(--text3); opacity: 0; transition: opacity 0.15s; }
+.metric-card.clickable { position: relative; }
+.metric-card.clickable:hover::after { opacity: 1; }
 .metric-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
 .metric-val { font-size: 28px; font-weight: 600; color: var(--text); font-family: var(--mono); }
 .metric-val.green { color: var(--green); }
@@ -316,15 +322,15 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
       <div class="content">
         <div class="metrics-grid">
-          <div class="metric-card"><div class="metric-label"><i class="fa-solid fa-globe"></i> โดเมนทั้งหมด</div><div class="metric-val blue" id="stat-total">—</div><div class="metric-sub" id="stat-last">—</div></div>
-          <div class="metric-card highlight-green"><div class="metric-label"><i class="fa-solid fa-circle-check"></i> Up</div><div class="metric-val green" id="stat-up">—</div><div class="metric-sub" id="stat-up-pct">—</div></div>
-          <div class="metric-card highlight-red"><div class="metric-label"><i class="fa-solid fa-circle-xmark"></i> Down</div><div class="metric-val red" id="stat-down">—</div><div class="metric-sub">ต้องตรวจสอบด่วน</div></div>
-          <div class="metric-card highlight-amber"><div class="metric-label"><i class="fa-solid fa-triangle-exclamation"></i> Warning</div><div class="metric-val amber" id="stat-warn">—</div><div class="metric-sub">ตอบสนองช้า / error</div></div>
-          <div class="metric-card highlight-green"><div class="metric-label"><i class="fa-solid fa-chart-bar"></i> มีทราฟฟิค (GSC)</div><div class="metric-val green" id="stat-traffic">—</div><div class="metric-sub" id="stat-clicks">—</div></div>
-          <div class="metric-card highlight-amber"><div class="metric-label"><i class="fa-solid fa-ban"></i> ไม่มีทราฟฟิค</div><div class="metric-val amber" id="stat-notraffic">—</div><div class="metric-sub">0 คลิกใน 30 วัน</div></div>
-          <div class="metric-card highlight-red"><div class="metric-label"><i class="fa-solid fa-calendar-xmark"></i> SSL หมดอายุใน 30 วัน</div><div class="metric-val red" id="stat-expiring">—</div><div class="metric-sub">ต้องต่ออายุด่วน</div></div>
-          <div class="metric-card highlight-green"><div class="metric-label"><i class="fa-solid fa-server"></i> Plesk Active</div><div class="metric-val green" id="stat-plesk-active">—</div><div class="metric-sub" id="stat-plesk-host">—</div></div>
-          <div class="metric-card highlight-red"><div class="metric-label"><i class="fa-solid fa-ban"></i> Plesk Suspended</div><div class="metric-val red" id="stat-plesk-suspended">—</div><div class="metric-sub">โดเมนถูกระงับ</div></div>
+          <div class="metric-card clickable" onclick="goToFilter('all')"><div class="metric-label"><i class="fa-solid fa-globe"></i> โดเมนทั้งหมด</div><div class="metric-val blue" id="stat-total">—</div><div class="metric-sub" id="stat-last">—</div></div>
+          <div class="metric-card highlight-green clickable" onclick="goToFilter('up')"><div class="metric-label"><i class="fa-solid fa-circle-check"></i> Up</div><div class="metric-val green" id="stat-up">—</div><div class="metric-sub" id="stat-up-pct">—</div></div>
+          <div class="metric-card highlight-red clickable" onclick="goToFilter('down')"><div class="metric-label"><i class="fa-solid fa-circle-xmark"></i> Down</div><div class="metric-val red" id="stat-down">—</div><div class="metric-sub">ต้องตรวจสอบด่วน</div></div>
+          <div class="metric-card highlight-amber clickable" onclick="goToFilter('warn')"><div class="metric-label"><i class="fa-solid fa-triangle-exclamation"></i> Warning</div><div class="metric-val amber" id="stat-warn">—</div><div class="metric-sub">ตอบสนองช้า / error</div></div>
+          <div class="metric-card highlight-green clickable" onclick="goToFilter('traffic')"><div class="metric-label"><i class="fa-solid fa-chart-bar"></i> มีทราฟฟิค (GSC)</div><div class="metric-val green" id="stat-traffic">—</div><div class="metric-sub" id="stat-clicks">—</div></div>
+          <div class="metric-card highlight-amber clickable" onclick="goToFilter('notraffic')"><div class="metric-label"><i class="fa-solid fa-ban"></i> ไม่มีทราฟฟิค</div><div class="metric-val amber" id="stat-notraffic">—</div><div class="metric-sub">0 คลิกใน 30 วัน</div></div>
+          <div class="metric-card highlight-red clickable" onclick="goToFilter('expiring')"><div class="metric-label"><i class="fa-solid fa-calendar-xmark"></i> SSL หมดอายุใน 30 วัน</div><div class="metric-val red" id="stat-expiring">—</div><div class="metric-sub">ต้องต่ออายุด่วน</div></div>
+          <div class="metric-card highlight-green clickable" onclick="goToFilter('plesk-active')"><div class="metric-label"><i class="fa-solid fa-server"></i> Plesk Active</div><div class="metric-val green" id="stat-plesk-active">—</div><div class="metric-sub" id="stat-plesk-host">—</div></div>
+          <div class="metric-card highlight-red clickable" onclick="goToFilter('plesk-suspended')"><div class="metric-label"><i class="fa-solid fa-ban"></i> Plesk Suspended</div><div class="metric-val red" id="stat-plesk-suspended">—</div><div class="metric-sub">โดเมนถูกระงับ</div></div>
           <div class="metric-card"><div class="metric-label"><i class="fa-solid fa-eye"></i> Total Impressions</div><div class="metric-val" id="stat-impressions">—</div><div class="metric-sub">30 วันล่าสุด</div></div>
         </div>
 
@@ -1231,6 +1237,68 @@ function showPageFiltered(page, filter) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   const tabEl = document.querySelector(`[onclick="setDomainTab('${filter}',this)"]`);
   if (tabEl) tabEl.classList.add('active');
+  applyFilters();
+}
+
+function goToFilter(type) {
+  // reset filters ก่อน
+  const si = document.getElementById('search-input');
+  const fs = document.getElementById('filter-status');
+  const ft = document.getElementById('filter-traffic');
+  const fe = document.getElementById('filter-expiry');
+  if (si) si.value = '';
+  if (fs) fs.value = '';
+  if (ft) ft.value = '';
+  if (fe) fe.value = '';
+  currentTab = 'all';
+
+  // map แต่ละ type ไปหา filter ที่ถูกต้อง
+  const tabMap = { down: 'down', warn: 'warn', notraffic: 'notraffic', expiring: 'expiring', traffic: 'ranked' };
+  const statusMap = { up: 'up', down: 'down', warn: 'warn' };
+  const trafficMap = { traffic: 'high', notraffic: 'none' };
+
+  showPage('domains');
+
+  if (type === 'all') {
+    currentTab = 'all';
+  } else if (type === 'up') {
+    if (fs) fs.value = 'up';
+  } else if (type === 'down') {
+    currentTab = 'down';
+  } else if (type === 'warn') {
+    currentTab = 'warn';
+  } else if (type === 'notraffic') {
+    currentTab = 'notraffic';
+  } else if (type === 'traffic') {
+    currentTab = 'ranked';
+  } else if (type === 'expiring') {
+    currentTab = 'expiring';
+  } else if (type === 'plesk-active') {
+    currentTab = 'all';
+    filteredDomains = allDomains.filter(d => d.pleskActive === true);
+    currentPage = 1;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    renderDomainTable();
+    return;
+  } else if (type === 'plesk-suspended') {
+    currentTab = 'all';
+    filteredDomains = allDomains.filter(d => d.pleskId && d.pleskActive === false);
+    currentPage = 1;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    renderDomainTable();
+    return;
+  }
+
+  // อัพเดต tab UI
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  const tabKey = { down: 'down', warn: 'warn', notraffic: 'notraffic', expiring: 'expiring', ranked: 'ranked' }[currentTab];
+  if (tabKey) {
+    const tabEl = document.querySelector(`[onclick="setDomainTab('${currentTab}',this)"]`);
+    if (tabEl) tabEl.classList.add('active');
+  } else {
+    const allTab = document.querySelector(`[onclick="setDomainTab('all',this)"]`);
+    if (allTab) allTab.classList.add('active');
+  }
   applyFilters();
 }
 
