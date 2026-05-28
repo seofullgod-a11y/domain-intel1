@@ -281,7 +281,36 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 </style>
 </head>
 <body>
-<div class="app">
+
+<!-- LOGIN PAGE -->
+<div id="login-page" style="display:none;position:fixed;inset:0;background:var(--bg1);z-index:9999;align-items:center;justify-content:center">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:40px;width:100%;max-width:400px;margin:20px">
+    <div style="text-align:center;margin-bottom:32px">
+      <div style="width:56px;height:56px;background:linear-gradient(135deg,var(--green),#34d399);border-radius:14px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center">
+        <i class="ti ti-globe" style="font-size:28px;color:#fff"></i>
+      </div>
+      <h1 style="margin:0;font-size:22px;font-weight:700">DomainIntel</h1>
+      <p style="margin:8px 0 0;color:var(--text3);font-size:13px">SEO Domain Intelligence Dashboard</p>
+    </div>
+    <div style="margin-bottom:16px">
+      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Username</label>
+      <input id="login-user" type="text" placeholder="admin" class="form-input" style="width:100%;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()" />
+    </div>
+    <div style="margin-bottom:24px">
+      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Password</label>
+      <input id="login-pass" type="password" placeholder="••••••••" class="form-input" style="width:100%;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter')doLogin()" />
+    </div>
+    <button onclick="doLogin()" class="btn btn-green" style="width:100%;padding:12px;font-size:14px;justify-content:center">
+      <i class="ti ti-login"></i> เข้าสู่ระบบ
+    </button>
+    <div id="login-error" style="display:none;color:var(--red);font-size:12px;text-align:center;margin-top:12px"></div>
+    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--text3)">DomainIntel v1.0 · Secure Access</div>
+  </div>
+</div>
+
+<div class="app" id="main-app" style="display:none">
 
   <!-- SIDEBAR -->
   <!-- Mobile Menu Button -->
@@ -338,6 +367,10 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
     </nav>
     <div class="sidebar-footer">
+      <div style="padding:8px 10px;border-bottom:1px solid var(--border);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:11px;color:var(--text3)"><i class="ti ti-user"></i> <span id="logged-user">admin</span></span>
+        <button onclick="doLogout()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px" title="ออกจากระบบ"><i class="ti ti-logout"></i> ออก</button>
+      </div>
       <div class="status-indicator">
         <div class="dot-live" id="live-dot"></div>
         <span id="server-status-text">กำลังเชื่อมต่อ...</span>
@@ -776,8 +809,50 @@ let sortKey = 'domain';
 let sortDir = 1;
 
 // ===== INIT =====
-document.addEventListener('DOMContentLoaded', async () => {
-  // โหลด saved settings จาก localStorage
+// ===== LOGIN SYSTEM =====
+const LOGIN_CREDENTIALS = [
+  { user: 'admin', pass: '123456za' },
+  { user: 'willam', pass: '123456za' }
+];
+
+function checkLogin() {
+  return localStorage.getItem('di_logged_in') === 'true' &&
+    Date.now() - parseInt(localStorage.getItem('di_login_time') || '0') < 24 * 60 * 60 * 1000;
+}
+
+function doLogin() {
+  const user = document.getElementById('login-user').value.trim();
+  const pass = document.getElementById('login-pass').value;
+  const errEl = document.getElementById('login-error');
+  
+  const match = LOGIN_CREDENTIALS.find(c => c.user === user && c.pass === pass);
+  if (match) {
+    localStorage.setItem('di_logged_in', 'true');
+    localStorage.setItem('di_login_time', Date.now().toString());
+    localStorage.setItem('di_username', user);
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('main-app').style.display = 'flex';
+    errEl.style.display = 'none';
+    initApp();
+  } else {
+    errEl.style.display = 'block';
+    errEl.textContent = '❌ Username หรือ Password ไม่ถูกต้อง';
+    document.getElementById('login-pass').value = '';
+    document.getElementById('login-pass').focus();
+  }
+}
+
+function doLogout() {
+  localStorage.removeItem('di_logged_in');
+  localStorage.removeItem('di_login_time');
+  localStorage.removeItem('di_username');
+  document.getElementById('main-app').style.display = 'none';
+  document.getElementById('login-page').style.display = 'flex';
+  document.getElementById('login-user').value = '';
+  document.getElementById('login-pass').value = '';
+}
+
+async function initApp() {
   const saved = localStorage.getItem('api_url');
   const defaultUrl = window.location.origin.includes('localhost') ? 'http://localhost:8080' : window.location.origin;
   const apiUrl = saved || defaultUrl;
@@ -786,14 +861,31 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (urlEl) urlEl.value = apiUrl;
   if (!saved) localStorage.setItem('api_url', apiUrl);
 
-  // โหลด telegram settings ถ้ามี
   const tgToken = localStorage.getItem('tg_token');
   const tgChat = localStorage.getItem('tg_chat');
   if (tgToken) { const el = document.getElementById('telegram-token'); if(el) el.value = tgToken; }
   if (tgChat) { const el = document.getElementById('telegram-chat'); if(el) el.value = tgChat; }
 
+  // แสดงชื่อ user
+  const uname = localStorage.getItem('di_username') || 'admin';
+  const el = document.getElementById('logged-user');
+  if (el) el.textContent = uname;
+  
   await loadData();
-  setInterval(loadData, 60000);
+  setInterval(loadData, 30000);
+  startCountdown();
+}
+
+document.addEventListener('DOMContentLoaded', async () => {
+  if (checkLogin()) {
+    document.getElementById('login-page').style.display = 'none';
+    document.getElementById('main-app').style.display = 'flex';
+    initApp();
+  } else {
+    document.getElementById('login-page').style.display = 'flex';
+    document.getElementById('main-app').style.display = 'none';
+    setTimeout(() => document.getElementById('login-user').focus(), 100);
+  }
 });
 
 // ===== DATA =====
