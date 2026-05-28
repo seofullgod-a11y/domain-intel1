@@ -706,7 +706,14 @@ async function handleRequest(req, res) {
 
   if (req.method === 'GET' && url === '/api/domains') {
     const cfg = loadConfig();
-    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', ') });
+    // ส่ง server configs แบบ masked password
+    const pleskServerConfigs = PLESK_SERVERS.map(s => ({
+      name: s.name,
+      host: s.host,
+      user: s.user,
+      pass: s.pass // frontend จะซ่อนด้วย *** แสดงเฉพาะตอนกดค้าง
+    }));
+    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
     return;
   }
 
