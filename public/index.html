@@ -356,6 +356,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <button class="btn" onclick="syncPlesk()" id="plesk-sync-btn"><i class="ti ti-server"></i> Sync Plesk</button>
           <button class="btn" id="refresh-btn" onclick="refreshNow()"><i class="ti ti-refresh"></i> รีเฟรช</button>
           <button class="btn" onclick="checkAllNow()"><i class="ti ti-refresh"></i> เช็คทุกโดเมน</button>
+          <button class="btn" onclick="autoFixAllVisible()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)" id="autofix-all-btn"><i class="ti ti-wand"></i> Auto-fix ทั้งหมด</button>
           <button class="btn" onclick="syncGSCAll()"><i class="ti ti-brand-google"></i> Sync GSC</button>
           <button class="btn btn-green" onclick="openAddModal()"><i class="ti ti-plus"></i> เพิ่มโดเมน</button>
         </div>
@@ -1705,6 +1706,51 @@ function startCountdown() {
 function updateRefreshBtn() {
   const btn = document.getElementById('refresh-btn');
   if (btn) btn.innerHTML = `<i class="ti ti-refresh"></i> รีเฟรช <span style="opacity:0.6;font-size:11px">(${secondsLeft}s)</span>`;
+}
+
+// ===== AUTO-FIX ALL VISIBLE =====
+async function autoFixAllVisible() {
+  // ดึงโดเมนทั้งหมดในหมวดปัจจุบันที่ควรแก้ได้
+  const targets = filteredDomains.filter(d => 
+    d.status === 'down' || (d.pleskId && !d.pleskActive)
+  );
+  
+  if (!targets.length) {
+    toast('ไม่มีโดเมนที่ต้องแก้ไขในหมวดนี้', 'info');
+    return;
+  }
+
+  if (!confirm(`จะ Auto-fix ${targets.length} โดเมนในหมวดนี้ทั้งหมด ใช่ไหม?`)) return;
+
+  showProgressModal(`Auto-fix ${targets.length} โดเมน`, targets.length);
+
+  let fixed = 0, failed = 0, skipped = 0;
+  let current = 0;
+
+  for (const d of targets) {
+    current++;
+    updateProgress(current, targets.length, d.domain, 'loading', 'กำลังดำเนินการ...');
+
+    try {
+      const res = await fetch(`${API}/api/autofix/${encodeURIComponent(d.domain)}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.message !== 'ไม่พบสาเหตุที่แก้ไขอัตโนมัติได้' && !data.message.includes('Origin Server')) {
+        fixed++;
+        updateProgress(current, targets.length, d.domain, 'success', data.message);
+      } else {
+        skipped++;
+        updateProgress(current, targets.length, d.domain, 'skip', data.message || 'ข้าม');
+      }
+    } catch {
+      failed++;
+      updateProgress(current, targets.length, d.domain, 'failed', 'เชื่อมต่อ Server ไม่ได้');
+    }
+
+    updateProgressStats(fixed, failed, skipped);
+    await new Promise(r => setTimeout(r, 400));
+  }
+
+  finishProgressModal(fixed, failed, skipped);
 }
 
 // ===== GLOBAL LOADING =====
