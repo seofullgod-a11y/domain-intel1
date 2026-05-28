@@ -274,31 +274,95 @@ function checkDomain(domain) {
 
 async function checkAllDomains() {
   if (!memoryDomains.length) return;
-  console.log(`[Check] เช็ค ${memoryDomains.length} โดเมน...`);
+  console.log(`[Check] ${memoryDomains.length} domains...`);
   const BATCH = 20;
   for (let i = 0; i < memoryDomains.length; i += BATCH) {
     const batch = memoryDomains.slice(i, i + BATCH);
     const results = await Promise.all(batch.map(d => checkDomain(d.domain)));
-    results.forEach(r => {
+    for (const r of results) {
       const idx = memoryDomains.findIndex(d => d.domain === r.domain);
-      if (idx !== -1) {
-        const prev = memoryDomains[idx].status;
-        Object.assign(memoryDomains[idx], r);
-        if (prev === 'up' && r.status === 'down') sendLineAlert(`🚨 ${r.domain} ล่มแล้ว! (${r.error || ''})`);
-      }
-    });
+      if (idx === -1) continue;
+      const prev = memoryDomains[idx].status;
+      Object.assign(memoryDomains[idx], r);
+      if (r.status === 'down') await autoFix(memoryDomains[idx], prev);
+    }
   }
   await saveToSheets(memoryDomains);
-  console.log(`[Check] เสร็จแล้ว`);
+  console.log('[Check] done');
+}
+
+// ===== AUTO FIX =====
+async function autoFix(domainObj, prevStatus) {
+  const domain = domainObj.domain;
+  const code = domainObj.statusCode;
+  const isNewDown = prevStatus !== 'down';
+  let fixed = false;
+
+  // 1. Plesk Suspended -> Unsuspend อัตโนมัติ
+  if (domainObj.pleskId && !domainObj.pleskActive) {
+    console.log(`[AutoFix] Unsuspend ${domain}...`);
+    const ok = await pleskUnsuspend(domainObj.pleskId);
+    if (ok) {
+      const idx = memoryDomains.findIndex(d => d.domain === domain);
+      if (idx !== -1) { memoryDomains[idx].pleskActive = true; memoryDomains[idx].pleskStatus = 0; }
+      console.log(`[AutoFix] Unsuspend ${domain} OK`);
+      sendLineAlert(`Auto-fix: Unsuspend ${domain} via Plesk OK`);
+      fixed = true;
+      setTimeout(async () => {
+        const r = await checkDomain(domain);
+        const i = memoryDomains.findIndex(d => d.domain === domain);
+        if (i !== -1) { Object.assign(memoryDomains[i], r); await saveToSheets(memoryDomains); }
+      }, 30000);
+    } else {
+      console.log(`[AutoFix] Unsuspend ${domain} FAILED`);
+    }
+  }
+
+  // 2. CF 521/522/523/524 -> Pause Cloudflare อัตโนมัติ
+  if (CF_API_TOKEN && [521, 522, 523, 524].includes(code)) {
+    console.log(`[AutoFix] Pause CF ${domain} (${code})...`);
+    const zoneId = await pauseCloudflareZone(domain);
+    if (zoneId) {
+      console.log(`[AutoFix] Pause CF ${domain} OK`);
+      sendLineAlert(`Auto-fix: Pause Cloudflare ${domain} (CF ${code}) traffic to origin`);
+      fixed = true;
+      let attempts = 0;
+      const iv = setInterval(async () => {
+        attempts++;
+        const r = await checkDomain(domain);
+        console.log(`[AutoFix] check ${domain} #${attempts}: ${r.status}`);
+        if (r.status === 'up' || attempts >= 6) {
+          clearInterval(iv);
+          await unpauseCloudflareZone(domain, zoneId);
+          const i = memoryDomains.findIndex(d => d.domain === domain);
+          if (i !== -1) { Object.assign(memoryDomains[i], r); await saveToSheets(memoryDomains); }
+          sendLineAlert(r.status === 'up' ? `${domain} is back online` : `${domain} still down after 30min - check needed`);
+        }
+      }, 5 * 60 * 1000);
+    } else {
+      console.log(`[AutoFix] Pause CF ${domain} FAILED - zone not found`);
+    }
+  }
+
+  if (isNewDown && !fixed) sendLineAlert(`${domain} is down (${domainObj.error || 'HTTP ' + code})`);
+}
+
+// ===== PLESK UNSUSPEND =====
+async function pleskUnsuspend(pleskId) {
+  if (!PLESK_HOST || !PLESK_PASS) return false;
+  try {
+    const result = await pleskRequest('PUT', `/domains/${pleskId}`, { status: 0 });
+    return result?.status === 200;
+  } catch { return false; }
 }
 
 // ===== CLOUDFLARE =====
-async function cfRequest(method, path, body = null) {
+async function cfRequest(method, cfPath, body = null) {
   return new Promise(resolve => {
     const bodyStr = body ? JSON.stringify(body) : null;
     const headers = { 'Authorization': `Bearer ${CF_API_TOKEN}`, 'Content-Type': 'application/json' };
     if (bodyStr) headers['Content-Length'] = Buffer.byteLength(bodyStr);
-    const req = https.request({ hostname: 'api.cloudflare.com', path: `/client/v4${path}`, method, headers }, res => {
+    const req = https.request({ hostname: 'api.cloudflare.com', path: `/client/v4${cfPath}`, method, headers }, res => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
@@ -311,12 +375,29 @@ async function cfRequest(method, path, body = null) {
 
 async function pauseCloudflareZone(domain) {
   if (!CF_API_TOKEN) return null;
-  const zones = await cfRequest('GET', `/zones?name=${domain}`);
-  if (!zones?.result?.length) return null;
-  const zoneId = zones.result[0].id;
-  const result = await cfRequest('PATCH', `/zones/${zoneId}`, { paused: true });
-  return result?.success ? zoneId : null;
+  try {
+    const zones = await cfRequest('GET', `/zones?name=${domain}`);
+    if (!zones?.result?.length) return null;
+    const zoneId = zones.result[0].id;
+    const r = await cfRequest('PATCH', `/zones/${zoneId}`, { paused: true });
+    return r?.success ? zoneId : null;
+  } catch { return null; }
 }
+
+async function unpauseCloudflareZone(domain, zoneId) {
+  if (!CF_API_TOKEN) return;
+  try {
+    if (!zoneId) {
+      const zones = await cfRequest('GET', `/zones?name=${domain}`);
+      if (zones?.result?.length) zoneId = zones.result[0].id;
+    }
+    if (zoneId) {
+      await cfRequest('PATCH', `/zones/${zoneId}`, { paused: false });
+      console.log(`[CF] Unpause ${domain} done`);
+    }
+  } catch {}
+}
+
 
 // ===== LINE ALERT =====
 function sendLineAlert(message) {
