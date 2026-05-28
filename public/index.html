@@ -397,19 +397,30 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="tab" onclick="setDomainTab('ranked',this)">มี Keyword ติด <span class="tab-count" id="tab-ranked">0</span></div>
         </div>
         <!-- Bulk Action Bar (แสดงเมื่อติ๊กโดเมน) -->
-        <div id="bulk-bar" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;margin-bottom:12px;display:none;align-items:center;gap:10px;flex-wrap:wrap">
-          <span id="bulk-count" style="font-size:13px;color:var(--text2)">เลือก 0 โดเมน</span>
-          <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-sm" onclick="bulkAutoFix()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.3)">
-              <i class="ti ti-wand"></i> Auto-fix ทั้งหมดที่เลือก
+        <div id="bulk-bar" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;margin-bottom:12px;display:none;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <span id="bulk-count" style="font-size:13px;color:var(--text2)">เลือก 0 โดเมน</span>
+            <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn-sm" onclick="bulkAutoFix()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.3)">
+                <i class="ti ti-wand"></i> Auto-fix ทั้งหมดที่เลือก
+              </button>
+              <button class="btn btn-sm" onclick="bulkCheck()" style="background:var(--blue-dim);color:var(--blue);border-color:rgba(96,165,250,0.3)">
+                <i class="ti ti-refresh"></i> เช็คสถานะ
+              </button>
+              <button class="btn btn-sm btn-red" onclick="bulkDelete()">
+                <i class="ti ti-trash"></i> ลบ
+              </button>
+              <button class="btn btn-sm btn-ghost" onclick="clearSelection()">ยกเลิก</button>
+            </div>
+          </div>
+          <!-- Select all filtered banner -->
+          <div id="select-all-banner" style="display:none;background:var(--blue-dim);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--blue);display:none;align-items:center;gap:8px">
+            <i class="ti ti-info-circle"></i>
+            <span id="select-all-banner-text">เลือกแค่ 25 โดเมนในหน้านี้</span>
+            <button onclick="selectAllFiltered()" style="background:var(--blue);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:var(--font-sans)" id="select-all-btn">
+              เลือกทั้งหมด <span id="select-all-count">0</span> โดเมน
             </button>
-            <button class="btn btn-sm" onclick="bulkCheck()" style="background:var(--blue-dim);color:var(--blue);border-color:rgba(96,165,250,0.3)">
-              <i class="ti ti-refresh"></i> เช็คสถานะ
-            </button>
-            <button class="btn btn-sm btn-red" onclick="bulkDelete()">
-              <i class="ti ti-trash"></i> ลบ
-            </button>
-            <button class="btn btn-sm btn-ghost" onclick="clearSelection()">ยกเลิก</button>
+            <button onclick="clearSelection()" style="background:transparent;border:none;color:var(--blue);cursor:pointer;font-size:11px;text-decoration:underline">ยกเลิก</button>
           </div>
         </div>
         <div id="domain-table-wrap"></div>
@@ -710,6 +721,10 @@ async function loadData() {
     const domainsData = await domainsRes.json();
     const stats = await statsRes.json();
     allDomains = domainsData.domains || [];
+    // เก็บ server configs สำหรับแสดง credentials
+    if (domainsData.pleskServerConfigs) {
+      window._pleskServers = domainsData.pleskServerConfigs;
+    }
     updateSidebar(stats);
     updateStats(stats, domainsData);
     applyFilters();
@@ -922,6 +937,65 @@ function expiryCell(d) {
   return `<span class="${cls}">${icon}${label}</span>`;
 }
 
+function serverInfoCell(d) {
+  if (!d.pleskHost && !d.pleskServer) return '<span style="color:var(--text3);font-size:11px">—</span>';
+  
+  // หา server config จาก pleskHost
+  const srv = getServerConfig(d.pleskHost);
+  const ip = d.pleskHost || '—';
+  const user = srv?.user || 'admin';
+  const pass = srv?.pass || '—';
+  const name = d.pleskServer || 'Server';
+  const uid = `srv-${d.domain.replace(/[^a-z0-9]/g,'-')}`;
+  
+  return `<div style="font-size:11px">
+    <div style="display:flex;align-items:center;gap:4px;margin-bottom:3px">
+      <span style="background:var(--blue-dim);color:var(--blue);padding:1px 6px;border-radius:3px;font-size:10px">${name}</span>
+      <span style="font-family:var(--mono);color:var(--text2)">${ip}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:4px">
+      <span style="color:var(--text3)">user:</span>
+      <span style="font-family:var(--mono);color:var(--text2)">${user}</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:4px;margin-top:2px">
+      <span style="color:var(--text3)">pass:</span>
+      <span id="pass-${uid}" style="font-family:var(--mono);color:var(--text3);cursor:pointer;user-select:none" 
+        onmousedown="showPass('${uid}','${btoa(pass)}')" 
+        onmouseup="hidePass('${uid}')" 
+        onmouseleave="hidePass('${uid}')"
+        ontouchstart="showPass('${uid}','${btoa(pass)}')"
+        ontouchend="hidePass('${uid}')"
+        title="กดค้างเพื่อดู password">
+        <span class="pass-dots">••••••••</span>
+      </span>
+      <button onclick="copyPass('${btoa(pass)}')" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:0 2px" title="copy password">
+        <i class="ti ti-copy" style="font-size:11px"></i>
+      </button>
+    </div>
+  </div>`;
+}
+
+function getServerConfig(host) {
+  // ดึงจาก PLESK_SERVERS ที่ฝังไว้
+  const servers = window._pleskServers || [];
+  return servers.find(s => s.host === host);
+}
+
+function showPass(uid, b64) {
+  const el = document.getElementById(`pass-${uid}`);
+  if (el) el.querySelector('.pass-dots').textContent = atob(b64);
+}
+
+function hidePass(uid) {
+  const el = document.getElementById(`pass-${uid}`);
+  if (el) el.querySelector('.pass-dots').textContent = '••••••••';
+}
+
+function copyPass(b64) {
+  navigator.clipboard.writeText(atob(b64));
+  toast('Copy password แล้ว', 'success');
+}
+
 function pleskBadge(d) {
   if (!d.pleskId) return '<span style="color:var(--text3);font-size:11px">—</span>';
   if (d.pleskActive) return '<span class="badge badge-up" style="font-size:10px"><i class="ti ti-circle-check"></i> Active</span>';
@@ -945,6 +1019,7 @@ function renderDomainTable() {
           <tr>
             <th><input type="checkbox" onchange="selectAll(this)" style="accent-color:var(--green)" /></th>
             <th data-sort="domain" onclick="sortBy('domain')">โดเมน</th>
+            <th>โฮส</th>
             <th data-sort="status" onclick="sortBy('status')">สถานะ HTTP</th>
             <th>Plesk</th>
             <th data-sort="clicks" onclick="sortBy('clicks')">Traffic (GSC)</th>
@@ -1378,25 +1453,56 @@ async function testLineAlert() {
 // ===== NAVIGATION =====
 // ===== BULK ACTIONS =====
 function getSelectedDomains() {
+  if (selectAllFiltered) return filteredDomains.map(d => d.domain);
   return [...document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]:checked')]
     .map(cb => cb.getAttribute('data-domain')).filter(Boolean);
 }
 
 function updateBulkBar() {
-  const selected = getSelectedDomains();
+  const selected = selectAllFiltered ? filteredDomains.map(d => d.domain) : getSelectedDomains();
   const bar = document.getElementById('bulk-bar');
   const count = document.getElementById('bulk-count');
-  if (selected.length > 0) {
+  const banner = document.getElementById('select-all-banner');
+  const allBtn = document.getElementById('select-all-btn');
+  const allCount = document.getElementById('select-all-count');
+  const bannerText = document.getElementById('select-all-banner-text');
+
+  if (selected.length > 0 || selectAllFiltered) {
     bar.style.display = 'flex';
-    count.textContent = `เลือก ${selected.length} โดเมน`;
+    if (selectAllFiltered) {
+      count.textContent = `เลือกทั้งหมด ${filteredDomains.length} โดเมน ✓`;
+      banner.style.display = 'none';
+    } else {
+      count.textContent = `เลือก ${selected.length} โดเมน`;
+      // แสดง banner "เลือกทั้งหมด" ถ้าเลือกครบหน้า
+      const pageCount = document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]:checked').length;
+      const totalFiltered = filteredDomains.length;
+      if (pageCount > 0 && totalFiltered > pageCount && !selectAllFiltered) {
+        banner.style.display = 'flex';
+        bannerText.textContent = `เลือกแค่ ${pageCount} โดเมนในหน้านี้`;
+        if (allCount) allCount.textContent = totalFiltered;
+      } else {
+        banner.style.display = 'none';
+      }
+    }
   } else {
     bar.style.display = 'none';
+    banner.style.display = 'none';
+    selectAllFiltered = false;
   }
 }
 
 function clearSelection() {
+  selectAllFiltered = false;
   document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c => c.checked = false);
   document.querySelectorAll('#domain-table-wrap thead input[type=checkbox]').forEach(c => c.checked = false);
+  updateBulkBar();
+}
+
+function selectAllFiltered() {
+  selectAllFiltered = true;
+  // ติ๊ก checkbox ทุกอันในหน้าปัจจุบัน
+  document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c => c.checked = true);
   updateBulkBar();
 }
 
@@ -1539,6 +1645,7 @@ async function bulkDelete() {
 }
 
 let currentPageName = 'dashboard';
+let selectAllFiltered = false; // ติ๊กทุกโดเมนในตัวกรองปัจจุบัน
 let countdownInterval = null;
 let secondsLeft = 30;
 
@@ -1685,6 +1792,7 @@ function toast(msg, type='info') {
 }
 
 function selectAll(cb) {
+  selectAllFiltered = false;
   document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c => c.checked = cb.checked);
   updateBulkBar();
 }
