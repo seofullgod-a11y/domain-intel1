@@ -693,7 +693,7 @@ async function handleRequest(req, res) {
 
   if (req.method === 'GET' && url === '/api/domains') {
     const cfg = loadConfig();
-    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: !!(PLESK_HOST && PLESK_PASS), pleskHost: PLESK_HOST });
+    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', ') });
     return;
   }
 
@@ -715,7 +715,7 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === 'POST' && url === '/api/plesk/sync') {
-    if (!PLESK_HOST || !PLESK_PASS) { json(res, { error: 'ไม่มี Plesk credentials' }, 400); return; }
+    if (!PLESK_SERVERS.length) { json(res, { error: 'ไม่มี Plesk credentials' }, 400); return; }
     syncPleskDomains().catch(console.error);
     json(res, { success: true, message: 'กำลัง sync โดเมนจาก Plesk...' });
     return;
@@ -817,7 +817,7 @@ async function handleRequest(req, res) {
       const safe = JSON.parse(JSON.stringify(cfg));
       if (safe.gsc?.clientSecret) safe.gsc.clientSecret = '***';
       if (safe.alerts?.lineToken) safe.alerts.lineToken = safe.alerts.lineToken.slice(0, 8) + '...';
-      json(res, { ...safe, pleskHost: PLESK_HOST, pleskConnected: !!(PLESK_HOST && PLESK_PASS), sheetsConnected: !!(SHEET_ID && SERVICE_ACCOUNT?.client_email) });
+      json(res, { ...safe, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskConnected: PLESK_SERVERS.length > 0, pleskServers: PLESK_SERVERS.length, sheetsConnected: !!(SHEET_ID && SERVICE_ACCOUNT?.client_email) });
     } else {
       const body = await parseBody(req);
       const cfg = loadConfig();
@@ -972,8 +972,8 @@ server.listen(PORT, async () => {
   // โหลดข้อมูลจาก Sheets ตอน start
   await initSheets();
 
-  if (PLESK_HOST && PLESK_PASS && memoryDomains.length === 0) {
-    console.log('[Plesk] ไม่มีข้อมูล — sync อัตโนมัติ...');
+  if (PLESK_SERVERS.length > 0 && memoryDomains.length === 0) {
+    console.log('[Plesk] ไม่มีข้อมูล — sync อัตโนมัติจาก ' + PLESK_SERVERS.length + ' servers...');
     await syncPleskDomains();
   }
 
