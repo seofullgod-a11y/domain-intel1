@@ -14,6 +14,8 @@ const PLESK_USER = process.env.PLESK_USER || 'admin';
 const PLESK_PASS = process.env.PLESK_PASS || '';
 const SHEET_ID = process.env.GOOGLE_SHEET_ID || '';
 const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
+const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TG_CHAT = process.env.TELEGRAM_CHAT_ID || '';
 
 // Parse Google Service Account from env
 let SERVICE_ACCOUNT = null;
@@ -399,14 +401,32 @@ async function unpauseCloudflareZone(domain, zoneId) {
 }
 
 
-// ===== LINE ALERT =====
+// ===== TELEGRAM ALERT =====
 function sendLineAlert(message) {
-  const cfg = loadConfig();
-  if (!cfg.alerts?.lineToken) return;
-  const body = `message=${encodeURIComponent(message)}`;
-  const req = https.request({ hostname: 'notify-api.line.me', path: '/api/notify', method: 'POST', headers: { 'Authorization': `Bearer ${cfg.alerts.lineToken}`, 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) } }, () => {});
-  req.on('error', () => {});
-  req.write(body); req.end();
+  sendTelegram(message);
+}
+
+function sendTelegram(message) {
+  const token = TG_TOKEN || loadConfig().alerts?.telegramToken;
+  const chatId = TG_CHAT || loadConfig().alerts?.telegramChatId;
+  if (!token || !chatId) return;
+  const body = JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' });
+  const req = https.request({
+    hostname: 'api.telegram.org',
+    path: `/bot${token}/sendMessage`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  }, res => {
+    let data = '';
+    res.on('data', c => data += c);
+    res.on('end', () => {
+      const r = JSON.parse(data || '{}');
+      if (!r.ok) console.error('[Telegram] Error:', r.description);
+    });
+  });
+  req.on('error', err => console.error('[Telegram] Error:', err.message));
+  req.write(body);
+  req.end();
 }
 
 // ===== CONFIG (local file — เล็กพอ) =====
@@ -608,6 +628,13 @@ async function handleRequest(req, res) {
       saveConfig(cfg);
       json(res, { success: true });
     }
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/test-alert') {
+    const body = await parseBody(req);
+    sendTelegram(body.message || 'DomainIntel Test Alert');
+    json(res, { success: true });
     return;
   }
 
