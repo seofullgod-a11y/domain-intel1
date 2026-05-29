@@ -2360,6 +2360,48 @@ async function unsuspendAllServers() {
   finishProgressModal(fixed, failed, 0);
 }
 
+function renderSSLExpiry() {
+  const list = document.getElementById('ssl-expiry-list');
+  const count = document.getElementById('ssl-expiry-count');
+  if (!list) return;
+  const expiring = allDomains
+    .filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30 && d.sslDaysLeft >= 0)
+    .sort((a,b) => a.sslDaysLeft - b.sslDaysLeft);
+  if (count) count.textContent = expiring.length + ' โดเมน';
+  if (!expiring.length) {
+    list.innerHTML = '<div style="color:var(--green);font-size:13px;text-align:center;padding:12px"><i class="ti ti-circle-check"></i> ไม่มี SSL ที่ใกล้หมดอายุ</div>';
+    return;
+  }
+  list.innerHTML = expiring.map(d => {
+    const color = d.sslDaysLeft <= 7 ? 'var(--red)' : d.sslDaysLeft <= 14 ? 'var(--amber)' : 'var(--text2)';
+    const urgency = d.sslDaysLeft <= 7 ? '🔴' : d.sslDaysLeft <= 14 ? '⚠️' : '🔒';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px">'
+      + '<div><span style="font-family:var(--mono);font-size:12px">'+d.domain+'</span>'
+      + '<span style="font-size:11px;color:var(--text3);margin-left:8px">'+(d.pleskServer||'—')+'</span></div>'
+      + '<div style="color:'+color+';font-size:12px;font-weight:600">'+urgency+' '+d.sslDaysLeft+' วัน ('+(d.sslExpiry||'—')+')</div>'
+      + '</div>';
+  }).join('');
+}
+
+function renderDomainHealthSummary() {
+  const el = document.getElementById('domain-health-summary');
+  if (!el) return;
+  const servers = [...new Set(allDomains.map(d => d.pleskServer).filter(Boolean))];
+  el.innerHTML = servers.map(srv => {
+    const domains = allDomains.filter(d => d.pleskServer === srv);
+    const upPct = domains.length ? Math.round(domains.filter(d=>d.status==='up').length / domains.length * 100) : 0;
+    const barColor = upPct >= 90 ? 'var(--green)' : upPct >= 70 ? 'var(--amber)' : 'var(--red)';
+    return '<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:14px">'
+      + '<div style="font-size:12px;font-weight:600;margin-bottom:8px">'+srv+'</div>'
+      + '<div style="display:flex;align-items:center;gap:8px">'
+      + '<div style="flex:1;background:var(--bg4);border-radius:4px;overflow:hidden;height:8px">'
+      + '<div style="width:'+upPct+'%;background:'+barColor+';height:100%;border-radius:4px;transition:width 0.5s"></div>'
+      + '</div><span style="font-size:12px;color:'+barColor+';font-weight:600;min-width:36px">'+upPct+'%</span></div>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:6px">'+domains.filter(d=>d.status==='up').length+'/'+domains.length+' โดเมน Up</div>'
+      + '</div>';
+  }).join('');
+}
+
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebar-overlay');
