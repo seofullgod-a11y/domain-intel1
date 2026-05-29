@@ -1201,16 +1201,16 @@ async function handleRequest(req, res) {
   if (req.method === 'GET' && url.startsWith('/api/agent/commands')) {
     const params = new URLSearchParams(url.split('?')[1] || '');
     const host = params.get('host') || '';
-    // normalize: replace dots and spaces with underscore
-    const normalize = s => s.replace(/[.\s]/g, '_');
-    const serverKey = normalize(host);
-    // fallback: find by any matching key
+    // normalize dots to underscores
+    const toKey = s => s.replace(/\.+/g, '_');
+    const hostKey = toKey(host);
+    // search all keys
     const allKeys = Object.keys(agentCommands);
-    const matchKey = allKeys.find(k => k === serverKey || normalize(k) === serverKey) || serverKey;
+    const matchKey = allKeys.find(k => k === hostKey || toKey(k) === hostKey) || hostKey;
     const cmds = agentCommands[matchKey] || [];
     const pending = cmds.filter(c => c.status === 'pending');
     pending.forEach(c => c.status = 'sent');
-    console.log(`[Agent] ${host} (key:${matchKey}) ดึง ${pending.length} คำสั่ง`);
+    console.log('[Agent] '+host+' key='+matchKey+' found='+pending.length);
     json(res, { commands: pending.map(c => ({ id: c.id, cmd: c.cmd })) });
     return;
   }
