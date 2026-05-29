@@ -1253,6 +1253,16 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Debug agent queue
+  if (req.method === 'GET' && url === '/api/agent/debug') {
+    json(res, { 
+      commands: agentCommands, 
+      results: Object.keys(agentResults),
+      servers: PLESK_SERVERS.map(s => ({ name: s.name, host: s.host, key: s.host.replace(/\./g,'_') }))
+    });
+    return;
+  }
+
   // Get result by cmdId
   if (req.method === 'GET' && url.startsWith('/api/agent/result/')) {
     const cmdId = url.split('/api/agent/result/')[1];
