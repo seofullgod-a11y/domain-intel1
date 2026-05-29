@@ -834,7 +834,7 @@ async function getServerStats(srv) {
       hostname: serverInfo?.data?.hostname,
       version: serverInfo?.data?.panel_version,
       stats: stats?.data || null,
-      services: services?.data || null,
+      services: Array.isArray(services?.data) ? services.data : Array.isArray(services) ? services : [],
     };
   } catch(e) {
     return { name: srv.name, host: srv.host, connected: false, error: e.message };
@@ -863,7 +863,9 @@ async function checkServerHealth() {
       const services = await pleskRequest('GET', '/server/services', null, srv);
       if (!services?.data) continue;
       
-      const stopped = (services.data || []).filter(s => s.status !== 'running' && s.status !== 'active');
+      const svcList = Array.isArray(services?.data) ? services.data : 
+                     Array.isArray(services) ? services : [];
+      const stopped = svcList.filter(s => s.status !== 'running' && s.status !== 'active');
       for (const svc of stopped) {
         console.log(`[Health] ${srv.name}: ${svc.name} หยุดทำงาน! กำลัง restart...`);
         sendTelegram(`⚠️ <b>${srv.name}</b>: service <code>${svc.name}</code> หยุดทำงาน\nกำลัง restart อัตโนมัติ...`);
@@ -889,8 +891,13 @@ function queueCommand(serverHost, command) {
 }
 
 async function runOnServer(serverName, command) {
-  const srv = PLESK_SERVERS.find(s => s.name === serverName || s.host === serverName);
-  if (!srv) throw new Error('ไม่พบ server: ' + serverName);
+  const srv = PLESK_SERVERS.find(s => 
+    s.name === serverName || 
+    s.host === serverName ||
+    s.name.toLowerCase() === serverName.toLowerCase() ||
+    s.name.toLowerCase().replace(/\s+/g,'') === serverName.toLowerCase().replace(/\s+/g,'')
+  );
+  if (!srv) throw new Error('ไม่พบ server: ' + serverName + ' (available: ' + PLESK_SERVERS.map(s=>s.name).join(', ') + ')');
   const serverKey = srv.host.replace(/\./g, '_');
   const cmdId = queueCommand(srv.host, command);
   
