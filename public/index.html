@@ -2276,23 +2276,23 @@ async function sendAgentCommand(serverName, command) {
 }
 
 function parseServerStats(srv, output) {
-  const o = output || '';
-  const load = (o.match(/LOAD:([\d.]+)/) || [])[1] || '?';
-  const ramUsed = (o.match(/RAM:(\d+)\//) || [])[1] || 0;
-  const ramTotal = (o.match(/RAM:\d+\/(\d+)/) || [])[1] || 1;
-  const diskUsed = (o.match(/DISK:([^\/]+)\//) || [])[1] || '?';
-  const diskTotal = (o.match(/DISK:[^\/]+\/([^:]+)/) || [])[1] || '?';
-  const diskPct = parseInt((o.match(/DISK:[^:]+:(\d+)%/) || [])[1] || 0);
+  const o = (output || '').replace(/~/g, ' ');
+  
+  const load = parseFloat((o.match(/LOAD:([\d.]+)/) || [])[1] || 0);
+  const ramUsed = parseInt((o.match(/RAMU:(\d+)/) || [])[1] || 0);
+  const ramTotal = parseInt((o.match(/RAMT:(\d+)/) || [])[1] || 1);
+  const diskPct = parseInt((o.match(/DISKPCT:(\d+)/) || [])[1] || 0);
+  const diskUsed = (o.match(/DISKUSED:(\S+)/) || [])[1] || '?';
+  const diskTotal = (o.match(/DISKTOTAL:(\S+)/) || [])[1] || '?';
   const apache = parseInt((o.match(/APACHE:(\d+)/) || [])[1] || 0);
   const phpfpm = parseInt((o.match(/PHPFPM:(\d+)/) || [])[1] || 0);
   const ramPct = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
-  const loadNum = parseFloat(load) || 0;
+  
+  console.log('[parseServerStats]', srv.name, 'load:', load, 'ram:', ramUsed+'/'+ramTotal, 'disk:', diskPct+'%', 'raw:', o.slice(0,100));
   
   return {
-    ...srv,
-    connected: true,
-    load: loadNum,
-    ramUsed, ramTotal, ramPct,
+    ...srv, connected: true,
+    load, ramUsed, ramTotal, ramPct,
     diskUsed, diskTotal, diskPct,
     apache, phpfpm
   };
@@ -2541,15 +2541,7 @@ function updateActionModal(icon, title, output, done = false) {
 async function updateServerCardStats(serverName) {
   const srv = (window._pleskServers || []).find(s => s.name === serverName);
   if (!srv) return;
-  const statCmd = [
-    'L=$(cat /proc/loadavg | cut -d" " -f1)',
-    'MU=$(free -m | awk "NR==2{print $3}")',
-    'MT=$(free -m | awk "NR==2{print $2}")',
-    'D=$(df / | tail -1 | awk "{print $5}" | tr -d "%")',
-    'A=$(ps aux | grep httpd | grep -v grep | wc -l)',
-    'P=$(ps aux | grep php-fpm | grep -v grep | wc -l)',
-    'echo LOAD:$L RAM:$MU/$MT DISK:$D APACHE:$A PHPFPM:$P'
-  ].join('; ');
+  const statCmd = 'L=$(cat /proc/loadavg | cut -d" " -f1); MU=$(free -m | grep Mem | tr -s " " | cut -d" " -f3); MT=$(free -m | grep Mem | tr -s " " | cut -d" " -f2); DP=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); DU=$(df -h / | tail -1 | tr -s " " | cut -d" " -f3); DT=$(df -h / | tail -1 | tr -s " " | cut -d" " -f2); A=$(ps aux | grep httpd | grep -v grep | wc -l); P=$(ps aux | grep php-fpm | grep -v grep | wc -l); echo "LOAD:$L RAMU:$MU RAMT:$MT DISKPCT:$DP DISKUSED:$DU DISKTOTAL:$DT APACHE:$A PHPFPM:$P"';
   try {
     const cmdId = await sendAgentCommand(serverName, statCmd);
     if (!cmdId) return;
