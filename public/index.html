@@ -2055,7 +2055,24 @@ function showPage(name) {
   if (name === 'dashboard') renderQuickTable();
   if (name === 'traffic') renderTrafficPage();
   if (name === 'keywords') renderKeywordsPage();
-  if (name === 'server-manager') refreshServerHealth();
+  if (name === 'server-manager') {
+    if (!window._pleskServers || window._pleskServers.length === 0) {
+      loadData().then(() => refreshServerHealth());
+    } else {
+      refreshServerHealth();
+    }
+    // Auto-update every 60s while on this page
+    if (window._smAutoRefresh) clearInterval(window._smAutoRefresh);
+    window._smAutoRefresh = setInterval(() => {
+      if (currentPageName === 'server-manager') {
+        (window._pleskServers || []).forEach(srv => updateServerCardStats(srv.name));
+      } else {
+        clearInterval(window._smAutoRefresh);
+      }
+    }, 60000);
+  } else {
+    if (window._smAutoRefresh) { clearInterval(window._smAutoRefresh); window._smAutoRefresh = null; }
+  }
 }
 
 function showPageFiltered(page, filter) {
@@ -2174,7 +2191,7 @@ let autofixLog = [];
 async function refreshServerHealth() {
   const btn = document.getElementById('sm-refresh-btn');
   if (btn) { btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...'; btn.disabled = true; }
-  showLoading('🖥️ กำลังโหลด Server Manager...', 'ดึงข้อมูลจากทุก Server');
+  // Loading shown via button state only - no popup block
   
   // แสดงข้อมูลจาก allDomains ทันที ไม่รอ Agent
   const servers = window._pleskServers || [];
@@ -2199,8 +2216,6 @@ async function refreshServerHealth() {
   renderDomainHealthSummary();
   
   if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
-  hideLoading();
-  
   // Fetch agent stats in background - update each card when ready
   servers.forEach(async (srv) => {
     try {
