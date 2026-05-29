@@ -2457,30 +2457,105 @@ async function serverAction(serverName, action) {
   
   if (!confirm(`${actionNames[action]} บน ${serverName}?`)) return;
   
-  toast(`⏳ กำลัง ${actionNames[action]} บน ${serverName}...`, 'info');
+  showActionModal(serverName, actionNames[action]);
   addActionLog(serverName, actionNames[action], 'pending');
   
   try {
     const cmdId = await sendAgentCommand(serverName, cmd);
-    if (!cmdId) { toast('❌ Agent ไม่ตอบสนอง', 'error'); return; }
-    
-    // รอผล
-    for (let i = 0; i < 80; i++) {
-      await new Promise(r => setTimeout(r, 500));
+    if (!cmdId) {
+      updateActionModal('❌', 'Agent ไม่ตอบสนอง', 'ตรวจสอบ Scheduled Task ใน Plesk', true);
+      addActionLog(serverName, actionNames[action], 'failed', 'Agent ไม่ตอบสนอง');
+      return;
+    }
+    updateActionModal('⏳', 'กำลังดำเนินการ...', 'รอผลจาก Server สูงสุด 90 วินาที');
+    for (let i = 0; i < 90; i++) {
+      await new Promise(r => setTimeout(r, 1000));
       const res = await fetch(`${API}/api/agent/result/${cmdId}`);
       const data = await res.json();
       if (data.success) {
-        toast(`✅ ${actionNames[action]} สำเร็จ บน ${serverName}`, 'success');
-        addActionLog(serverName, actionNames[action], 'success', data.output);
-        setTimeout(refreshServerHealth, 3000);
+        const output = (data.output || '').replace(/~/g, '\n').trim();
+        const ok = data.exitCode === 0;
+        updateActionModal(ok ? '✅' : '⚠️', ok ? actionNames[action]+' สำเร็จ!' : 'มีข้อผิดพลาด', output || 'เสร็จสิ้น', true);
+        addActionLog(serverName, actionNames[action], ok ? 'success' : 'failed', output);
+        setTimeout(() => updateServerCardStats(serverName), 5000);
         return;
       }
     }
-    toast('⚠️ Timeout — Agent อาจกำลังดำเนินการอยู่', 'warn');
+    updateActionModal('⏱️', 'Timeout', 'Agent ใช้เวลานานกว่าที่คาด', true);
     addActionLog(serverName, actionNames[action], 'timeout');
   } catch(e) {
-    toast('❌ Error: ' + e.message, 'error');
+    updateActionModal('❌', 'Error', e.message, true);
+    addActionLog(serverName, actionNames[action], 'failed', e.message);
   }
+}
+
+
+// Action Result Modal
+function closeActionModal() { var m = document.getElementById("action-result-modal"); if(m) m.remove(); }
+function showActionModal(serverName, action) {
+  let modal = document.getElementById('action-result-modal');
+  if (!modal) {
+    modal = document.createElement('div');
+    modal.id = 'action-result-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9000;display:flex;align-items:center;justify-content:center';
+    modal.innerHTML = '<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:32px;max-width:480px;width:90%;text-align:center">'
+      + '<div id="arm-icon" style="font-size:40px;margin-bottom:12px">⏳</div>'
+      + '<div id="arm-title" style="font-size:16px;font-weight:700;margin-bottom:8px"></div>'
+      + '<div id="arm-server" style="font-size:12px;color:var(--text3);margin-bottom:16px"></div>'
+      + '<pre id="arm-output" style="background:var(--bg3);border-radius:8px;padding:12px;font-size:11px;font-family:var(--mono);text-align:left;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-bottom:16px;display:none"></pre>'
+      + '<button id="arm-close" onclick="closeActionModal()" style="display:none" class="btn btn-green"><i class="ti ti-check"></i> ปิด</button>'
+      + '</div>';
+    document.body.appendChild(modal);
+  }
+  document.getElementById('arm-icon').textContent = '⏳';
+  document.getElementById('arm-title').textContent = 'กำลัง ' + action + '...';
+  document.getElementById('arm-server').textContent = '🖥️ ' + serverName;
+  const out = document.getElementById('arm-output');
+  if (out) { out.textContent = ''; out.style.display = 'none'; }
+  const closeBtn = document.getElementById('arm-close');
+  if (closeBtn) closeBtn.style.display = 'none';
+  modal.style.display = 'flex';
+}
+
+function updateActionModal(icon, title, output, done = false) {
+  const modal = document.getElementById('action-result-modal');
+  if (!modal) return;
+  const iconEl = document.getElementById('arm-icon');
+  const titleEl = document.getElementById('arm-title');
+  const outEl = document.getElementById('arm-output');
+  const closeBtn = document.getElementById('arm-close');
+  if (iconEl) iconEl.textContent = icon;
+  if (titleEl) titleEl.textContent = title;
+  if (outEl && output) { outEl.textContent = output; outEl.style.display = 'block'; }
+  if (done && closeBtn) closeBtn.style.display = 'inline-flex';
+}
+
+async function updateServerCardStats(serverName) {
+  const srv = (window._pleskServers || []).find(s => s.name === serverName);
+  if (!srv) return;
+  const statCmd = [
+    'L=$(cat /proc/loadavg | cut -d" " -f1)',
+    'MU=$(free -m | awk "NR==2{print $3}")',
+    'MT=$(free -m | awk "NR==2{print $2}")',
+    'D=$(df / | tail -1 | awk "{print $5}" | tr -d "%")',
+    'A=$(ps aux | grep httpd | grep -v grep | wc -l)',
+    'P=$(ps aux | grep php-fpm | grep -v grep | wc -l)',
+    'echo LOAD:$L RAM:$MU/$MT DISK:$D APACHE:$A PHPFPM:$P'
+  ].join('; ');
+  try {
+    const cmdId = await sendAgentCommand(serverName, statCmd);
+    if (!cmdId) return;
+    for (let i = 0; i < 90; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const res = await fetch(`${API}/api/agent/result/${cmdId}`);
+      const data = await res.json();
+      if (data.success) {
+        const parsed = parseServerStats(srv, data.output);
+        updateServerCard(parsed);
+        return;
+      }
+    }
+  } catch(e) { console.error('[ServerStats]', e.message); }
 }
 
 async function fixAllServers() {
