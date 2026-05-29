@@ -1199,18 +1199,22 @@ async function handleRequest(req, res) {
   // Server Health
   // Agent endpoints
   if (req.method === 'GET' && url.startsWith('/api/agent/commands')) {
-    const params = new URLSearchParams(url.split('?')[1] || '');
-    const host = params.get('host') || '';
-    // normalize dots to underscores
-    const toKey = s => s.replace(/\.+/g, '_');
-    const hostKey = toKey(host);
-    // search all keys
+    // parse host from URL manually
+    const qmark = url.indexOf('?');
+    const qs = qmark >= 0 ? url.slice(qmark + 1) : '';
+    let host = '';
+    qs.split('&').forEach(p => {
+      const [k,v] = p.split('=');
+      if (k === 'host') host = decodeURIComponent(v || '');
+    });
+    const hostKey = host.replace(/\./g, '_');
+    // search all keys in agentCommands
     const allKeys = Object.keys(agentCommands);
-    const matchKey = allKeys.find(k => k === hostKey || toKey(k) === hostKey) || hostKey;
+    const matchKey = allKeys.find(k => k === hostKey) || hostKey;
     const cmds = agentCommands[matchKey] || [];
     const pending = cmds.filter(c => c.status === 'pending');
     pending.forEach(c => c.status = 'sent');
-    console.log('[Agent] '+host+' key='+matchKey+' found='+pending.length);
+    console.log('[Agent] host='+host+' key='+hostKey+' matchKey='+matchKey+' found='+pending.length+' allKeys='+allKeys.join(','));
     json(res, { commands: pending.map(c => ({ id: c.id, cmd: c.cmd })) });
     return;
   }
