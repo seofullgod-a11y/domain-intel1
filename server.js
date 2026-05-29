@@ -1195,19 +1195,18 @@ async function handleRequest(req, res) {
   if (req.method === 'GET' && url.startsWith('/api/agent/commands')) {
     const params = new URLSearchParams(url.split('?')[1] || '');
     const host = params.get('host') || '';
-    // หา server key จาก host หรือ name
-    const srv = PLESK_SERVERS.find(s => s.host === host || s.name === host || s.name.toLowerCase().replace(/\s+/g,'')=== host);
+    const srv = PLESK_SERVERS.find(s => s.host === host || s.name === host || s.name.toLowerCase().replace(/\s+/g,'') === host);
     const serverKey = srv ? srv.host.replace(/\./g, '_') : host.replace(/\./g, '_');
     const cmds = agentCommands[serverKey] || [];
     const pending = cmds.filter(c => c.status === 'pending');
-    // mark as sent
     pending.forEach(c => c.status = 'sent');
-    // ส่ง shell script กลับ
-    const script = pending.map(c => 
-      `echo "RESULT_START_${c.id}"; ${c.cmd}; echo "RESULT_END_${c.id}_EXIT_$?"`
-    ).join('\n');
-    res.writeHead(200, { 'Content-Type': 'text/plain' });
-    res.end(script || 'echo "no_commands"');
+    if (!pending.length) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ commands: [] }));
+      return;
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ commands: pending.map(c => ({ id: c.id, cmd: c.cmd })) }));
     return;
   }
 
