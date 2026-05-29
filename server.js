@@ -1387,6 +1387,292 @@ async function handleRequest(req, res) {
 
 // ===== START =====
 const server = http.createServer(handleRequest);
+
+// ===== PROACTIVE MONITOR =====
+async function proactiveMonitor() {
+  for (const srv of PLESK_SERVERS) {
+    try {
+      const statCmd2 = 'L=$(cat /proc/loadavg | cut -d" " -f1); D=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo LOAD:$L DISK:$D';
+      const cmdId = queueCommand(srv.host, statCmd2);
+      setTimeout(async () => {
+        const result = agentResults[cmdId];
+        if (!result) return;
+        delete agentResults[cmdId];
+        const output = result.output || '';
+        const load = parseFloat((output.match(/LOAD:([\d.]+)/) || [])[1] || 0);
+        const disk = parseInt((output.match(/DISK:(\d+)/) || [])[1] || 0);
+        
+        if (load > 15) {
+          sendTelegram(`⚠️ <b>Proactive Alert!</b>
+🖥️ ${srv.name}: Load Average สูง <b>${load}</b>
+กำลัง Fix อัตโนมัติ...`);
+          queueCommand(srv.host, 
+            'pkill -f "wp-toolkit" 2>/dev/null; pkill -f "auto-update" 2>/dev/null; ' +
+            'systemctl restart sw-engine; echo "Auto-fixed"'
+          );
+        }
+        if (disk > 80) {
+          sendTelegram(`⚠️ <b>Disk Warning!</b>
+🖥️ ${srv.name}: Disk ใช้ไป <b>${disk}%</b>
+กรุณาตรวจสอบ!`);
+        }
+      }, 35000);
+    } catch(e) {
+      console.error('[Proactive]', srv.name, e.message);
+    }
+  }
+}
+
+// ===== SMART STATUS CHECKER =====
+const domainDownHistory = {}; // track consecutive down counts
+
+async function smartStatusCheck() {
+  const downDomains = memoryDomains.filter(d => d.status === 'down');
+  const upDomains = memoryDomains.filter(d => d.status === 'up');
+  
+  // Re-check down domains
+  for (const domain of downDomains.slice(0, 20)) {
+    try {
+      const result = await checkDomain(domain.domain);
+      const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+      if (idx === -1) continue;
+      
+      if (result.status === 'up') {
+        // Domain recovered!
+        memoryDomains[idx].status = 'up';
+        memoryDomains[idx].statusCode = result.statusCode;
+        memoryDomains[idx].error = null;
+        memoryDomains[idx].recoveredAt = new Date().toISOString();
+        delete domainDownHistory[domain.domain];
+        sendTelegram(`✅ <b>โดเมนกลับมาแล้ว!</b>
+🌐 <code>${domain.domain}</code>
+⏱️ Response: ${result.responseTime}ms`);
+        console.log(`[Smart] ${domain.domain} recovered!`);
+      } else {
+        // Still down - increment counter
+        domainDownHistory[domain.domain] = (domainDownHistory[domain.domain] || 0) + 1;
+        // diagnose after 3 consecutive checks
+        if (domainDownHistory[domain.domain] === 3) {
+          await diagnoseDomain(memoryDomains[idx]);
+        }
+      }
+    } catch(e) {}
+    await new Promise(r => setTimeout(r, 500));
+  }
+  
+  await saveToSheets(memoryDomains);
+}
+
+async function checkDomain(domain) {
+  return new Promise(resolve => {
+    const protocol = 'https';
+    const options = {
+      hostname: domain,
+      port: 443,
+      path: '/',
+      method: 'HEAD',
+      timeout: 10000,
+      rejectUnauthorized: false,
+      headers: { 'User-Agent': 'DomainIntel-Monitor/1.0' }
+    };
+    const startTime = Date.now();
+    const req = https.request(options, res => {
+      resolve({ status: res.statusCode < 500 ? 'up' : 'down', statusCode: res.statusCode, responseTime: Date.now() - startTime });
+    });
+    req.on('error', () => resolve({ status: 'down', statusCode: 0, error: 'Connection failed' }));
+    req.on('timeout', () => { req.destroy(); resolve({ status: 'down', statusCode: 0, error: 'Timeout' }); });
+    req.end();
+  });
+}
+
+// ===== DOMAIN DIAGNOSIS =====
+const diagnosisCache = {};
+
+async function diagnoseDomain(domain) {
+  if (diagnosisCache[domain.domain] && Date.now() - diagnosisCache[domain.domain] < 30 * 60 * 1000) return;
+  diagnosisCache[domain.domain] = Date.now();
+  
+  let cause = 'unknown';
+  let fix = 'manual';
+  let autoFixed = false;
+  
+  // Check 1: Plesk Suspended
+  if (domain.pleskId && !domain.pleskActive) {
+    cause = 'plesk_suspended';
+    fix = 'auto_unsuspend';
+    const ok = await pleskUnsuspend(domain.pleskId, domain.pleskHost);
+    if (ok) {
+      autoFixed = true;
+      const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+      if (idx !== -1) memoryDomains[idx].pleskActive = true;
+    }
+  }
+  // Check 2: Cloudflare error
+  else if ([521, 522, 523, 524].includes(domain.statusCode)) {
+    cause = 'cloudflare_error';
+    fix = 'auto_pause_cf';
+    if (CF_API_TOKEN) {
+      const zoneId = await pauseCloudflareZone(domain.domain);
+      if (zoneId) autoFixed = true;
+    }
+  }
+  // Check 3: 502/503 - restart services via agent
+  else if ([502, 503].includes(domain.statusCode) && domain.pleskHost) {
+    cause = 'service_error_502_503';
+    fix = 'auto_restart_service';
+    const srv = PLESK_SERVERS.find(s => s.host === domain.pleskHost);
+    if (srv) {
+      queueCommand(srv.host, 'systemctl restart sw-engine; systemctl restart httpd 2>/dev/null; echo "Restarted"');
+      autoFixed = true;
+    }
+  }
+  // Check 4: Timeout
+  else if (domain.error && domain.error.includes('timeout')) {
+    cause = 'timeout';
+    fix = 'check_server_load';
+    const srv = PLESK_SERVERS.find(s => s.host === domain.pleskHost);
+    if (srv) queueCommand(srv.host, 'uptime');
+  }
+  // Check 5: SSL expired
+  else if (domain.sslDaysLeft !== null && domain.sslDaysLeft <= 0) {
+    cause = 'ssl_expired';
+    fix = 'renew_ssl';
+  }
+  
+  // Save diagnosis
+  const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+  if (idx !== -1) {
+    memoryDomains[idx].diagnosis = { cause, fix, autoFixed, diagnosedAt: new Date().toISOString() };
+  }
+  
+  const causeLabels = {
+    'plesk_suspended': 'Plesk Suspended',
+    'cloudflare_error': 'Cloudflare Error',
+    'service_error_502_503': '502/503 Service Error',
+    'timeout': 'Connection Timeout',
+    'ssl_expired': 'SSL หมดอายุ',
+    'unknown': 'ไม่ทราบสาเหตุ'
+  };
+  
+  const fixLabels = {
+    'auto_unsuspend': '✅ Auto-Unsuspend แล้ว',
+    'auto_pause_cf': '✅ Auto-Pause Cloudflare แล้ว',
+    'auto_restart_service': '✅ Auto-Restart Service แล้ว',
+    'check_server_load': '⚠️ ตรวจสอบ Server Load',
+    'renew_ssl': '⚠️ ต้อง Renew SSL',
+    'manual': '⚠️ ต้องแก้ไขเอง'
+  };
+  
+  sendTelegram(
+    `🔍 <b>วิเคราะห์โดเมน Down</b>
+` +
+    `🌐 <code>${domain.domain}</code>
+` +
+    `📊 Status: ${domain.statusCode || 'Timeout'}
+` +
+    `🔴 สาเหตุ: ${causeLabels[cause] || cause}
+` +
+    `🔧 การแก้ไข: ${fixLabels[fix] || fix}
+` +
+    `${autoFixed ? '✅ แก้ไขอัตโนมัติแล้ว' : '⚠️ ต้องการการแก้ไขเพิ่มเติม'}`
+  );
+  
+  console.log(`[Diagnosis] ${domain.domain}: ${cause} → ${fix} (autoFixed: ${autoFixed})`);
+}
+
+// ===== SSL AUTO RENEWAL =====
+async function checkSSLRenewal() {
+  const expiringSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0);
+  for (const domain of expiringSoon) {
+    if (domain.sslRenewNotified && Date.now() - new Date(domain.sslRenewNotified).getTime() < 24 * 60 * 60 * 1000) continue;
+    
+    const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+    if (idx !== -1) memoryDomains[idx].sslRenewNotified = new Date().toISOString();
+    
+    const urgency = domain.sslDaysLeft <= 3 ? '🚨' : domain.sslDaysLeft <= 7 ? '🔴' : '⚠️';
+    sendTelegram(
+      `${urgency} <b>SSL ใกล้หมดอายุ!</b>
+` +
+      `🌐 <code>${domain.domain}</code>
+` +
+      `📅 หมดอายุใน <b>${domain.sslDaysLeft} วัน</b> (${domain.sslExpiry || '—'})
+` +
+      `🖥️ Server: ${domain.pleskServer || '—'}
+` +
+      `💡 กรุณา Renew SSL ใน Plesk`
+    );
+    console.log(`[SSL] ${domain.domain} expires in ${domain.sslDaysLeft} days`);
+  }
+}
+
+// ===== BLACKLIST MONITOR =====
+async function checkBlacklists() {
+  const serverIPs = [...new Set(PLESK_SERVERS.map(s => s.host))];
+  for (const ip of serverIPs) {
+    try {
+      // Check via DNS blacklist (DNSBL)
+      const reversed = ip.split('.').reverse().join('.');
+      const blacklists = ['zen.spamhaus.org', 'bl.spamcop.net', 'dnsbl.sorbs.net'];
+      for (const bl of blacklists) {
+        await new Promise((resolve, reject) => {
+          require('dns').lookup(`${reversed}.${bl}`, (err, addr) => {
+            if (!err && addr) {
+              const srv = PLESK_SERVERS.find(s => s.host === ip);
+              sendTelegram(`🚨 <b>IP Blacklisted!</b>
+🖥️ ${srv?.name || ip} (${ip})
+📋 Blacklist: ${bl}
+💡 ต้องติดต่อ provider เพื่อ delist`);
+              console.log(`[Blacklist] ${ip} found in ${bl}`);
+            }
+            resolve();
+          });
+        });
+      }
+    } catch(e) {}
+  }
+}
+
+// ===== WEEKLY REPORT =====
+let weeklyStats = { fixed: 0, checked: 0, uptime: 0, startTime: Date.now() };
+
+function updateWeeklyStats(fixed, checked) {
+  weeklyStats.fixed += fixed;
+  weeklyStats.checked += checked;
+}
+
+async function sendWeeklyReport() {
+  const upDomains = memoryDomains.filter(d => d.status === 'up').length;
+  const downDomains = memoryDomains.filter(d => d.status === 'down').length;
+  const uptimePct = memoryDomains.length ? Math.round(upDomains / memoryDomains.length * 100) : 0;
+  const sslExpiring = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30).length;
+  const uptimeHours = Math.round((Date.now() - weeklyStats.startTime) / 3600000);
+  
+  sendTelegram(
+    `📊 <b>Weekly Report — DomainIntel</b>
+
+` +
+    `🌐 โดเมนทั้งหมด: ${memoryDomains.length}
+` +
+    `✅ Up: ${upDomains} (${uptimePct}%)
+` +
+    `🔴 Down: ${downDomains}
+` +
+    `🔧 Auto-fixed: ${weeklyStats.fixed} ครั้ง
+` +
+    `🔍 เช็คทั้งหมด: ${weeklyStats.checked} ครั้ง
+` +
+    `🔒 SSL ใกล้หมด: ${sslExpiring} โดเมน
+` +
+    `⏱️ System Uptime: ${uptimeHours} ชั่วโมง
+
+` +
+    `🕐 ${new Date().toLocaleString('th-TH')}`
+  );
+  
+  // Reset stats
+  weeklyStats = { fixed: 0, checked: 0, uptime: 0, startTime: Date.now() };
+}
+
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
   console.log(`║   DomainIntel + Plesk + Google Sheets    ║`);
@@ -1403,6 +1689,12 @@ server.listen(PORT, async () => {
 
   setInterval(checkAllDomains, CHECK_INTERVAL_MS);
   setInterval(() => syncPleskDomains(), PLESK_SYNC_INTERVAL_MS);
-  setInterval(checkServerHealth, CHECK_INTERVAL_MS); // ตรวจ server health ทุก 5 นาที
+  setInterval(checkServerHealth, CHECK_INTERVAL_MS);
+  setInterval(proactiveMonitor, CHECK_INTERVAL_MS); // Proactive monitor ทุก 5 นาที
+  setInterval(smartStatusCheck, CHECK_INTERVAL_MS * 2); // Smart status check ทุก 10 นาที
+  setInterval(checkSSLRenewal, 6 * 60 * 60 * 1000); // SSL check ทุก 6 ชั่วโมง
+  setInterval(checkBlacklists, 24 * 60 * 60 * 1000); // Blacklist check ทุกวัน
+  setInterval(sendWeeklyReport, 7 * 24 * 60 * 60 * 1000); // Weekly report ทุก 7 วัน
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
+  console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
 });
