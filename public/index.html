@@ -1113,7 +1113,7 @@ function updateStats(stats, extra) {
   set('stat-last', extra.lastUpdated ? `อัพเดต ${timeAgo(extra.lastUpdated)}` : 'Demo Mode');
   set('dash-subtitle', `${stats.total} โดเมน · Down ${stats.down} · Plesk ${stats.pleskActive ?? 0} active`);
   const pleskBtn = document.getElementById('plesk-sync-btn');
-  if (pleskBtn) pleskBtn.style.display = extra.pleskConnected ? 'inline-flex' : 'none';
+  if (pleskBtn) pleskBtn.style.display = 'inline-flex'; // always show sync button
   const bannerWrap = document.getElementById('gsc-banner-wrap');
   if (bannerWrap) {
     let banners = '';
