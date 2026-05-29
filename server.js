@@ -1482,26 +1482,43 @@ async function smartStatusCheck() {
 }
 
 async function checkDomain(domain) {
-  return new Promise(resolve => {
+  const startTime = Date.now();
+  const checkedAt = new Date().toISOString();
+  
+  // Try HTTPS first, then HTTP fallback
+  const tryRequest = (useHttps) => new Promise(resolve => {
+    const mod = useHttps ? https : http;
+    const port = useHttps ? 443 : 80;
     const options = {
-      hostname: domain,
-      port: 443,
-      path: '/',
-      method: 'HEAD',
-      timeout: 8000,
-      rejectUnauthorized: false,
-      headers: { 'User-Agent': 'Mozilla/5.0' }
+      hostname: domain, port, path: '/', method: 'HEAD',
+      timeout: 8000, rejectUnauthorized: false,
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Host': domain }
     };
-    const startTime = Date.now();
-    const req = https.request(options, res => {
-      res.resume(); // drain response to free memory
+    const req = mod.request(options, res => {
+      res.resume();
+      const rt = Date.now() - startTime;
       const status = res.statusCode < 500 ? 'up' : 'down';
-      resolve({ domain, status, statusCode: res.statusCode, responseTime: Date.now() - startTime, error: null, checkedAt: new Date().toISOString() });
+      resolve({ ok: true, domain, status, statusCode: res.statusCode, responseTime: rt, error: null, checkedAt });
     });
-    req.on('error', (e) => resolve({ domain, status: 'down', statusCode: 0, error: e.message.slice(0,50), responseTime: Date.now() - startTime, checkedAt: new Date().toISOString() }));
-    req.on('timeout', () => { req.destroy(); resolve({ domain, status: 'down', statusCode: 0, error: 'Timeout', responseTime: 8000, checkedAt: new Date().toISOString() }); });
+    req.on('error', (e) => resolve({ ok: false, error: e.message.slice(0,50) }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'Timeout' }); });
     req.end();
   });
+
+  // Try HTTPS
+  const httpsResult = await tryRequest(true);
+  if (httpsResult.ok) return httpsResult;
+  
+  // Fallback to HTTP
+  const httpResult = await tryRequest(false);
+  if (httpResult.ok) return httpResult;
+  
+  // Both failed
+  return { 
+    domain, status: 'down', statusCode: 0, 
+    error: httpsResult.error || httpResult.error || 'Connection failed',
+    responseTime: Date.now() - startTime, checkedAt 
+  };
 }
 
 // ===== DOMAIN DIAGNOSIS =====
