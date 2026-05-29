@@ -2175,71 +2175,71 @@ let autofixLog = [];
 
 async function refreshServerHealth() {
   const btn = document.getElementById('sm-refresh-btn');
-  const resetBtn = () => { if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; } };
-  
   if (btn) { btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...'; btn.disabled = true; }
   
-  if (!window._pleskServers || window._pleskServers.length === 0) {
-    document.getElementById('server-cards').innerHTML = '<div style="text-align:center;padding:40px;color:var(--amber)"><i class="ti ti-refresh" style="font-size:24px;display:block;margin-bottom:12px"></i><b>ยังไม่มีข้อมูล Server</b><br><span style="font-size:12px;color:var(--text3)">กรุณา Sync Plesk ก่อน</span><br><br><button onclick="syncPlesk()" class="btn" style="margin-top:8px"><i class="ti ti-refresh"></i> Sync Plesk</button></div>';
-    resetBtn();
+  // แสดงข้อมูลจาก allDomains ทันที ไม่รอ Agent
+  const servers = window._pleskServers || [];
+  
+  if (!servers.length) {
+    document.getElementById('server-cards').innerHTML = '<div style="text-align:center;padding:40px;color:var(--amber)"><i class="ti ti-server" style="font-size:24px;display:block;margin-bottom:12px"></i><b>ยังไม่มีข้อมูล Server</b><br><span style="font-size:12px;color:var(--text3)">กรุณา Sync Plesk ก่อน</span><br><br><button onclick="syncPlesk()" class="btn" style="margin-top:8px"><i class="ti ti-refresh"></i> Sync Plesk</button></div>';
+    if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
     return;
   }
   
-  // แสดง placeholder cards ทันที
-  const servers = window._pleskServers || [];
-  document.getElementById('server-cards').innerHTML = servers.map(srv => 
-    '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;min-height:200px">'
-    + '<div style="font-weight:700;font-size:15px;margin-bottom:4px">'+srv.name+' ⏳</div>'
-    + '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:16px">'+srv.host+'</div>'
-    + '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px"><i class="ti ti-refresh ti-spin"></i> กำลังดึงข้อมูล...</div>'
-    + '</div>'
-  ).join('');
+  // Build basic stats from allDomains (instant)
+  const basicStats = servers.map(srv => ({
+    ...srv,
+    connected: null, // unknown until agent responds
+    load: null, ramUsed: 0, ramTotal: 0, ramPct: 0,
+    diskUsed: '?', diskTotal: '?', diskPct: 0,
+    apache: 0, phpfpm: 0
+  }));
   
-  try {
-    // ดึง stats จาก Agent ทีละ server แล้ว render ทันที ไม่รอทั้งหมด
-    const promises = servers.map(async (srv) => {
-      try {
-        const stats = await Promise.race([
-          fetchServerStats(srv),
-          new Promise(r => setTimeout(() => r({ ...srv, connected: false, error: 'Timeout 40s' }), 40000))
-        ]);
-        return stats;
-      } catch(e) {
-        return { ...srv, connected: false, error: e.message };
+  renderServerCards(basicStats);
+  renderSSLExpiry();
+  renderDomainHealthSummary();
+  
+  if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
+  
+  // Fetch agent stats in background - update each card when ready
+  servers.forEach(async (srv) => {
+    try {
+      const cmdId = await sendAgentCommand(srv.name, 
+        'L=$(cat /proc/loadavg | cut -d" " -f1); D=$(df / | tail -1 | awk "{print $5}" | tr -d "%"); A=$(ps aux | grep httpd | grep -v grep | wc -l); P=$(ps aux | grep php-fpm | grep -v grep | wc -l); MU=$(free -m | awk "NR==2{print $3}"); MT=$(free -m | awk "NR==2{print $2}"); echo LOAD:$L RAM:$MU/$MT DISK:$D APACHE:$A PHPFPM:$P'
+      );
+      if (!cmdId) return;
+      
+      // Poll result max 90 seconds
+      for (let i = 0; i < 90; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        const res = await fetch(`${API}/api/agent/result/${cmdId}`);
+        const data = await res.json();
+        if (data.success) {
+          const parsed = parseServerStats(srv, data.output);
+          updateServerCard(parsed);
+          return;
+        }
       }
-    });
-    
-    const serverStats = await Promise.all(promises);
-    renderServerCards(serverStats);
-    renderSSLExpiry();
-    renderDomainHealthSummary();
-  } catch(e) {
-    document.getElementById('server-cards').innerHTML = '<div style="color:var(--red);text-align:center;padding:20px"><i class="ti ti-wifi-off"></i><br>เชื่อมต่อไม่ได้: '+e.message+'<br><button onclick="refreshServerHealth()" class="btn" style="margin-top:12px"><i class="ti ti-refresh"></i> ลองใหม่</button></div>';
-  }
-  
-  resetBtn();
+      // Timeout - mark as connected but no stats
+      updateServerCard({ ...srv, connected: false, error: 'Agent timeout' });
+    } catch(e) {
+      updateServerCard({ ...srv, connected: false, error: e.message });
+    }
+  });
 }
 
-async function fetchServerStats(srv) {
-  try {
-    const statCmd = 'L=$(uptime | cut -d, -f4 | tr -d " "); echo LOAD:$L; free -m | awk \'NR==2{printf "RAM:%s/%s",$3,$2}\'; df -h / | awk \'NR==2{printf " DISK:%s/%s:%s",$3,$2,$5}\'; echo " APACHE:$(ps aux | grep httpd | grep -v grep | wc -l) PHPFPM:$(ps aux | grep php-fpm | grep -v grep | wc -l)"';
-    const cmdId = await sendAgentCommand(srv.name, statCmd);
-    if (!cmdId) return { ...srv, error: 'Agent ไม่ตอบสนอง', connected: false };
-    
-    // รอผล 35 วินาที
-    for (let i = 0; i < 70; i++) {
-      await new Promise(r => setTimeout(r, 500));
-      const res = await fetch(`${API}/api/agent/result/${cmdId}`);
-      const data = await res.json();
-      if (data.success) {
-        return parseServerStats(srv, data.output);
-      }
-    }
-    return { ...srv, error: 'Timeout', connected: false };
-  } catch(e) {
-    return { ...srv, error: e.message, connected: false };
-  }
+function updateServerCard(srv) {
+  // Re-render just this server's card
+  const allSrvData = window._currentServerStats || {};
+  allSrvData[srv.name] = srv;
+  window._currentServerStats = allSrvData;
+  
+  // Re-render all cards with updated data
+  const servers = window._pleskServers || [];
+  const stats = servers.map(s => allSrvData[s.name] || { ...s, connected: null });
+  renderServerCards(stats);
 }
+
 
 async function sendAgentCommand(serverName, command) {
   try {
