@@ -1201,11 +1201,16 @@ async function handleRequest(req, res) {
   if (req.method === 'GET' && url.startsWith('/api/agent/commands')) {
     const params = new URLSearchParams(url.split('?')[1] || '');
     const host = params.get('host') || '';
-    const srv = PLESK_SERVERS.find(s => s.host === host || s.name === host || s.name.toLowerCase().replace(/\s+/g,'') === host);
-    const serverKey = srv ? srv.host.replace(/\./g, '_') : host.replace(/\./g, '_');
-    const cmds = agentCommands[serverKey] || [];
+    // normalize: replace dots and spaces with underscore
+    const normalize = s => s.replace(/[.\s]/g, '_');
+    const serverKey = normalize(host);
+    // fallback: find by any matching key
+    const allKeys = Object.keys(agentCommands);
+    const matchKey = allKeys.find(k => k === serverKey || normalize(k) === serverKey) || serverKey;
+    const cmds = agentCommands[matchKey] || [];
     const pending = cmds.filter(c => c.status === 'pending');
     pending.forEach(c => c.status = 'sent');
+    console.log(`[Agent] ${host} (key:${matchKey}) ดึง ${pending.length} คำสั่ง`);
     json(res, { commands: pending.map(c => ({ id: c.id, cmd: c.cmd })) });
     return;
   }
