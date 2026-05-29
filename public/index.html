@@ -353,7 +353,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="showPageFiltered('domains','cannot-fix')">
         <i class="ti ti-alert-circle"></i>
         <span>แก้ไขไม่ได้</span>
-        <span class="badge" id="nav-cannotfix">0</span>
+        <span class="badge" id="nav-cannotfix"></span>
       </div>
       <div class="nav-item" onclick="showPage('diagnosis')">
         <i class="ti ti-stethoscope"></i>
@@ -365,7 +365,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
       <div class="nav-item" onclick="showPage('server-manager')">
         <i class="ti ti-server"></i> Server Manager
-        <span class="badge" id="nav-server-alerts" style="background:var(--red);color:#fff"></span>
+        <span class="badge" id="nav-server-alerts" style="background:var(--red);color:#fff;display:none"></span>
       </div>
       <div class="nav-item" onclick="showPage('settings')">
         <i class="ti ti-settings"></i> Settings
@@ -1082,9 +1082,19 @@ function timeAgo(iso) {
 }
 
 function updateSidebar(stats) {
-  document.getElementById('nav-total').textContent = stats.total;
-  document.getElementById('nav-down').textContent = stats.down;
-  document.getElementById('nav-expiring').textContent = stats.expiringIn30;
+  const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
+  set('nav-total', stats.total);
+  set('nav-down', stats.down || '');
+  set('nav-expiring', stats.expiringIn30 || '');
+  
+  // count cannot-fix (Down แต่ไม่ใช่ Suspended และไม่ใช่ CF error)
+  const cannotFixCount = typeof isCannotFix === 'function' 
+    ? allDomains.filter(d => isCannotFix(d)).length 
+    : 0;
+  set('nav-cannotfix', cannotFixCount || '');
+  
+  // server-alerts — clear ถ้าไม่มีปัญหา
+  set('nav-server-alerts', '');
 }
 
 function updateStats(stats, extra) {
@@ -2655,7 +2665,10 @@ function isCannotFix(d) {
 function updateDiagnosisNav() {
   const count = Object.values(diagnosisResults).filter(d => !d.fixed).length;
   const el = document.getElementById('nav-diagnosis');
-  if (el) el.textContent = count || '';
+  if (el) {
+    el.textContent = count > 0 ? count : '';
+    el.style.display = count > 0 ? '' : 'none';
+  }
 }
 
 // ===== SSH TERMINAL =====
