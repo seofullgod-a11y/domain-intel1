@@ -875,6 +875,37 @@ async function checkServerHealth() {
   }
 }
 
+// ===== AGENT SYSTEM =====
+const agentCommands = {}; // { server1: [{id, cmd, status}] }
+const agentResults = {};  // { commandId: result }
+
+function queueCommand(serverHost, command) {
+  const id = Date.now() + '_' + Math.random().toString(36).slice(2);
+  const serverKey = serverHost.replace(/\./g, '_');
+  if (!agentCommands[serverKey]) agentCommands[serverKey] = [];
+  agentCommands[serverKey].push({ id, cmd: command, status: 'pending', queuedAt: new Date().toISOString() });
+  console.log(`[Agent] Queue command for ${serverHost}: ${command.slice(0,60)}`);
+  return id;
+}
+
+async function runOnServer(serverName, command) {
+  const srv = PLESK_SERVERS.find(s => s.name === serverName || s.host === serverName);
+  if (!srv) throw new Error('ไม่พบ server: ' + serverName);
+  const serverKey = srv.host.replace(/\./g, '_');
+  const cmdId = queueCommand(srv.host, command);
+  
+  // รอผล max 60 วินาที
+  for (let i = 0; i < 120; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    if (agentResults[cmdId]) {
+      const result = agentResults[cmdId];
+      delete agentResults[cmdId];
+      return result;
+    }
+  }
+  throw new Error('Agent timeout - server ไม่ตอบสนอง');
+}
+
 async function handleRequest(req, res) {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
   const url = req.url.split('?')[0];
@@ -1160,6 +1191,97 @@ async function handleRequest(req, res) {
   }
 
   // Server Health
+  // Agent endpoints
+  if (req.method === 'GET' && url.startsWith('/api/agent/commands')) {
+    const params = new URLSearchParams(url.split('?')[1] || '');
+    const host = params.get('host') || '';
+    // หา server key จาก host หรือ name
+    const srv = PLESK_SERVERS.find(s => s.host === host || s.name === host || s.name.toLowerCase().replace(/\s+/g,'')=== host);
+    const serverKey = srv ? srv.host.replace(/\./g, '_') : host.replace(/\./g, '_');
+    const cmds = agentCommands[serverKey] || [];
+    const pending = cmds.filter(c => c.status === 'pending');
+    // mark as sent
+    pending.forEach(c => c.status = 'sent');
+    // ส่ง shell script กลับ
+    const script = pending.map(c => 
+      `echo "RESULT_START_${c.id}"; ${c.cmd}; echo "RESULT_END_${c.id}_EXIT_$?"`
+    ).join('\n');
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end(script || 'echo "no_commands"');
+    return;
+  }
+
+  if (req.method === 'POST' && url.startsWith('/api/agent/result')) {
+    const body = await parseBody(req);
+    const { commandId, output, exitCode, host } = body;
+    if (commandId) {
+      agentResults[commandId] = { output, exitCode, host };
+      // mark command as done
+      Object.values(agentCommands).forEach(cmds => {
+        const cmd = cmds.find(c => c.id === commandId);
+        if (cmd) { cmd.status = 'done'; cmd.result = output; }
+      });
+    }
+    json(res, { ok: true });
+    return;
+  }
+
+  // Run command on server via agent
+  if (req.method === 'POST' && url.startsWith('/api/agent/run/')) {
+    const serverName = decodeURIComponent(url.split('/api/agent/run/')[1]);
+    const body = await parseBody(req);
+    const { command } = body;
+    if (!command) { json(res, { error: 'ไม่มี command' }, 400); return; }
+    try {
+      const result = await runOnServer(serverName, command);
+      json(res, { success: true, ...result });
+    } catch(e) {
+      json(res, { success: false, error: e.message });
+    }
+    return;
+  }
+
+  // Fix all servers PHP-FPM via agent
+  if (req.method === 'POST' && url === '/api/agent/fix-phpfpm') {
+    const body = await parseBody(req);
+    const serverName = body.server || 'all';
+    const servers = serverName === 'all' ? PLESK_SERVERS : PLESK_SERVERS.filter(s => s.name === serverName);
+    const results = [];
+    for (const srv of servers) {
+      try {
+        const result = await runOnServer(srv.name, 
+          "sed -i 's/pm = ondemand/pm = static/' /etc/sw-engine/pool.d/plesk.conf 2>/dev/null; " +
+          "sed -i 's/pm.max_children = [0-9]*/pm.max_children = 40/' /etc/sw-engine/pool.d/plesk.conf 2>/dev/null; " +
+          "systemctl restart sw-engine 2>&1; echo 'Done'"
+        );
+        results.push({ server: srv.name, success: true, output: result.output });
+        sendTelegram(`✅ Fix PHP-FPM <b>${srv.name}</b> สำเร็จ`);
+      } catch(e) {
+        results.push({ server: srv.name, success: false, error: e.message });
+        sendTelegram(`❌ Fix PHP-FPM <b>${srv.name}</b> ล้มเหลว: ${e.message}`);
+      }
+    }
+    json(res, { results });
+    return;
+  }
+
+  // Get server stats via agent
+  if (req.method === 'GET' && url.startsWith('/api/agent/stats/')) {
+    const serverName = decodeURIComponent(url.split('/api/agent/stats/')[1]);
+    try {
+      const result = await runOnServer(serverName,
+        "echo CPU:$(top -bn1 | grep 'Cpu(s)' | awk '{print $2}'); " +
+        "free -m | awk 'NR==2{printf \"RAM:%s/%s\", $3,$2}'; " +
+        "df -h / | awk 'NR==2{printf \" DISK:%s/%s\", $3,$2}'; " +
+        "echo ' LOAD:'$(uptime | awk -F'load average:' '{print $2}')"
+      );
+      json(res, { success: true, stats: result.output, server: serverName });
+    } catch(e) {
+      json(res, { success: false, error: e.message });
+    }
+    return;
+  }
+
   if (req.method === 'GET' && url === '/api/server/health') {
     const results = await Promise.all(PLESK_SERVERS.map(srv => getServerStats(srv)));
     json(res, { servers: results });
