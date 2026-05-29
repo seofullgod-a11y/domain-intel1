@@ -1,6 +1,6 @@
 /**
- * DomainIntel Backend Server
- * Plesk + Google Sheets Integration
+ * DomainIntel Backend Server v2.1
+ * Plesk + Google Sheets + Agent Integration
  */
 
 const http = require('http');
