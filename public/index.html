@@ -310,6 +310,13 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
+<div id="global-loading" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;flex-direction:column;gap:16px">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:28px 36px;text-align:center;min-width:280px">
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
+      <div class="spinner" style="width:22px;height:22px;border-width:3px"></div>
+      <div id="global-loading-title" style="font-size:15px;font-weight:500;color:var(--text)">กำลังโหลด...</div>
+    </div>
+
 <div class="app" id="main-app" style="display:none">
 
   <!-- SIDEBAR -->
@@ -766,12 +773,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 </div>
 
 <!-- GLOBAL LOADING OVERLAY -->
-<div id="global-loading" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;flex-direction:column;gap:16px">
-  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:28px 36px;text-align:center;min-width:280px">
-    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
-      <div class="spinner" style="width:22px;height:22px;border-width:3px"></div>
-      <div id="global-loading-title" style="font-size:15px;font-weight:500;color:var(--text)">กำลังโหลด...</div>
-    </div>
     <div id="global-loading-sub" style="font-size:12px;color:var(--text3)">กรุณารอสักครู่</div>
     <div style="background:var(--bg4);border-radius:4px;overflow:hidden;height:4px;margin-top:14px">
       <div id="global-loading-bar" style="height:100%;background:var(--green);border-radius:4px;width:30%;animation:loadbar 1.5s ease-in-out infinite"></div>
