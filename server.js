@@ -897,12 +897,11 @@ async function runOnServer(serverName, command) {
     s.name.toLowerCase() === serverName.toLowerCase() ||
     s.name.toLowerCase().replace(/\s+/g,'') === serverName.toLowerCase().replace(/\s+/g,'')
   );
-  if (!srv) throw new Error('ไม่พบ server: ' + serverName + ' (available: ' + PLESK_SERVERS.map(s=>s.name).join(', ') + ')');
-  const serverKey = srv.host.replace(/\./g, '_');
+  if (!srv) throw new Error('ไม่พบ server: ' + serverName);
   const cmdId = queueCommand(srv.host, command);
   
-  // รอผล max 60 วินาที
-  for (let i = 0; i < 120; i++) {
+  // รอผล max 30 วินาที
+  for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 500));
     if (agentResults[cmdId]) {
       const result = agentResults[cmdId];
@@ -910,7 +909,7 @@ async function runOnServer(serverName, command) {
       return result;
     }
   }
-  throw new Error('Agent timeout - server ไม่ตอบสนอง');
+  throw new Error('Agent timeout');
 }
 
 async function handleRequest(req, res) {
@@ -1204,33 +1203,10 @@ async function handleRequest(req, res) {
     const host = params.get('host') || '';
     const srv = PLESK_SERVERS.find(s => s.host === host || s.name === host || s.name.toLowerCase().replace(/\s+/g,'') === host);
     const serverKey = srv ? srv.host.replace(/\./g, '_') : host.replace(/\./g, '_');
-    
-    // Long-polling: รอสูงสุด 25 วินาที
-    const maxWait = 25000;
-    const interval = 500;
-    let waited = 0;
-    
-    const checkCommands = () => {
-      const cmds = agentCommands[serverKey] || [];
-      const pending = cmds.filter(c => c.status === 'pending');
-      
-      if (pending.length > 0) {
-        pending.forEach(c => c.status = 'sent');
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ commands: pending.map(c => ({ id: c.id, cmd: c.cmd })) }));
-        return;
-      }
-      
-      waited += interval;
-      if (waited >= maxWait) {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ commands: [] }));
-        return;
-      }
-      setTimeout(checkCommands, interval);
-    };
-    
-    checkCommands();
+    const cmds = agentCommands[serverKey] || [];
+    const pending = cmds.filter(c => c.status === 'pending');
+    pending.forEach(c => c.status = 'sent');
+    json(res, { commands: pending.map(c => ({ id: c.id, cmd: c.cmd })) });
     return;
   }
 
@@ -1253,13 +1229,39 @@ async function handleRequest(req, res) {
   if (req.method === 'POST' && url.startsWith('/api/agent/run/')) {
     const serverName = decodeURIComponent(url.split('/api/agent/run/')[1]);
     const body = await parseBody(req);
-    const { command } = body;
+    const { command, wait } = body;
     if (!command) { json(res, { error: 'ไม่มี command' }, 400); return; }
+    const srv = PLESK_SERVERS.find(s => 
+      s.name === serverName || s.host === serverName ||
+      s.name.toLowerCase() === serverName.toLowerCase() ||
+      s.name.toLowerCase().replace(/\s+/g,'') === serverName.toLowerCase().replace(/\s+/g,'')
+    );
+    if (!srv) { json(res, { error: 'ไม่พบ server: '+serverName }, 404); return; }
+    const cmdId = queueCommand(srv.host, command);
+    if (!wait) {
+      // ตอบทันทีไม่รอผล
+      json(res, { success: true, cmdId, message: 'คำสั่งถูก queue แล้ว' });
+      return;
+    }
+    // wait=true: รอผล 30 วินาที
     try {
       const result = await runOnServer(serverName, command);
       json(res, { success: true, ...result });
     } catch(e) {
       json(res, { success: false, error: e.message });
+    }
+    return;
+  }
+
+  // Get result by cmdId
+  if (req.method === 'GET' && url.startsWith('/api/agent/result/')) {
+    const cmdId = url.split('/api/agent/result/')[1];
+    if (agentResults[cmdId]) {
+      const result = agentResults[cmdId];
+      delete agentResults[cmdId];
+      json(res, { success: true, ...result });
+    } else {
+      json(res, { success: false, pending: true });
     }
     return;
   }
