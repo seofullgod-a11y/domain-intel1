@@ -921,35 +921,102 @@ document.addEventListener('DOMContentLoaded', async () => {
 });
 
 // ===== DATA =====
+let loadDataRetries = 0;
 async function loadData() {
-  // อัพเดต live dot เป็น loading
   const dot = document.getElementById('live-dot');
+  const statusText = document.getElementById('server-status-text');
   if (dot) dot.style.background = 'var(--amber)';
+  if (statusText) statusText.textContent = 'กำลังโหลด...';
+  
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    
     const [domainsRes, statsRes] = await Promise.all([
-      fetch(`${API}/api/domains`),
-      fetch(`${API}/api/stats`)
+      fetch(`${API}/api/domains`, { signal: controller.signal }),
+      fetch(`${API}/api/stats`, { signal: controller.signal })
     ]);
+    clearTimeout(timeout);
+    
+    if (!domainsRes.ok || !statsRes.ok) throw new Error('Server error: '+domainsRes.status);
+    
     const domainsData = await domainsRes.json();
     const stats = await statsRes.json();
     allDomains = domainsData.domains || [];
+    
     if (domainsData.pleskServerConfigs) {
       window._pleskServers = domainsData.pleskServerConfigs;
     }
+    
     updateSidebar(stats);
     updateStats(stats, domainsData);
-    // อัพเดต UI เฉพาะหน้าที่กำลังดูอยู่เท่านั้น ไม่สลับหน้าเอง
     if (currentPageName === 'domains') { applyFilters(); }
     if (currentPageName === 'dashboard') renderQuickTable();
     if (currentPageName === 'traffic') renderTrafficPage();
     if (currentPageName === 'keywords') renderKeywordsPage();
     setServerStatus(true, domainsData.lastUpdated);
     if (dot) dot.style.background = 'var(--green)';
+    loadDataRetries = 0;
+    
+    // แจ้งถ้าข้อมูลว่างเปล่า (ยังไม่ได้ Sync)
+    if (allDomains.length === 0 && window._pleskServers && window._pleskServers.length > 0) {
+      showSyncPrompt();
+    }
   } catch (e) {
     setServerStatus(false);
     if (dot) dot.style.background = 'var(--red)';
+    loadDataRetries++;
+    
+    // แสดงแจ้งเตือน error
+    const isTimeout = e.name === 'AbortError';
+    const msg = isTimeout ? 'เชื่อมต่อ Server Timeout' : 'เชื่อมต่อ Server ไม่ได้';
+    showConnectionError(msg, loadDataRetries);
+    
     if (allDomains.length === 0) loadDemoData();
+    
+    // retry อัตโนมัติ
+    if (loadDataRetries < 3) {
+      setTimeout(loadData, 5000);
+    }
   }
+}
+
+function showSyncPrompt() {
+  // แสดง banner แจ้งให้ Sync Plesk
+  const existing = document.getElementById('sync-prompt-banner');
+  if (existing) return;
+  
+  const banner = document.createElement('div');
+  banner.id = 'sync-prompt-banner';
+  banner.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--amber);border-radius:var(--radius);padding:12px 20px;display:flex;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:90vw';
+  banner.innerHTML = '<i class="ti ti-refresh" style="color:var(--amber);font-size:18px"></i>'
+    + '<div><div style="font-size:13px;font-weight:600;color:var(--amber)">ยังไม่มีข้อมูลโดเมน</div>'
+    + '<div style="font-size:11px;color:var(--text3)">กด Sync Plesk เพื่อดึงข้อมูลจาก Hosting</div></div>'
+    + '<button onclick="syncPlesk();var b=document.getElementById(\'sync-prompt-banner\');if(b)b.remove()" class="btn btn-sm" style="background:var(--amber);color:#000;border:none;white-space:nowrap"><i class="ti ti-refresh"></i> Sync Plesk</button>'
+    + '<button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:4px"><i class="ti ti-x"></i></button>';
+  document.body.appendChild(banner);
+  setTimeout(() => banner.remove(), 15000);
+}
+
+let errorToastTimeout;
+function showConnectionError(msg, retries) {
+  clearTimeout(errorToastTimeout);
+  const existing = document.getElementById('connection-error-toast');
+  if (existing) existing.remove();
+  
+  const toast_el = document.createElement('div');
+  toast_el.id = 'connection-error-toast';
+  toast_el.style.cssText = 'position:fixed;bottom:80px;right:20px;background:var(--bg3);border:1px solid var(--red);border-radius:var(--radius);padding:12px 16px;display:flex;align-items:center;gap:10px;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:320px';
+  toast_el.innerHTML = '<i class="ti ti-wifi-off" style="color:var(--red);font-size:18px;flex-shrink:0"></i>'
+    + '<div>'
+    + '<div style="font-size:12px;font-weight:600;color:var(--red)">'+msg+'</div>'
+    + (retries < 3 ? '<div style="font-size:11px;color:var(--text3)">กำลังลองใหม่ครั้งที่ '+retries+'/3...</div>' 
+       : '<div style="font-size:11px;color:var(--text3)">กรุณาตรวจสอบการเชื่อมต่อ<br>แล้วกด <b>รีเฟรช</b> อีกครั้ง</div>')
+    + '</div>'
+    + (retries >= 3 ? '<button onclick="loadData();this.parentElement.remove()" class="btn btn-sm" style="white-space:nowrap"><i class="ti ti-refresh"></i> ลองใหม่</button>' : '');
+  document.body.appendChild(toast_el);
+  
+  errorToastTimeout = setTimeout(() => toast_el.remove(), retries >= 3 ? 30000 : 8000);
 }
 
 function loadDemoData() {
@@ -1494,15 +1561,18 @@ async function checkOne(domain) {
 }
 
 async function checkAllNow() {
-  showLoading('🔍 กำลังเช็คโดเมนทั้งหมด...', 'กำลังตรวจสอบสถานะ Up/Down พร้อมกัน');
+  if (allDomains.length === 0) { showSyncPrompt(); return; }
+  showLoading('🔍 กำลังเช็คโดเมนทั้งหมด...', `ตรวจสอบ ${allDomains.length} โดเมน — อาจใช้เวลา 2-5 นาที`);
   try {
-    await fetch(`${API}/api/check-all`, { method:'POST' });
+    const res = await fetch(`${API}/api/check-all`, { method:'POST' });
+    if (!res.ok) throw new Error('Server error: '+res.status);
     toast('⚙️ เริ่มเช็คโดเมนแล้ว — อัพเดตใน 30-60 วินาที', 'info');
     setTimeout(async () => { await loadData(); hideLoading(); }, 5000);
     setTimeout(loadData, 30000);
-  } catch {
+  } catch(e) {
     hideLoading();
-    toast('ต้องรัน server.js ก่อน', 'error');
+    showConnectionError('เช็คโดเมนไม่สำเร็จ: '+e.message, 3);
+    toast('เชื่อมต่อ Server ไม่ได้', 'error');
   }
 }
 
@@ -1890,13 +1960,17 @@ function updateRefreshBtn() {
 
 // ===== AUTO-FIX ALL VISIBLE =====
 async function autoFixAllVisible() {
-  // ดึงโดเมนทั้งหมดในหมวดปัจจุบันที่ควรแก้ได้
   const targets = filteredDomains.filter(d => 
     d.status === 'down' || (d.pleskId && !d.pleskActive)
   );
   
   if (!targets.length) {
     toast('ไม่มีโดเมนที่ต้องแก้ไขในหมวดนี้', 'info');
+    return;
+  }
+  
+  if (allDomains.length === 0) {
+    showSyncPrompt();
     return;
   }
 
@@ -2091,7 +2165,13 @@ let autofixLog = [];
 
 async function refreshServerHealth() {
   const btn = document.getElementById('sm-refresh-btn');
-  if (btn) btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...';
+  if (btn) { btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...'; btn.disabled = true; }
+  
+  if (!window._pleskServers || window._pleskServers.length === 0) {
+    document.getElementById('server-cards').innerHTML = '<div style="text-align:center;padding:40px;color:var(--amber)"><i class="ti ti-refresh" style="font-size:24px;display:block;margin-bottom:12px"></i><b>ยังไม่มีข้อมูล Server</b><br><span style="font-size:12px;color:var(--text3)">กรุณา Sync Plesk ก่อน</span><br><br><button onclick="syncPlesk()" class="btn" style="margin-top:8px"><i class="ti ti-refresh"></i> Sync Plesk</button></div>';
+    if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
+    return;
+  }
   
   try {
     // ดึง stats จาก Agent ทุก server
@@ -2105,7 +2185,7 @@ async function refreshServerHealth() {
     document.getElementById('server-cards').innerHTML = '<div style="color:var(--red);text-align:center;padding:20px">เชื่อมต่อไม่ได้: '+e.message+'</div>';
   }
   
-  if (btn) btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช';
+  if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
 }
 
 async function fetchServerStats(srv) {
@@ -2273,6 +2353,35 @@ function renderServerCards(servers) {
         <button onclick="serverAction('${srv.name}','fix-load')" class="btn btn-sm" style="font-size:11px;background:var(--amber-dim);color:var(--amber)"><i class="ti ti-wand"></i> Fix Load</button>
         <button onclick="serverAction('${srv.name}','kill-heavy')" class="btn btn-sm" style="font-size:11px;background:rgba(239,68,68,0.15);color:var(--red)"><i class="ti ti-skull"></i> Kill Heavy</button>
         ${srv.suspended > 0 ? `<button onclick="unsuspendServer('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:var(--green-dim);color:var(--green)"><i class="ti ti-player-play"></i> Unsuspend ${srv.suspended}</button>` : ''}
+        <button onclick="openSSHTerminal('${srv.name}','${srv.host}')" class="btn btn-sm" style="font-size:11px;background:rgba(99,102,241,0.15);color:#818cf8;border-color:rgba(99,102,241,0.3)"><i class="ti ti-terminal-2"></i> SSH Terminal</button>
+      </div>
+      <div id="ssh-terminal-${srv.name.replace(/\s+/g,'-')}" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:12px;color:#818cf8;font-weight:600"><i class="ti ti-terminal-2"></i> SSH Terminal — ${srv.name} (${srv.host})</span>
+          <button onclick="closeSSHTerminal('${srv.name}')" style="background:none;border:none;color:var(--text3);cursor:pointer"><i class="ti ti-x"></i></button>
+        </div>
+        <div id="ssh-output-${srv.name.replace(/\s+/g,'-')}" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:var(--mono);font-size:12px;color:#e6edf3;min-height:120px;max-height:300px;overflow-y:auto;margin-bottom:8px;white-space:pre-wrap;word-break:break-all">
+          <span style="color:#7d8590">root@${srv.host}:~# </span>
+        </div>
+        <div style="display:flex;gap:8px">
+          <span style="color:#818cf8;font-family:var(--mono);font-size:12px;padding:6px 0;flex-shrink:0">$</span>
+          <input type="text" id="ssh-input-${srv.name.replace(/\s+/g,'-')}" 
+            placeholder="พิมพ์คำสั่ง..." 
+            style="flex:1;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:6px 10px;color:#e6edf3;font-family:var(--mono);font-size:12px;outline:none"
+            onkeydown="if(event.key==='Enter')runSSHCommand('${srv.name}','${srv.host}',this)"
+            autocomplete="off" spellcheck="false"
+          />
+          <button onclick="runSSHCommand('${srv.name}','${srv.host}',document.getElementById('ssh-input-${srv.name.replace(/\s+/g,'-')}'))" 
+            class="btn btn-sm" style="background:#818cf8;color:#fff;border-color:#818cf8;font-size:11px">
+            <i class="ti ti-send"></i> รัน
+          </button>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px">
+          <span style="font-size:10px;color:var(--text3);margin-right:4px">Quick:</span>
+          ${['uptime','free -m','df -h','ps aux --sort=-%cpu | head -8','systemctl restart httpd','systemctl restart sw-engine','tail -20 /var/log/nginx/error.log'].map(cmd => 
+            `<button onclick="quickSSH('${srv.name}','${srv.host}','${cmd}')" style="background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--text2);cursor:pointer;font-family:var(--mono)">${cmd.length > 20 ? cmd.slice(0,20)+'...' : cmd}</button>`
+          ).join('')}
+        </div>
       </div>
       ` : `<div style="color:var(--red);text-align:center;padding:20px"><i class="ti ti-wifi-off"></i><br>${srv.error || 'Agent ไม่ตอบสนอง'}<br><small style="color:var(--text3)">ตรวจสอบ Scheduled Task ใน Plesk</small></div>`}
     </div>`;
@@ -2418,9 +2527,11 @@ function diagnoseDomainLocal(domain) {
 }
 
 async function runDiagnosisAll() {
+  if (allDomains.length === 0) { showSyncPrompt(); return; }
   const downDomains = allDomains.filter(d => d.status === 'down');
-  if (!downDomains.length) { toast('ไม่มีโดเมนที่ Down', 'info'); return; }
+  if (!downDomains.length) { toast('✅ ไม่มีโดเมนที่ Down ตอนนี้', 'info'); return; }
   
+  showLoading('🔍 กำลังวิเคราะห์โดเมน...', `วิเคราะห์ ${downDomains.length} โดเมนที่ Down`);
   toast(`⏳ กำลังวิเคราะห์ ${downDomains.length} โดเมน...`, 'info');
   
   downDomains.forEach(d => {
@@ -2440,6 +2551,7 @@ async function runDiagnosisAll() {
   
   renderDiagnosisList();
   updateDiagnosisNav();
+  hideLoading();
   toast(`✅ วิเคราะห์ครบ ${downDomains.length} โดเมน`, 'success');
 }
 
@@ -2544,6 +2656,109 @@ function updateDiagnosisNav() {
   const count = Object.values(diagnosisResults).filter(d => !d.fixed).length;
   const el = document.getElementById('nav-diagnosis');
   if (el) el.textContent = count || '';
+}
+
+// ===== SSH TERMINAL =====
+const sshHistory = {}; // { serverName: [commands] }
+const sshHistoryIdx = {};
+
+function openSSHTerminal(serverName, host) {
+  const termId = 'ssh-terminal-' + serverName.replace(/\s+/g, '-');
+  const term = document.getElementById(termId);
+  if (!term) return;
+  
+  const isOpen = term.style.display !== 'none';
+  term.style.display = isOpen ? 'none' : 'block';
+  
+  if (!isOpen) {
+    const input = document.getElementById('ssh-input-' + serverName.replace(/\s+/g, '-'));
+    if (input) setTimeout(() => input.focus(), 100);
+  }
+}
+
+function closeSSHTerminal(serverName) {
+  const termId = 'ssh-terminal-' + serverName.replace(/\s+/g, '-');
+  const term = document.getElementById(termId);
+  if (term) term.style.display = 'none';
+}
+
+async function runSSHCommand(serverName, host, inputEl) {
+  const cmd = inputEl.value.trim();
+  if (!cmd) return;
+  
+  const outputId = 'ssh-output-' + serverName.replace(/\s+/g, '-');
+  const output = document.getElementById(outputId);
+  if (!output) return;
+  
+  // Add to history
+  if (!sshHistory[serverName]) sshHistory[serverName] = [];
+  sshHistory[serverName].push(cmd);
+  sshHistoryIdx[serverName] = sshHistory[serverName].length;
+  
+  // Show command in terminal
+  output.innerHTML += '\n<span style="color:#7d8590">root@' + host + ':~# </span><span style="color:#e6edf3">' + escapeHtml(cmd) + '</span>\n';
+  output.innerHTML += '<span style="color:#7d8590;font-style:italic">⏳ กำลังรัน...</span>';
+  output.scrollTop = output.scrollHeight;
+  inputEl.value = '';
+  inputEl.disabled = true;
+  
+  try {
+    // Send command via agent
+    const res = await fetch(`${API}/api/agent/run/${encodeURIComponent(serverName)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: cmd })
+    });
+    const data = await res.json();
+    
+    if (!data.cmdId) throw new Error('Agent ไม่ตอบสนอง');
+    
+    // Poll for result
+    let result = null;
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      const r2 = await fetch(`${API}/api/agent/result/${data.cmdId}`);
+      const d2 = await r2.json();
+      if (d2.success) { result = d2; break; }
+    }
+    
+    // Remove loading indicator
+    output.innerHTML = output.innerHTML.replace('<span style="color:#7d8590;font-style:italic">⏳ กำลังรัน...</span>', '');
+    
+    if (result) {
+      const lines = (result.output || '').split('~').filter(Boolean);
+      const color = result.exitCode === 0 ? '#e6edf3' : '#f85149';
+      output.innerHTML += '<span style="color:' + color + '">' + lines.map(l => escapeHtml(l)).join('\n') + '</span>';
+      if (result.exitCode !== 0) {
+        output.innerHTML += '\n<span style="color:#f85149">Exit code: ' + result.exitCode + '</span>';
+      }
+    } else {
+      output.innerHTML += '<span style="color:#f85149">Timeout — Agent ไม่ตอบสนองใน 60 วินาที</span>';
+    }
+  } catch(e) {
+    output.innerHTML = output.innerHTML.replace('<span style="color:#7d8590;font-style:italic">⏳ กำลังรัน...</span>', '');
+    output.innerHTML += '<span style="color:#f85149">Error: ' + escapeHtml(e.message) + '</span>';
+  }
+  
+  output.innerHTML += '\n<span style="color:#7d8590">root@' + host + ':~# </span>';
+  output.scrollTop = output.scrollHeight;
+  inputEl.disabled = false;
+  inputEl.focus();
+}
+
+function quickSSH(serverName, host, cmd) {
+  const inputEl = document.getElementById('ssh-input-' + serverName.replace(/\s+/g, '-'));
+  if (!inputEl) return;
+  inputEl.value = cmd;
+  runSSHCommand(serverName, host, inputEl);
+}
+
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function renderSSLExpiry() {
