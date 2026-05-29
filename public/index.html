@@ -2058,8 +2058,14 @@ function showPage(name) {
   if (name === 'server-manager') {
     if (!window._pleskServers || window._pleskServers.length === 0) {
       loadData().then(() => refreshServerHealth());
-    } else {
+    } else if (!window._smCacheRendered) {
+      // First time - fetch fresh data
       refreshServerHealth();
+    } else {
+      // Return to page - restore cached data instantly
+      renderServerCards(Object.values(window._currentServerStats || {}));
+      renderSSLExpiry();
+      renderDomainHealthSummary();
     }
     // Auto-update every 60s while on this page
     if (window._smAutoRefresh) clearInterval(window._smAutoRefresh);
@@ -2068,6 +2074,7 @@ function showPage(name) {
         (window._pleskServers || []).forEach(srv => updateServerCardStats(srv.name));
       } else {
         clearInterval(window._smAutoRefresh);
+        window._smAutoRefresh = null;
       }
     }, 60000);
   } else {
@@ -2318,6 +2325,7 @@ function metricBar(label, value, max, unit='', color='') {
 }
 
 function renderServerCards(servers) {
+  window._smCacheRendered = true;
   const container = document.getElementById('server-cards');
   if (!container) return;
   
