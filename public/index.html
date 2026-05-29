@@ -2176,6 +2176,7 @@ let autofixLog = [];
 async function refreshServerHealth() {
   const btn = document.getElementById('sm-refresh-btn');
   if (btn) { btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...'; btn.disabled = true; }
+  showLoading('🖥️ กำลังโหลด Server Manager...', 'ดึงข้อมูลจากทุก Server');
   
   // แสดงข้อมูลจาก allDomains ทันที ไม่รอ Agent
   const servers = window._pleskServers || [];
@@ -2200,6 +2201,7 @@ async function refreshServerHealth() {
   renderDomainHealthSummary();
   
   if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
+  hideLoading();
   
   // Fetch agent stats in background - update each card when ready
   servers.forEach(async (srv) => {
