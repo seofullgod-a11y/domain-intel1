@@ -415,23 +415,39 @@ function checkDomain(domain) {
   });
 }
 
+let isCheckingDomains = false;
 async function checkAllDomains() {
   if (!memoryDomains.length) return;
+  if (isCheckingDomains) { console.log('[Check] already running, skip'); return; }
+  isCheckingDomains = true;
   console.log(`[Check] ${memoryDomains.length} domains...`);
-  const BATCH = 20;
-  for (let i = 0; i < memoryDomains.length; i += BATCH) {
-    const batch = memoryDomains.slice(i, i + BATCH);
-    const results = await Promise.all(batch.map(d => checkDomain(d.domain)));
-    for (const r of results) {
-      const idx = memoryDomains.findIndex(d => d.domain === r.domain);
-      if (idx === -1) continue;
-      const prev = memoryDomains[idx].status;
-      Object.assign(memoryDomains[idx], r);
-      if (r.status === 'down') await autoFix(memoryDomains[idx], prev);
+  const BATCH = 10; // ลดจาก 20 เป็น 10 เพื่อลด memory
+  let downCount = 0;
+  try {
+    for (let i = 0; i < memoryDomains.length; i += BATCH) {
+      const batch = memoryDomains.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(d => checkDomain(d.domain)));
+      for (const r of results) {
+        const idx = memoryDomains.findIndex(d => d.domain === r.domain);
+        if (idx === -1) continue;
+        const prev = memoryDomains[idx].status;
+        Object.assign(memoryDomains[idx], r);
+        if (r.status === 'down') { downCount++; autoFix(memoryDomains[idx], prev).catch(()=>{}); }
+      }
+      // หยุดพัก 200ms ระหว่าง batch เพื่อลด memory spike
+      await new Promise(r => setTimeout(r, 200));
+      // Save ทุก 100 โดเมน แทนที่จะรอจนครบ
+      if ((i + BATCH) % 100 === 0) {
+        await saveToSheets(memoryDomains).catch(()=>{});
+      }
     }
+    await saveToSheets(memoryDomains);
+    console.log(`[Check] done — down: ${downCount}`);
+  } catch(e) {
+    console.error('[Check] error:', e.message);
+  } finally {
+    isCheckingDomains = false;
   }
-  await saveToSheets(memoryDomains);
-  console.log('[Check] done');
 }
 
 // ===== AUTO FIX =====
@@ -1467,22 +1483,23 @@ async function smartStatusCheck() {
 
 async function checkDomain(domain) {
   return new Promise(resolve => {
-    const protocol = 'https';
     const options = {
       hostname: domain,
       port: 443,
       path: '/',
       method: 'HEAD',
-      timeout: 10000,
+      timeout: 8000,
       rejectUnauthorized: false,
-      headers: { 'User-Agent': 'DomainIntel-Monitor/1.0' }
+      headers: { 'User-Agent': 'Mozilla/5.0' }
     };
     const startTime = Date.now();
     const req = https.request(options, res => {
-      resolve({ status: res.statusCode < 500 ? 'up' : 'down', statusCode: res.statusCode, responseTime: Date.now() - startTime });
+      res.resume(); // drain response to free memory
+      const status = res.statusCode < 500 ? 'up' : 'down';
+      resolve({ domain, status, statusCode: res.statusCode, responseTime: Date.now() - startTime, error: null, checkedAt: new Date().toISOString() });
     });
-    req.on('error', () => resolve({ status: 'down', statusCode: 0, error: 'Connection failed' }));
-    req.on('timeout', () => { req.destroy(); resolve({ status: 'down', statusCode: 0, error: 'Timeout' }); });
+    req.on('error', (e) => resolve({ domain, status: 'down', statusCode: 0, error: e.message.slice(0,50), responseTime: Date.now() - startTime, checkedAt: new Date().toISOString() }));
+    req.on('timeout', () => { req.destroy(); resolve({ domain, status: 'down', statusCode: 0, error: 'Timeout', responseTime: 8000, checkedAt: new Date().toISOString() }); });
     req.end();
   });
 }
