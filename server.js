@@ -1204,16 +1204,33 @@ async function handleRequest(req, res) {
     const host = params.get('host') || '';
     const srv = PLESK_SERVERS.find(s => s.host === host || s.name === host || s.name.toLowerCase().replace(/\s+/g,'') === host);
     const serverKey = srv ? srv.host.replace(/\./g, '_') : host.replace(/\./g, '_');
-    const cmds = agentCommands[serverKey] || [];
-    const pending = cmds.filter(c => c.status === 'pending');
-    pending.forEach(c => c.status = 'sent');
-    if (!pending.length) {
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ commands: [] }));
-      return;
-    }
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ commands: pending.map(c => ({ id: c.id, cmd: c.cmd })) }));
+    
+    // Long-polling: รอสูงสุด 25 วินาที
+    const maxWait = 25000;
+    const interval = 500;
+    let waited = 0;
+    
+    const checkCommands = () => {
+      const cmds = agentCommands[serverKey] || [];
+      const pending = cmds.filter(c => c.status === 'pending');
+      
+      if (pending.length > 0) {
+        pending.forEach(c => c.status = 'sent');
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ commands: pending.map(c => ({ id: c.id, cmd: c.cmd })) }));
+        return;
+      }
+      
+      waited += interval;
+      if (waited >= maxWait) {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ commands: [] }));
+        return;
+      }
+      setTimeout(checkCommands, interval);
+    };
+    
+    checkCommands();
     return;
   }
 
