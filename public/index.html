@@ -2175,27 +2175,49 @@ let autofixLog = [];
 
 async function refreshServerHealth() {
   const btn = document.getElementById('sm-refresh-btn');
+  const resetBtn = () => { if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; } };
+  
   if (btn) { btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...'; btn.disabled = true; }
   
   if (!window._pleskServers || window._pleskServers.length === 0) {
     document.getElementById('server-cards').innerHTML = '<div style="text-align:center;padding:40px;color:var(--amber)"><i class="ti ti-refresh" style="font-size:24px;display:block;margin-bottom:12px"></i><b>ยังไม่มีข้อมูล Server</b><br><span style="font-size:12px;color:var(--text3)">กรุณา Sync Plesk ก่อน</span><br><br><button onclick="syncPlesk()" class="btn" style="margin-top:8px"><i class="ti ti-refresh"></i> Sync Plesk</button></div>';
-    if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
+    resetBtn();
     return;
   }
   
+  // แสดง placeholder cards ทันที
+  const servers = window._pleskServers || [];
+  document.getElementById('server-cards').innerHTML = servers.map(srv => 
+    '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px;min-height:200px">'
+    + '<div style="font-weight:700;font-size:15px;margin-bottom:4px">'+srv.name+' ⏳</div>'
+    + '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:16px">'+srv.host+'</div>'
+    + '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px"><i class="ti ti-refresh ti-spin"></i> กำลังดึงข้อมูล...</div>'
+    + '</div>'
+  ).join('');
+  
   try {
-    // ดึง stats จาก Agent ทุก server
-    const serverStats = await Promise.all(
-      (window._pleskServers || []).map(srv => fetchServerStats(srv))
-    );
+    // ดึง stats จาก Agent ทีละ server แล้ว render ทันที ไม่รอทั้งหมด
+    const promises = servers.map(async (srv) => {
+      try {
+        const stats = await Promise.race([
+          fetchServerStats(srv),
+          new Promise(r => setTimeout(() => r({ ...srv, connected: false, error: 'Timeout 40s' }), 40000))
+        ]);
+        return stats;
+      } catch(e) {
+        return { ...srv, connected: false, error: e.message };
+      }
+    });
+    
+    const serverStats = await Promise.all(promises);
     renderServerCards(serverStats);
     renderSSLExpiry();
     renderDomainHealthSummary();
   } catch(e) {
-    document.getElementById('server-cards').innerHTML = '<div style="color:var(--red);text-align:center;padding:20px">เชื่อมต่อไม่ได้: '+e.message+'</div>';
+    document.getElementById('server-cards').innerHTML = '<div style="color:var(--red);text-align:center;padding:20px"><i class="ti ti-wifi-off"></i><br>เชื่อมต่อไม่ได้: '+e.message+'<br><button onclick="refreshServerHealth()" class="btn" style="margin-top:12px"><i class="ti ti-refresh"></i> ลองใหม่</button></div>';
   }
   
-  if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
+  resetBtn();
 }
 
 async function fetchServerStats(srv) {
