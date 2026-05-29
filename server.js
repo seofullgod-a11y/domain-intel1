@@ -130,7 +130,7 @@ async function sheetsRequest(method, path, body = null, token = null) {
 }
 
 // sheet headers
-const HEADERS = ['domain','status','statusCode','responseTime','checkedAt','error','pleskId','pleskStatus','pleskActive','hostingType','sslExpiry','sslDaysLeft','notes','tags','gscClicks','gscImpressions','gscAvgPosition','gscKeywordCount','gscTopKeyword','gscTopPosition','pleskSyncedAt','addedAt'];
+const HEADERS = ['domain','status','statusCode','responseTime','checkedAt','error','pleskId','pleskStatus','pleskActive','hostingType','sslExpiry','sslDaysLeft','notes','tags','gscClicks','gscImpressions','gscAvgPosition','gscKeywordCount','gscTopKeyword','gscTopPosition','pleskSyncedAt','addedAt','pleskServer','pleskHost'];
 
 function domainToRow(d) {
   return [
@@ -141,7 +141,8 @@ function domainToRow(d) {
     d.notes || '', (d.tags || []).join(';'),
     d.gsc?.clicks || 0, d.gsc?.impressions || 0, d.gsc?.avgPosition || 0,
     d.gsc?.keywordCount || 0, d.gsc?.topKeyword || '', d.gsc?.topPosition || 0,
-    d.pleskSyncedAt || '', d.addedAt || new Date().toISOString()
+    d.pleskSyncedAt || '', d.addedAt || new Date().toISOString(),
+    d.pleskServer || '', d.pleskHost || ''
   ];
 }
 
@@ -162,6 +163,7 @@ function rowToDomain(row) {
       topKeyword: row[18] || '', topPosition: parseFloat(row[19]) || 0
     } : null,
     pleskSyncedAt: row[20] || null, addedAt: row[21] || new Date().toISOString(),
+    pleskServer: row[22] || '', pleskHost: row[23] || '',
     expiryDate: row[10] || null, daysLeft: row[11] !== '' ? parseInt(row[11]) : null
   };
 }
@@ -243,7 +245,7 @@ async function fetchPleskDomainsFromServer(srv) {
         pleskServer: srv.name,
         pleskHost: srv.host,
         pleskStatus: d.status || 'unknown',
-        pleskActive: d.status === 0 || d.status === '0',
+        pleskActive: d.status === 0 || d.status === '0' || d.status === null || d.status === undefined || d.status === '',
         hostingType: d.hosting_type || '',
         sslExpiry: null,
         sslDaysLeft: null,
