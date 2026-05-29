@@ -915,6 +915,7 @@ async function runOnServer(serverName, command) {
 async function handleRequest(req, res) {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
   const url = req.url.split('?')[0];
+  const rawUrl = req.url;
 
   if (req.method === 'GET' && url === '/api/domains') {
     const cfg = loadConfig();
@@ -1199,13 +1200,17 @@ async function handleRequest(req, res) {
   // Server Health
   // Agent endpoints
   if (req.method === 'GET' && url.startsWith('/api/agent/commands')) {
-    // parse host from URL manually
-    const qmark = url.indexOf('?');
-    const qs = qmark >= 0 ? url.slice(qmark + 1) : '';
+    // parse host from raw URL (before query strip)
+    const qmark = rawUrl.indexOf('?');
+    const qs = qmark >= 0 ? rawUrl.slice(qmark + 1) : '';
     let host = '';
     qs.split('&').forEach(p => {
-      const [k,v] = p.split('=');
-      if (k === 'host') host = decodeURIComponent(v || '');
+      const eq = p.indexOf('=');
+      if (eq > 0) {
+        const k = p.slice(0, eq);
+        const v = p.slice(eq + 1);
+        if (k === 'host') host = decodeURIComponent(v);
+      }
     });
     const hostKey = host.replace(/\./g, '_');
     // search all keys in agentCommands
