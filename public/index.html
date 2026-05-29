@@ -573,17 +573,18 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     <div id="page-server-manager" style="display:none">
       <div class="topbar">
         <div><div class="topbar-title"><i class="ti ti-server" style="color:var(--blue)"></i> Server Manager</div>
-        <div class="topbar-sub">จัดการและมอนิเตอร์ Hosting ทั้ง 4 Server</div></div>
+        <div class="topbar-sub">Monitor & จัดการ Hosting ทั้ง 4 Server แบบ Real-time</div></div>
         <div class="topbar-right">
-          <button class="btn" onclick="refreshServerHealth()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-          <button class="btn" onclick="unsuspendAllServers()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)"><i class="ti ti-wand"></i> Unsuspend ทั้งหมด</button>
+          <button class="btn" onclick="refreshServerHealth()" id="sm-refresh-btn"><i class="ti ti-refresh"></i> รีเฟรช</button>
+          <button class="btn" onclick="fixAllServers()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)"><i class="ti ti-wand"></i> Fix ทั้งหมด</button>
+          <button class="btn" onclick="unsuspendAllServers()" style="background:var(--green-dim);color:var(--green);border-color:rgba(34,197,94,0.3)"><i class="ti ti-player-play"></i> Unsuspend ทั้งหมด</button>
         </div>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:20px">
 
-        <!-- Server Cards -->
-        <div id="server-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px">
-          <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh" style="font-size:24px"></i><br>กำลังโหลดข้อมูล Server...</div>
+        <!-- Server Monitor Cards -->
+        <div id="server-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">
+          <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin" style="font-size:24px"></i><br>กำลังโหลดข้อมูล Server...</div>
         </div>
 
         <!-- SSL Expiring -->
@@ -592,23 +593,21 @@ textarea.form-input { resize: vertical; min-height: 80px; }
             <h3 style="margin:0;font-size:14px;display:flex;align-items:center;gap:8px"><i class="ti ti-certificate" style="color:var(--amber)"></i> SSL ใกล้หมดอายุ</h3>
             <span id="ssl-expiry-count" style="font-size:12px;color:var(--text3)"></span>
           </div>
-          <div id="ssl-expiry-list">
-            <div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">กำลังโหลด...</div>
-          </div>
-        </div>
-
-        <!-- Recent Auto-fix Log -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-          <h3 style="margin:0 0 16px 0;font-size:14px;display:flex;align-items:center;gap:8px"><i class="ti ti-history" style="color:var(--green)"></i> Auto-fix Log ล่าสุด</h3>
-          <div id="autofix-log-list" style="font-size:12px;font-family:var(--mono);display:flex;flex-direction:column;gap:6px">
-            <div style="color:var(--text3);text-align:center;padding:20px">ยังไม่มีข้อมูล</div>
-          </div>
+          <div id="ssl-expiry-list"><div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">กำลังโหลด...</div></div>
         </div>
 
         <!-- Domain Health Summary -->
         <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
           <h3 style="margin:0 0 16px 0;font-size:14px;display:flex;align-items:center;gap:8px"><i class="ti ti-chart-bar" style="color:var(--blue)"></i> สรุปสุขภาพโดเมน</h3>
           <div id="domain-health-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px"></div>
+        </div>
+
+        <!-- Action Log -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+          <h3 style="margin:0 0 16px 0;font-size:14px;display:flex;align-items:center;gap:8px"><i class="ti ti-history" style="color:var(--green)"></i> Action Log</h3>
+          <div id="server-action-log" style="font-size:12px;font-family:var(--mono);display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto">
+            <div style="color:var(--text3);text-align:center;padding:12px">ยังไม่มี Log</div>
+          </div>
         </div>
 
       </div>
@@ -2058,198 +2057,266 @@ function selectAll(cb) {
 let autofixLog = [];
 
 async function refreshServerHealth() {
-  const container = document.getElementById('server-cards');
-  if (!container) return;
-  container.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>';
-
+  const btn = document.getElementById('sm-refresh-btn');
+  if (btn) btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...';
+  
   try {
-    // ดึงข้อมูล server health จาก Plesk API จริงๆ
-    const [healthRes, statusRes] = await Promise.all([
-      fetch(`${API}/api/server/health`),
-      fetch(`${API}/api/plesk/status`)
-    ]);
-    const health = await healthRes.json();
-    const status = await statusRes.json();
-    
-    // merge ข้อมูล
-    const servers = (status.servers || []).map(srv => {
-      const h = (health.servers || []).find(s => s.host === srv.host) || {};
-      return { ...srv, ...h };
-    });
-    
-    renderServerCards(servers);
+    // ดึง stats จาก Agent ทุก server
+    const serverStats = await Promise.all(
+      (window._pleskServers || []).map(srv => fetchServerStats(srv))
+    );
+    renderServerCards(serverStats);
     renderSSLExpiry();
     renderDomainHealthSummary();
-    renderServicesStatus(health.servers || []);
   } catch(e) {
-    container.innerHTML = '<div style="color:var(--red);text-align:center;padding:20px">เชื่อมต่อไม่ได้: '+e.message+'</div>';
+    document.getElementById('server-cards').innerHTML = '<div style="color:var(--red);text-align:center;padding:20px">เชื่อมต่อไม่ได้: '+e.message+'</div>';
   }
+  
+  if (btn) btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช';
+}
+
+async function fetchServerStats(srv) {
+  try {
+    const statCmd = 'L=$(uptime | cut -d, -f4 | tr -d " "); echo LOAD:$L; free -m | awk \'NR==2{printf "RAM:%s/%s",$3,$2}\'; df -h / | awk \'NR==2{printf " DISK:%s/%s:%s",$3,$2,$5}\'; echo " APACHE:$(ps aux | grep httpd | grep -v grep | wc -l) PHPFPM:$(ps aux | grep php-fpm | grep -v grep | wc -l)"';
+    const cmdId = await sendAgentCommand(srv.name, statCmd);
+    if (!cmdId) return { ...srv, error: 'Agent ไม่ตอบสนอง', connected: false };
+    
+    // รอผล 35 วินาที
+    for (let i = 0; i < 70; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      const res = await fetch(`${API}/api/agent/result/${cmdId}`);
+      const data = await res.json();
+      if (data.success) {
+        return parseServerStats(srv, data.output);
+      }
+    }
+    return { ...srv, error: 'Timeout', connected: false };
+  } catch(e) {
+    return { ...srv, error: e.message, connected: false };
+  }
+}
+
+async function sendAgentCommand(serverName, command) {
+  try {
+    const res = await fetch(`${API}/api/agent/run/${encodeURIComponent(serverName)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command })
+    });
+    const data = await res.json();
+    return data.cmdId || null;
+  } catch { return null; }
+}
+
+function parseServerStats(srv, output) {
+  const o = output || '';
+  const load = (o.match(/LOAD:([\d.]+)/) || [])[1] || '?';
+  const ramUsed = (o.match(/RAM:(\d+)\//) || [])[1] || 0;
+  const ramTotal = (o.match(/RAM:\d+\/(\d+)/) || [])[1] || 1;
+  const diskUsed = (o.match(/DISK:([^\/]+)\//) || [])[1] || '?';
+  const diskTotal = (o.match(/DISK:[^\/]+\/([^:]+)/) || [])[1] || '?';
+  const diskPct = parseInt((o.match(/DISK:[^:]+:(\d+)%/) || [])[1] || 0);
+  const apache = parseInt((o.match(/APACHE:(\d+)/) || [])[1] || 0);
+  const phpfpm = parseInt((o.match(/PHPFPM:(\d+)/) || [])[1] || 0);
+  const ramPct = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
+  const loadNum = parseFloat(load) || 0;
+  
+  return {
+    ...srv,
+    connected: true,
+    load: loadNum,
+    ramUsed, ramTotal, ramPct,
+    diskUsed, diskTotal, diskPct,
+    apache, phpfpm
+  };
+}
+
+function getLoadColor(load) {
+  if (load < 5) return 'var(--green)';
+  if (load < 15) return 'var(--amber)';
+  return 'var(--red)';
+}
+
+function getBarColor(pct) {
+  if (pct < 60) return 'var(--green)';
+  if (pct < 80) return 'var(--amber)';
+  return 'var(--red)';
+}
+
+function metricBar(label, value, max, unit='', color='') {
+  const pct = max > 0 ? Math.min(100, Math.round(value / max * 100)) : 0;
+  const c = color || getBarColor(pct);
+  return `<div style="margin-bottom:10px">
+    <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+      <span style="color:var(--text3)">${label}</span>
+      <span style="color:${c};font-weight:600">${value}${unit} / ${max}${unit} (${pct}%)</span>
+    </div>
+    <div style="background:var(--bg4);border-radius:4px;height:6px;overflow:hidden">
+      <div style="width:${pct}%;background:${c};height:100%;border-radius:4px;transition:width 0.5s"></div>
+    </div>
+  </div>`;
 }
 
 function renderServerCards(servers) {
   const container = document.getElementById('server-cards');
   if (!container) return;
-
-  container.innerHTML = servers.map(srv => {
-    const srvDomains = allDomains.filter(d => d.pleskServer === srv.name);
-    const up = srvDomains.filter(d => d.status === 'up').length;
-    const down = srvDomains.filter(d => d.status === 'down').length;
-    const suspended = srvDomains.filter(d => d.pleskId && !d.pleskActive).length;
-    const sslExpiring = srvDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30 && d.sslDaysLeft >= 0).length;
-    const statusColor = srv.connected ? 'var(--green)' : 'var(--red)';
-    const statusText = srv.connected ? 'Online' : 'Offline';
-
-    return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-        <div>
-          <div style="font-weight:600;font-size:14px">${srv.name}</div>
-          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${srv.host}</div>
-          <div style="font-size:11px;color:var(--text3)">Plesk ${srv.version || '—'}</div>
-        </div>
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px">
-          <span style="background:${statusColor}22;color:${statusColor};padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600">● ${statusText}</span>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:16px">
-        <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px;text-align:center">
-          <div style="font-size:20px;font-weight:700;color:var(--green)">${up}</div>
-          <div style="font-size:11px;color:var(--text3)">Up</div>
-        </div>
-        <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px;text-align:center">
-          <div style="font-size:20px;font-weight:700;color:var(--red)">${down}</div>
-          <div style="font-size:11px;color:var(--text3)">Down</div>
-        </div>
-        <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px;text-align:center">
-          <div style="font-size:20px;font-weight:700;color:var(--amber)">${suspended}</div>
-          <div style="font-size:11px;color:var(--text3)">Suspended</div>
-        </div>
-        <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:10px;text-align:center">
-          <div style="font-size:20px;font-weight:700;color:var(--blue)">${srvDomains.length}</div>
-          <div style="font-size:11px;color:var(--text3)">ทั้งหมด</div>
-        </div>
-      </div>
-      ${sslExpiring > 0 ? `<div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--amber);margin-bottom:12px"><i class="ti ti-certificate"></i> SSL ใกล้หมด ${sslExpiring} โดเมน</div>` : ''}
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        ${suspended > 0 ? `<button class="btn btn-sm" onclick="unsuspendServer('${srv.name}')" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.3)"><i class="ti ti-wand"></i> Unsuspend ${suspended}</button>` : ''}
-        <button class="btn btn-sm" onclick="viewServerLogs('${srv.name}')" style="background:var(--bg4);color:var(--text2)"><i class="ti ti-file-text"></i> Logs</button>
-      </div>
-      ${srv.services && srv.services.length ? `<div style="border-top:1px solid var(--border);padding-top:12px"><div style="font-size:11px;color:var(--text3);margin-bottom:8px">SERVICES</div>${renderServicesList(srv.services, srv.name)}</div>` : ''}
-    </div>`;
-  }).join('');
-}
-
-function renderSSLExpiry() {
-  const list = document.getElementById('ssl-expiry-list');
-  const count = document.getElementById('ssl-expiry-count');
-  if (!list) return;
-
-  const expiring = allDomains
-    .filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30 && d.sslDaysLeft >= 0)
-    .sort((a,b) => a.sslDaysLeft - b.sslDaysLeft);
-
-  if (count) count.textContent = expiring.length + ' โดเมน';
-
-  if (!expiring.length) {
-    list.innerHTML = '<div style="color:var(--green);font-size:13px;text-align:center;padding:12px"><i class="ti ti-circle-check"></i> ไม่มี SSL ที่ใกล้หมดอายุ</div>';
-    return;
-  }
-
-  list.innerHTML = expiring.map(d => {
-    const color = d.sslDaysLeft <= 7 ? 'var(--red)' : d.sslDaysLeft <= 14 ? 'var(--amber)' : 'var(--text2)';
-    const urgency = d.sslDaysLeft <= 7 ? '🔴' : d.sslDaysLeft <= 14 ? '⚠️' : '🔒';
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px">
-      <div>
-        <span style="font-family:var(--mono);font-size:12px">${d.domain}</span>
-        <span style="font-size:11px;color:var(--text3);margin-left:8px">${d.pleskServer || '—'}</span>
-      </div>
-      <div style="color:${color};font-size:12px;font-weight:600">${urgency} ${d.sslDaysLeft} วัน (${d.sslExpiry || '—'})</div>
-    </div>`;
-  }).join('');
-}
-
-function renderDomainHealthSummary() {
-  const el = document.getElementById('domain-health-summary');
-  if (!el) return;
-
-  const servers = [...new Set(allDomains.map(d => d.pleskServer).filter(Boolean))];
   
-  el.innerHTML = servers.map(srv => {
-    const domains = allDomains.filter(d => d.pleskServer === srv);
-    const upPct = domains.length ? Math.round(domains.filter(d=>d.status==='up').length / domains.length * 100) : 0;
-    const barColor = upPct >= 90 ? 'var(--green)' : upPct >= 70 ? 'var(--amber)' : 'var(--red)';
-    return `<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:14px">
-      <div style="font-size:12px;font-weight:600;margin-bottom:8px">${srv}</div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <div style="flex:1;background:var(--bg4);border-radius:4px;overflow:hidden;height:8px">
-          <div style="width:${upPct}%;background:${barColor};height:100%;border-radius:4px;transition:width 0.5s"></div>
-        </div>
-        <span style="font-size:12px;color:${barColor};font-weight:600;min-width:36px">${upPct}%</span>
-      </div>
-      <div style="font-size:11px;color:var(--text3);margin-top:6px">${domains.filter(d=>d.status==='up').length}/${domains.length} โดเมน Up</div>
-    </div>`;
-  }).join('');
-}
-
-function renderServicesStatus(servers) {
-  // เพิ่ม services section ถ้ามีข้อมูล
-  servers.forEach(srv => {
-    if (!srv.services) return;
-    const cardId = 'services-'+srv.name.replace(/\s+/g,'-');
-    const existing = document.getElementById(cardId);
-    if (existing) {
-      existing.innerHTML = renderServicesList(srv.services, srv.name);
-    }
+  // Merge with domain stats
+  const merged = servers.map(srv => {
+    const domains = allDomains.filter(d => d.pleskServer === srv.name);
+    const up = domains.filter(d => d.status === 'up').length;
+    const down = domains.filter(d => d.status === 'down').length;
+    const suspended = domains.filter(d => d.pleskId && !d.pleskActive).length;
+    return { ...srv, domains: domains.length, up, down, suspended };
   });
-}
 
-function renderServicesList(services, serverName) {
-  if (!Array.isArray(services) || !services.length) return '';
-  return services.map(svc => {
-    const running = svc.status === 'running' || svc.status === 'active';
-    const color = running ? 'var(--green)' : 'var(--red)';
-    const icon = running ? 'ti-circle-check' : 'ti-circle-x';
-    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border)">
-      <div style="font-size:12px;font-family:var(--mono)">${svc.name || svc.id}</div>
-      <div style="display:flex;align-items:center;gap:8px">
-        <span style="color:${color};font-size:11px"><i class="ti ${icon}"></i> ${svc.status}</span>
-        ${!running ? `<button onclick="restartService('${serverName}','${svc.name||svc.id}')" class="btn btn-sm" style="padding:2px 8px;font-size:11px;background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.3)">Restart</button>` : ''}
+  container.innerHTML = merged.map(srv => {
+    const loadColor = srv.connected ? getLoadColor(srv.load || 0) : 'var(--text3)';
+    const statusDot = srv.connected ? '🟢' : '🔴';
+    const loadBar = srv.load ? Math.min(100, srv.load / 20 * 100) : 0;
+
+    return `<div style="background:var(--bg2);border:1px solid var(--border${srv.connected && srv.load > 15 ? '2' : ''});border-radius:var(--radius);padding:20px${srv.connected && srv.load > 15 ? ';box-shadow:0 0 0 1px '+loadColor+'22' : ''}">
+      
+      <!-- Header -->
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
+        <div>
+          <div style="font-weight:700;font-size:15px">${srv.name} ${statusDot}</div>
+          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${srv.host}</div>
+        </div>
+        ${srv.connected && srv.load > 15 ? `<span style="background:${loadColor}22;color:${loadColor};padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700">⚠️ Load สูง</span>` : ''}
       </div>
+
+      ${srv.connected ? `
+      <!-- Load Average -->
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+          <span style="color:var(--text3)">Load Average</span>
+          <span style="color:${loadColor};font-weight:700;font-size:14px">${srv.load}</span>
+        </div>
+        <div style="background:var(--bg4);border-radius:4px;height:8px;overflow:hidden">
+          <div style="width:${loadBar}%;background:${loadColor};height:100%;border-radius:4px;transition:width 0.5s"></div>
+        </div>
+      </div>
+
+      <!-- RAM -->
+      ${metricBar('RAM', srv.ramUsed, srv.ramTotal, ' MB')}
+      
+      <!-- Disk -->
+      <div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
+          <span style="color:var(--text3)">Disk</span>
+          <span style="color:${getBarColor(srv.diskPct)};font-weight:600">${srv.diskUsed} / ${srv.diskTotal} (${srv.diskPct}%)</span>
+        </div>
+        <div style="background:var(--bg4);border-radius:4px;height:6px;overflow:hidden">
+          <div style="width:${srv.diskPct}%;background:${getBarColor(srv.diskPct)};height:100%;border-radius:4px;transition:width 0.5s"></div>
+        </div>
+      </div>
+
+      <!-- Process counts -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px">
+        <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--green)">${srv.up}</div>
+          <div style="font-size:10px;color:var(--text3)">Up</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--red)">${srv.down}</div>
+          <div style="font-size:10px;color:var(--text3)">Down</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--text2)">${srv.apache}</div>
+          <div style="font-size:10px;color:var(--text3)">Apache</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
+          <div style="font-size:16px;font-weight:700;color:var(--text2)">${srv.phpfpm}</div>
+          <div style="font-size:10px;color:var(--text3)">PHP-FPM</div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <button onclick="serverAction('${srv.name}','restart-apache')" class="btn btn-sm" style="font-size:11px"><i class="ti ti-refresh"></i> Apache</button>
+        <button onclick="serverAction('${srv.name}','restart-phpfpm')" class="btn btn-sm" style="font-size:11px"><i class="ti ti-refresh"></i> PHP-FPM</button>
+        <button onclick="serverAction('${srv.name}','restart-mysql')" class="btn btn-sm" style="font-size:11px"><i class="ti ti-refresh"></i> MySQL</button>
+        <button onclick="serverAction('${srv.name}','fix-load')" class="btn btn-sm" style="font-size:11px;background:var(--amber-dim);color:var(--amber)"><i class="ti ti-wand"></i> Fix Load</button>
+        <button onclick="serverAction('${srv.name}','kill-heavy')" class="btn btn-sm" style="font-size:11px;background:rgba(239,68,68,0.15);color:var(--red)"><i class="ti ti-skull"></i> Kill Heavy</button>
+        ${srv.suspended > 0 ? `<button onclick="unsuspendServer('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:var(--green-dim);color:var(--green)"><i class="ti ti-player-play"></i> Unsuspend ${srv.suspended}</button>` : ''}
+      </div>
+      ` : `<div style="color:var(--red);text-align:center;padding:20px"><i class="ti ti-wifi-off"></i><br>${srv.error || 'Agent ไม่ตอบสนอง'}<br><small style="color:var(--text3)">ตรวจสอบ Scheduled Task ใน Plesk</small></div>`}
     </div>`;
   }).join('');
 }
 
-async function restartService(serverName, serviceName) {
-  if (!confirm(`Restart ${serviceName} บน ${serverName}?`)) return;
-  toast(`กำลัง Restart ${serviceName}...`, 'info');
+async function serverAction(serverName, action) {
+  const commands = {
+    'restart-apache': 'systemctl restart httpd 2>/dev/null || systemctl restart apache2 2>/dev/null; echo "Restart Apache OK"',
+    'restart-phpfpm': 'systemctl restart sw-engine; echo "Restart PHP-FPM OK"',
+    'restart-mysql': 'systemctl restart mariadb 2>/dev/null || systemctl restart mysql 2>/dev/null; echo "Restart MySQL OK"',
+    'fix-load': 'sed -i "s/pm = ondemand/pm = static/" /etc/sw-engine/pool.d/plesk.conf 2>/dev/null; sed -i "s/pm.max_children = [0-9]*/pm.max_children = 40/" /etc/sw-engine/pool.d/plesk.conf 2>/dev/null; systemctl restart sw-engine; pkill -f "wp-toolkit" 2>/dev/null; pkill -f "auto-update" 2>/dev/null; echo "Fix Load OK"',
+    'kill-heavy': 'ps aux --sort=-%cpu | awk "NR>1 && $3>50 {print $2}" | head -5 | xargs kill -9 2>/dev/null; echo "Kill Heavy OK"'
+  };
+  
+  const cmd = commands[action];
+  if (!cmd) return;
+  
+  const actionNames = {
+    'restart-apache': 'Restart Apache',
+    'restart-phpfpm': 'Restart PHP-FPM', 
+    'restart-mysql': 'Restart MySQL',
+    'fix-load': 'Fix Load',
+    'kill-heavy': 'Kill Heavy Processes'
+  };
+  
+  if (!confirm(`${actionNames[action]} บน ${serverName}?`)) return;
+  
+  toast(`⏳ กำลัง ${actionNames[action]} บน ${serverName}...`, 'info');
+  addActionLog(serverName, actionNames[action], 'pending');
+  
   try {
-    const res = await fetch(`${API}/api/server/restart/${encodeURIComponent(serverName)}/${encodeURIComponent(serviceName)}`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) toast(`✅ Restart ${serviceName} สำเร็จ`, 'success');
-    else toast(`❌ Restart ไม่สำเร็จ: ${data.error}`, 'error');
-    setTimeout(refreshServerHealth, 2000);
-  } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
+    const cmdId = await sendAgentCommand(serverName, cmd);
+    if (!cmdId) { toast('❌ Agent ไม่ตอบสนอง', 'error'); return; }
+    
+    // รอผล
+    for (let i = 0; i < 80; i++) {
+      await new Promise(r => setTimeout(r, 500));
+      const res = await fetch(`${API}/api/agent/result/${cmdId}`);
+      const data = await res.json();
+      if (data.success) {
+        toast(`✅ ${actionNames[action]} สำเร็จ บน ${serverName}`, 'success');
+        addActionLog(serverName, actionNames[action], 'success', data.output);
+        setTimeout(refreshServerHealth, 3000);
+        return;
+      }
+    }
+    toast('⚠️ Timeout — Agent อาจกำลังดำเนินการอยู่', 'warn');
+    addActionLog(serverName, actionNames[action], 'timeout');
+  } catch(e) {
+    toast('❌ Error: ' + e.message, 'error');
+  }
 }
 
-async function viewServerLogs(serverName) {
-  try {
-    showLoading('กำลังโหลด Logs...', serverName);
-    const res = await fetch(`${API}/api/server/logs/${encodeURIComponent(serverName)}`);
-    const data = await res.json();
-    hideLoading();
-    const logs = data.logs || [];
-    if (!logs.length) { toast('ไม่มี Log', 'info'); return; }
-    // แสดงใน modal
-    const modal = document.getElementById('progress-modal');
-    document.getElementById('progress-title').textContent = 'Event Log — '+serverName;
-    document.getElementById('progress-subtitle').textContent = logs.length+' รายการล่าสุด';
-    document.getElementById('progress-log').innerHTML = logs.map(l => 
-      `<div style="margin-bottom:4px"><span style="color:var(--text3)">${l.date||''}</span> <span style="color:var(--text)">${l.message||JSON.stringify(l)}</span></div>`
-    ).join('');
-    document.getElementById('progress-bar-fill').style.width = '100%';
-    document.getElementById('progress-close-btn').style.display = 'block';
-    document.getElementById('stat-fixed').parentElement.parentElement.style.display = 'none';
-    modal.style.display = 'flex';
-  } catch(e) { hideLoading(); toast('โหลด Logs ไม่ได้', 'error'); }
+async function fixAllServers() {
+  if (!confirm('Fix Load บนทุก Server? จะ restart PHP-FPM และ kill heavy processes')) return;
+  for (const srv of (window._pleskServers || [])) {
+    toast(`⏳ Fix ${srv.name}...`, 'info');
+    await serverAction(srv.name, 'fix-load');
+    await new Promise(r => setTimeout(r, 2000));
+  }
+}
+
+function addActionLog(server, action, status, output='') {
+  const el = document.getElementById('server-action-log');
+  if (!el) return;
+  const now = new Date().toLocaleTimeString('th-TH');
+  const icon = status === 'success' ? '✅' : status === 'pending' ? '⏳' : status === 'timeout' ? '⚠️' : '❌';
+  const entry = document.createElement('div');
+  entry.style.cssText = 'padding:4px 8px;background:var(--bg3);border-radius:4px;display:flex;gap:8px;align-items:center';
+  entry.innerHTML = `<span style="color:var(--text3)">${now}</span><span>${icon} ${server}</span><span style="color:var(--text2)">${action}</span>${output ? '<span style="color:var(--text3);font-size:11px">'+output.replace(/~/g,' ').slice(0,50)+'</span>' : ''}`;
+  el.insertBefore(entry, el.firstChild);
+  // keep max 20 logs
+  while (el.children.length > 20) el.removeChild(el.lastChild);
+  // remove empty state
+  const empty = el.querySelector('[style*="text-align:center"]');
+  if (empty) empty.remove();
 }
 
 async function unsuspendServer(serverName) {
