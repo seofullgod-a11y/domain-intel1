@@ -355,6 +355,11 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         <span>แก้ไขไม่ได้</span>
         <span class="badge" id="nav-cannotfix">0</span>
       </div>
+      <div class="nav-item" onclick="showPage('diagnosis')">
+        <i class="ti ti-stethoscope"></i>
+        <span>รายงานสาเหตุ</span>
+        <span class="badge" id="nav-diagnosis" style="background:var(--red);color:#fff"></span>
+      </div>
       <div class="nav-item" onclick="showPage('import')">
         <i class="ti ti-file-import"></i> Import CSV
       </div>
@@ -610,6 +615,34 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- DIAGNOSIS PAGE -->
+    <div id="page-diagnosis" style="display:none">
+      <div class="topbar">
+        <div><div class="topbar-title"><i class="ti ti-stethoscope" style="color:var(--red)"></i> รายงานสาเหตุ</div>
+        <div class="topbar-sub">วิเคราะห์และแก้ไขโดเมนที่ Down อัตโนมัติ</div></div>
+        <div class="topbar-right">
+          <button class="btn" onclick="runDiagnosisAll()" style="background:var(--red);color:#fff;border-color:var(--red)"><i class="ti ti-stethoscope"></i> วิเคราะห์ทั้งหมด</button>
+          <button class="btn" onclick="autoFixDiagnosed()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)"><i class="ti ti-wand"></i> Auto-fix ที่แก้ได้</button>
+        </div>
+      </div>
+      <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+        
+        <!-- Summary -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px" id="diagnosis-summary"></div>
+        
+        <!-- Diagnosis List -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+          <h3 style="margin:0 0 16px 0;font-size:14px">รายการโดเมนที่วิเคราะห์แล้ว</h3>
+          <div id="diagnosis-list">
+            <div style="color:var(--text3);text-align:center;padding:40px">
+              <i class="ti ti-stethoscope" style="font-size:32px;display:block;margin-bottom:12px"></i>
+              กด "วิเคราะห์ทั้งหมด" เพื่อตรวจสอบโดเมนที่ Down
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -2358,6 +2391,159 @@ async function unsuspendAllServers() {
     await new Promise(r => setTimeout(r, 400));
   }
   finishProgressModal(fixed, failed, 0);
+}
+
+// ===== DIAGNOSIS PAGE =====
+const diagnosisResults = {};
+
+const causeLabels = {
+  'plesk_suspended': { label: 'Plesk Suspended', icon: '🚫', color: 'var(--amber)', canFix: true },
+  'cloudflare_error': { label: 'Cloudflare Error', icon: '☁️', color: 'var(--amber)', canFix: true },
+  'service_error_502_503': { label: '502/503 Service Error', icon: '🔧', color: 'var(--amber)', canFix: true },
+  'timeout': { label: 'Connection Timeout', icon: '⏱️', color: 'var(--red)', canFix: false },
+  'ssl_expired': { label: 'SSL หมดอายุ', icon: '🔒', color: 'var(--red)', canFix: false },
+  'dns_error': { label: 'DNS Error', icon: '🌐', color: 'var(--red)', canFix: false },
+  'unknown': { label: 'ไม่ทราบสาเหตุ', icon: '❓', color: 'var(--text3)', canFix: false }
+};
+
+function diagnoseDomainLocal(domain) {
+  // Local diagnosis based on available data
+  if (domain.pleskId && !domain.pleskActive) return 'plesk_suspended';
+  if ([521, 522, 523, 524].includes(domain.statusCode)) return 'cloudflare_error';
+  if ([502, 503].includes(domain.statusCode)) return 'service_error_502_503';
+  if (domain.sslDaysLeft !== null && domain.sslDaysLeft <= 0) return 'ssl_expired';
+  if (domain.statusCode === 0 || (domain.error && domain.error.includes('timeout'))) return 'timeout';
+  if (domain.error && domain.error.includes('dns')) return 'dns_error';
+  return 'unknown';
+}
+
+async function runDiagnosisAll() {
+  const downDomains = allDomains.filter(d => d.status === 'down');
+  if (!downDomains.length) { toast('ไม่มีโดเมนที่ Down', 'info'); return; }
+  
+  toast(`⏳ กำลังวิเคราะห์ ${downDomains.length} โดเมน...`, 'info');
+  
+  downDomains.forEach(d => {
+    const cause = diagnoseDomainLocal(d);
+    diagnosisResults[d.domain] = {
+      domain: d.domain,
+      cause,
+      statusCode: d.statusCode,
+      error: d.error,
+      pleskServer: d.pleskServer,
+      pleskHost: d.pleskHost,
+      sslDaysLeft: d.sslDaysLeft,
+      pleskActive: d.pleskActive,
+      diagnosedAt: new Date().toLocaleString('th-TH')
+    };
+  });
+  
+  renderDiagnosisList();
+  updateDiagnosisNav();
+  toast(`✅ วิเคราะห์ครบ ${downDomains.length} โดเมน`, 'success');
+}
+
+async function autoFixDiagnosed() {
+  const fixable = Object.values(diagnosisResults).filter(d => causeLabels[d.cause]?.canFix);
+  if (!fixable.length) { toast('ไม่มีโดเมนที่แก้ได้อัตโนมัติ', 'info'); return; }
+  if (!confirm(`Auto-fix ${fixable.length} โดเมนที่แก้ได้?`)) return;
+  
+  showProgressModal('Auto-fix จากการวิเคราะห์', fixable.length);
+  let fixed = 0, failed = 0;
+  
+  for (let i = 0; i < fixable.length; i++) {
+    const d = fixable[i];
+    updateProgress(i+1, fixable.length, d.domain, 'loading', causeLabels[d.cause]?.label);
+    try {
+      const res = await fetch(`${API}/api/autofix/${encodeURIComponent(d.domain)}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        fixed++;
+        diagnosisResults[d.domain].fixed = true;
+        updateProgress(i+1, fixable.length, d.domain, 'success', data.message);
+      } else {
+        failed++;
+        updateProgress(i+1, fixable.length, d.domain, 'failed', data.message);
+      }
+    } catch { failed++; }
+    updateProgressStats(fixed, failed, 0);
+    await new Promise(r => setTimeout(r, 500));
+  }
+  
+  finishProgressModal(fixed, failed, 0);
+  renderDiagnosisList();
+}
+
+function renderDiagnosisList() {
+  const list = document.getElementById('diagnosis-list');
+  const summary = document.getElementById('diagnosis-summary');
+  if (!list) return;
+  
+  const results = Object.values(diagnosisResults);
+  if (!results.length) return;
+  
+  // Summary cards
+  const counts = {};
+  results.forEach(d => { counts[d.cause] = (counts[d.cause] || 0) + 1; });
+  
+  if (summary) {
+    summary.innerHTML = Object.entries(counts).map(([cause, count]) => {
+      const info = causeLabels[cause] || causeLabels['unknown'];
+      return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:center">'
+        + '<div style="font-size:24px;margin-bottom:4px">'+info.icon+'</div>'
+        + '<div style="font-size:20px;font-weight:700;color:'+info.color+'">'+count+'</div>'
+        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+info.label+'</div>'
+        + '</div>';
+    }).join('');
+  }
+  
+  // Domain list
+  list.innerHTML = results.map(d => {
+    const info = causeLabels[d.cause] || causeLabels['unknown'];
+    return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:8px;flex-wrap:wrap">'
+      + '<div style="font-size:18px">'+info.icon+'</div>'
+      + '<div style="flex:1;min-width:150px">'
+      + '<div style="font-family:var(--mono);font-size:13px;font-weight:600">'+d.domain+'</div>'
+      + '<div style="font-size:11px;color:var(--text3)">'+d.pleskServer+' • '+d.diagnosedAt+'</div>'
+      + '</div>'
+      + '<div style="display:flex;flex-direction:column;gap:2px;min-width:160px">'
+      + '<span style="font-size:12px;color:'+info.color+';font-weight:600">'+info.label+'</span>'
+      + '<span style="font-size:11px;color:var(--text3)">HTTP: '+(d.statusCode||'Timeout')+(d.error?' | '+d.error.slice(0,30):'')+'</span>'
+      + '</div>'
+      + (info.canFix && !d.fixed ? '<button onclick="fixSingleDomain(this.dataset.d)" data-d="'+d.domain+'" class="btn btn-sm" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.3)"><i class="ti ti-wand"></i> Fix</button>' : '')
+      + (d.fixed ? '<span style="color:var(--green);font-size:12px">✅ Fixed</span>' : '')
+      + '</div>';
+  }).join('');
+  
+  updateDiagnosisNav();
+}
+
+async function fixSingleDomain(domain) {
+  toast('⏳ กำลัง fix '+domain+'...', 'info');
+  try {
+    const res = await fetch(`${API}/api/autofix/${encodeURIComponent(domain)}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      if (diagnosisResults[domain]) diagnosisResults[domain].fixed = true;
+      toast('✅ Fix สำเร็จ: '+data.message, 'success');
+      renderDiagnosisList();
+    } else {
+      toast('❌ '+data.message, 'error');
+    }
+  } catch { toast('เชื่อมต่อไม่ได้', 'error'); }
+}
+
+function isCannotFix(d) {
+  if (d.status !== 'down') return false;
+  const isSuspended = d.pleskId && !d.pleskActive;
+  const isCF = [521,522,523,524].includes(d.statusCode);
+  return !isSuspended && !isCF;
+}
+
+function updateDiagnosisNav() {
+  const count = Object.values(diagnosisResults).filter(d => !d.fixed).length;
+  const el = document.getElementById('nav-diagnosis');
+  if (el) el.textContent = count || '';
 }
 
 function renderSSLExpiry() {
