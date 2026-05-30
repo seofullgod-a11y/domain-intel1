@@ -1200,6 +1200,12 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (req.method === 'POST' && url === '/api/fix-php-upload') {
+    fixPHPUploadLimits().catch(console.error);
+    json(res, { success: true, message: 'กำลังปรับค่า PHP Upload Limits ทุก server...' });
+    return;
+  }
+
   if (req.method === 'POST' && url === '/api/test-alert') {
     const body = await parseBody(req);
     const msg = body.message || 'DomainIntel Test Alert';
@@ -1706,6 +1712,44 @@ async function autoInstallSSL() {
         }
       }
     }
+  }
+}
+
+// ===== FIX PHP UPLOAD LIMITS =====
+async function fixPHPUploadLimits() {
+  console.log('[PHP] ปรับค่า upload limits ทุก server...');
+  const cmd = [
+    // แก้ php.ini หลัก
+    'for f in /etc/php.ini /etc/php/*/php.ini /opt/plesk/php/*/etc/php.ini; do [ -f "$f" ] && sed -i "s/upload_max_filesize = .*/upload_max_filesize = 128M/" "$f" && sed -i "s/post_max_size = .*/post_max_size = 256M/" "$f" && sed -i "s/memory_limit = .*/memory_limit = 256M/" "$f"; done',
+    // แก้ sw-engine (PHP ของ Plesk)
+    'for f in /etc/sw-engine/php.ini /usr/local/psa/admin/conf/php.ini; do [ -f "$f" ] && sed -i "s/upload_max_filesize = .*/upload_max_filesize = 128M/" "$f" && sed -i "s/post_max_size = .*/post_max_size = 256M/" "$f"; done',
+    // Restart PHP-FPM
+    'systemctl restart sw-engine 2>/dev/null; systemctl restart php-fpm 2>/dev/null',
+    // ยืนยันค่า
+    'php -r "echo ini_get(\'upload_max_filesize\')" 2>/dev/null | xargs -I{} echo "upload_max: {}" || echo "PHP OK"',
+    'echo "PHP Upload Limit Fixed: 128M"'
+  ].join('; ');
+
+  for (const srv of PLESK_SERVERS) {
+    const cmdId = queueCommand(srv.host, cmd);
+    console.log(`[PHP] ส่งคำสั่งไปที่ ${srv.name}...`);
+    
+    setTimeout(async () => {
+      const result = agentResults[cmdId];
+      if (result) {
+        delete agentResults[cmdId];
+        const output = (result.output || '').replace(/~/g, ' ');
+        const success = output.includes('128M') || output.includes('Fixed');
+        sendTelegram(
+          `${success ? '✅' : '⚠️'} <b>PHP Upload Limit</b>
+` +
+          `🖥️ ${srv.name}
+` +
+          `📋 ${output.slice(0, 200)}`
+        );
+        console.log(`[PHP] ${srv.name}: ${output.slice(0, 100)}`);
+      }
+    }, 90000);
   }
 }
 
