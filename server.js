@@ -1641,6 +1641,74 @@ async function checkSSLRenewal() {
   }
 }
 
+// ===== AUTO SSL INSTALL =====
+async function autoInstallSSL() {
+  console.log('[SSL] ตรวจหาโดเมนที่ไม่มี SSL...');
+  
+  // หาโดเมนที่ SSL หมดหรือไม่มี SSL
+  const noSSL = memoryDomains.filter(d => 
+    d.pleskId && d.pleskActive && 
+    (d.sslDaysLeft === null || d.sslDaysLeft <= 0) &&
+    d.pleskHost && d.pleskServer
+  );
+  
+  if (!noSSL.length) {
+    console.log('[SSL] ไม่พบโดเมนที่ต้องติดตั้ง SSL');
+    return;
+  }
+  
+  console.log(`[SSL] พบ ${noSSL.length} โดเมนที่ต้องติดตั้ง SSL`);
+  
+  // Group by server
+  const byServer = {};
+  noSSL.forEach(d => {
+    if (!byServer[d.pleskHost]) byServer[d.pleskHost] = [];
+    byServer[d.pleskHost].push(d.domain);
+  });
+  
+  for (const [host, domains] of Object.entries(byServer)) {
+    const srv = PLESK_SERVERS.find(s => s.host === host);
+    if (!srv) continue;
+    
+    // Install SSL batch 5 domains at a time
+    for (let i = 0; i < domains.length; i += 5) {
+      const batch = domains.slice(i, i + 5);
+      const cmd = batch.map(d => 
+        `plesk bin extension --exec letsencrypt cli.php -d ${d} --agree-tos 2>&1 | tail -1 && echo "SSL_OK:${d}"`
+      ).join('; ');
+      
+      const cmdId = queueCommand(host, cmd);
+      console.log(`[SSL] ติดตั้ง SSL batch ${i/5+1} บน ${srv.name}: ${batch.join(', ')}`);
+      
+      // Wait for result
+      await new Promise(r => setTimeout(r, 120000)); // รอ 2 นาที
+      const result = agentResults[cmdId];
+      if (result) {
+        delete agentResults[cmdId];
+        const output = (result.output || '').replace(/~/g, ' ');
+        const installed = (output.match(/SSL_OK:(\S+)/g) || []).map(m => m.replace('SSL_OK:', ''));
+        
+        if (installed.length) {
+          console.log(`[SSL] ติดตั้งสำเร็จ: ${installed.join(', ')}`);
+          sendTelegram(`✅ <b>Auto SSL ติดตั้งสำเร็จ</b>
+🖥️ ${srv.name}
+🔒 ${installed.join(', ')}`);
+          
+          // Update domain records
+          installed.forEach(domain => {
+            const idx = memoryDomains.findIndex(d => d.domain === domain);
+            if (idx !== -1) {
+              memoryDomains[idx].sslDaysLeft = 90;
+              memoryDomains[idx].sslExpiry = new Date(Date.now() + 90*24*60*60*1000).toISOString().split('T')[0];
+            }
+          });
+          await saveToSheets(memoryDomains);
+        }
+      }
+    }
+  }
+}
+
 // ===== BLACKLIST MONITOR =====
 async function checkBlacklists() {
   const serverIPs = [...new Set(PLESK_SERVERS.map(s => s.host))];
@@ -1729,6 +1797,8 @@ server.listen(PORT, async () => {
   setInterval(proactiveMonitor, CHECK_INTERVAL_MS); // Proactive monitor ทุก 5 นาที
   setInterval(smartStatusCheck, CHECK_INTERVAL_MS * 2); // Smart status check ทุก 10 นาที
   setInterval(checkSSLRenewal, 6 * 60 * 60 * 1000); // SSL check ทุก 6 ชั่วโมง
+  setInterval(autoInstallSSL, 12 * 60 * 60 * 1000); // Auto SSL install ทุก 12 ชั่วโมง
+  setTimeout(autoInstallSSL, 5 * 60 * 1000); // รัน SSL install ครั้งแรกหลัง 5 นาที
   setInterval(checkBlacklists, 24 * 60 * 60 * 1000); // Blacklist check ทุกวัน
   setInterval(sendWeeklyReport, 7 * 24 * 60 * 60 * 1000); // Weekly report ทุก 7 วัน
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
