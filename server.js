@@ -1686,7 +1686,7 @@ async function autoInstallSSL() {
     for (let i = 0; i < domains.length; i += 5) {
       const batch = domains.slice(i, i + 5);
       const cmd = batch.map(d => 
-        `plesk bin extension --exec letsencrypt cli.php -d ${d} -m seofullgod@gmail.com 2>&1 | tail -1 && echo "SSL_OK:${d}"`
+        `plesk bin extension --exec letsencrypt cli.php -d ${d} -m seofullgod@gmail.com --redirect 2>&1 | tail -1 && echo "SSL_OK:${d}"`
       ).join('; ');
       
       const cmdId = queueCommand(host, cmd);
