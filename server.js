@@ -1660,7 +1660,7 @@ async function autoInstallSSL() {
   // หาโดเมนที่ SSL หมดหรือไม่มี SSL
   const noSSL = memoryDomains.filter(d => 
     d.pleskId && d.pleskActive && 
-    (d.sslDaysLeft === null || d.sslDaysLeft <= 0) &&
+    (d.sslDaysLeft === null || d.sslDaysLeft === undefined || d.sslDaysLeft <= 7) &&
     d.pleskHost && d.pleskServer
   );
   
