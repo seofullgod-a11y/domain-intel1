@@ -1200,6 +1200,12 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (req.method === 'POST' && url === '/api/fix-ssl') {
+    autoInstallSSL().catch(console.error);
+    json(res, { success: true, message: 'กำลังติดตั้ง SSL ทุก server...' });
+    return;
+  }
+
   if (req.method === 'POST' && url === '/api/fix-php-upload') {
     fixPHPUploadLimits().catch(console.error);
     json(res, { success: true, message: 'กำลังปรับค่า PHP Upload Limits ทุก server...' });
