@@ -1655,57 +1655,41 @@ async function checkSSLRenewal() {
 
 // ===== AUTO SSL INSTALL =====
 async function autoInstallSSL() {
-  console.log('[SSL] ตรวจหาโดเมนที่ไม่มี SSL...');
+  console.log('[SSL] ติดตั้ง SSL + redirect ทุกโดเมน...');
   
-  // หาโดเมนที่ SSL หมดหรือไม่มี SSL
-  const noSSL = memoryDomains.filter(d => 
-    d.pleskId && d.pleskActive && 
-    (d.sslDaysLeft === null || d.sslDaysLeft === undefined || d.sslDaysLeft <= 7) &&
-    d.pleskHost && d.pleskServer
-  );
-  
-  if (!noSSL.length) {
-    console.log('[SSL] ไม่พบโดเมนที่ต้องติดตั้ง SSL');
-    return;
-  }
-  
-  console.log(`[SSL] พบ ${noSSL.length} โดเมนที่ต้องติดตั้ง SSL`);
-  
-  // Group by server
-  const byServer = {};
-  noSSL.forEach(d => {
-    if (!byServer[d.pleskHost]) byServer[d.pleskHost] = [];
-    byServer[d.pleskHost].push(d.domain);
-  });
-  
-  for (const [host, domains] of Object.entries(byServer)) {
-    const srv = PLESK_SERVERS.find(s => s.host === host);
-    if (!srv) continue;
-    
-    // Install SSL batch 5 domains at a time
-    for (let i = 0; i < domains.length; i += 5) {
-      const batch = domains.slice(i, i + 5);
-      const cmd = batch.map(d => 
-        `plesk bin extension --exec letsencrypt cli.php -d ${d} -m seofullgod@gmail.com --redirect 2>&1 | tail -1 && echo "SSL_OK:${d}"`
-      ).join('; ');
+  for (const srv of PLESK_SERVERS) {
+    try {
+      // รัน plesk loop ผ่าน Agent — ติดตั้ง SSL + redirect ทุกโดเมนใน server นั้น
+      const cmd = 'for domain in $(plesk bin domain --list); do ' +
+        'plesk bin extension --exec letsencrypt cli.php -d $domain -m seofullgod@gmail.com --redirect 2>/dev/null && echo "SSL_OK:$domain"; ' +
+        'done; echo "SSL_DONE"';
       
-      const cmdId = queueCommand(host, cmd);
-      console.log(`[SSL] ติดตั้ง SSL batch ${i/5+1} บน ${srv.name}: ${batch.join(', ')}`);
+      const cmdId = queueCommand(srv.host, cmd);
+      console.log(`[SSL] ส่งคำสั่งไป ${srv.name}...`);
       
-      // Wait for result
-      await new Promise(r => setTimeout(r, 120000)); // รอ 2 นาที
-      const result = agentResults[cmdId];
-      if (result) {
+      // รอผล max 10 นาที (โดเมนเยอะ)
+      setTimeout(async () => {
+        const result = agentResults[cmdId];
+        if (!result) {
+          console.log(`[SSL] ${srv.name}: ไม่ได้รับผล (Agent อาจ timeout)`);
+          return;
+        }
         delete agentResults[cmdId];
         const output = (result.output || '').replace(/~/g, ' ');
         const installed = (output.match(/SSL_OK:(\S+)/g) || []).map(m => m.replace('SSL_OK:', ''));
         
-        if (installed.length) {
-          console.log(`[SSL] ติดตั้งสำเร็จ: ${installed.join(', ')}`);
-          sendTelegram(`✅ <b>Auto SSL ติดตั้งสำเร็จ</b>
-🖥️ ${srv.name}
-🔒 ${installed.join(', ')}`);
-          
+        console.log(`[SSL] ${srv.name}: ติดตั้งสำเร็จ ${installed.length} โดเมน`);
+        
+        if (installed.length > 0) {
+          sendTelegram(
+            `✅ <b>Auto SSL + Redirect สำเร็จ</b>
+` +
+            `🖥️ ${srv.name}
+` +
+            `🔒 ติดตั้ง ${installed.length} โดเมน
+` +
+            `📋 ${installed.slice(0,10).join(', ')}${installed.length > 10 ? '...' : ''}`
+          );
           // Update domain records
           installed.forEach(domain => {
             const idx = memoryDomains.findIndex(d => d.domain === domain);
@@ -1714,9 +1698,12 @@ async function autoInstallSSL() {
               memoryDomains[idx].sslExpiry = new Date(Date.now() + 90*24*60*60*1000).toISOString().split('T')[0];
             }
           });
-          await saveToSheets(memoryDomains);
+          await saveToSheets(memoryDomains).catch(() => {});
         }
-      }
+      }, 10 * 60 * 1000); // รอ 10 นาที
+      
+    } catch(e) {
+      console.error('[SSL]', srv.name, e.message);
     }
   }
 }
