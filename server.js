@@ -2105,9 +2105,20 @@ server.listen(PORT, async () => {
   setInterval(checkDatabaseBackups, 24 * 60 * 60 * 1000); // Backup check ทุกวัน
   setInterval(checkDomainExpiry, 12 * 60 * 60 * 1000); // Domain expiry ทุก 12 ชั่วโมง
   setInterval(checkEmailSpam, 6 * 60 * 60 * 1000); // Email check ทุก 6 ชั่วโมง
-  setInterval(sendMonthlyReport, 30 * 24 * 60 * 60 * 1000); // Monthly report
-  setTimeout(checkDomainExpiry, 3 * 60 * 1000); // รันครั้งแรกหลัง 3 นาที
-  setTimeout(checkDatabaseBackups, 10 * 60 * 1000); // รันครั้งแรกหลัง 10 นาที
+  // Monthly report - รันวันที่ 1 ของทุกเดือน เวลา 08:00
+  const scheduleMonthlyReport = () => {
+    const now = new Date();
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1, 8, 0, 0);
+    const msUntilNext = next.getTime() - now.getTime();
+    setTimeout(() => {
+      sendMonthlyReport();
+      scheduleMonthlyReport(); // schedule next month
+    }, msUntilNext);
+    console.log(`[Monthly] จะส่ง report ใน ${Math.round(msUntilNext/3600000)} ชั่วโมง`);
+  };
+  scheduleMonthlyReport();
+  setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
+  setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
   console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
 });
