@@ -432,6 +432,8 @@ async function checkAllDomains() {
         if (idx === -1) continue;
         const prev = memoryDomains[idx].status;
         Object.assign(memoryDomains[idx], r);
+      // Track performance
+      if (r.responseTime && r.status === 'up') trackPerformance(r.domain, r.responseTime);
         if (r.status === 'down') { downCount++; autoFix(memoryDomains[idx], prev).catch(()=>{}); }
       }
       // หยุดพัก 200ms ระหว่าง batch เพื่อลด memory spike
@@ -1814,6 +1816,268 @@ async function sendWeeklyReport() {
   weeklyStats = { fixed: 0, checked: 0, uptime: 0, startTime: Date.now() };
 }
 
+
+// ===== DDOS DETECTION =====
+const requestCounts = {}; // { ip: { count, firstSeen } }
+const blockedIPs = new Set();
+
+function trackRequest(ip) {
+  const now = Date.now();
+  if (!requestCounts[ip]) requestCounts[ip] = { count: 0, firstSeen: now };
+  requestCounts[ip].count++;
+  
+  // Reset after 1 minute
+  if (now - requestCounts[ip].firstSeen > 60000) {
+    requestCounts[ip] = { count: 1, firstSeen: now };
+  }
+  
+  // DDoS threshold: 500 requests/minute
+  if (requestCounts[ip].count > 500 && !blockedIPs.has(ip)) {
+    blockedIPs.add(ip);
+    console.log(`[DDoS] บล็อก IP: ${ip} (${requestCounts[ip].count} req/min)`);
+    sendTelegram(`🚨 <b>DDoS Detection!</b>
+🌐 IP: <code>${ip}</code>
+📊 ${requestCounts[ip].count} requests/นาที
+🛡️ บล็อกอัตโนมัติแล้ว`);
+    
+    // Auto-unblock after 1 hour
+    setTimeout(() => {
+      blockedIPs.delete(ip);
+      console.log(`[DDoS] ปลดบล็อก IP: ${ip}`);
+    }, 60 * 60 * 1000);
+  }
+  
+  return blockedIPs.has(ip);
+}
+
+// Clean up old request counts every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(requestCounts).forEach(ip => {
+    if (now - requestCounts[ip].firstSeen > 60000) delete requestCounts[ip];
+  });
+}, 5 * 60 * 1000);
+
+// ===== DATABASE BACKUP MONITOR =====
+async function checkDatabaseBackups() {
+  console.log('[Backup] ตรวจสอบ backup ทุก server...');
+  
+  for (const srv of PLESK_SERVERS) {
+    const cmd = [
+      // เช็ค backup ล่าสุด
+      'BACKUP_DIR="/var/lib/psa/dumps"',
+      'if [ -d "$BACKUP_DIR" ]; then',
+      '  LATEST=$(ls -t $BACKUP_DIR/*.tar.gz 2>/dev/null | head -1)',
+      '  if [ -n "$LATEST" ]; then',
+      '    AGE=$(( ($(date +%s) - $(stat -c %Y "$LATEST")) / 3600 ))',
+      '    SIZE=$(du -sh "$LATEST" | cut -f1)',
+      '    echo "BACKUP_OK:$AGE:$SIZE:$(basename $LATEST)"',
+      '  else',
+      '    echo "BACKUP_MISSING"',
+      '  fi',
+      'else',
+      '  echo "BACKUP_DIR_MISSING"',
+      'fi'
+    ].join('\n');
+    
+    const cmdId = queueCommand(srv.host, cmd);
+    
+    setTimeout(async () => {
+      const result = agentResults[cmdId];
+      if (!result) return;
+      delete agentResults[cmdId];
+      
+      const output = (result.output || '').replace(/~/g, ' ');
+      
+      if (output.includes('BACKUP_MISSING') || output.includes('BACKUP_DIR_MISSING')) {
+        sendTelegram(`⚠️ <b>Backup Warning!</b>
+🖥️ ${srv.name}
+❌ ไม่พบ backup file
+กรุณาตรวจสอบ backup system`);
+      } else if (output.includes('BACKUP_OK:')) {
+        const match = output.match(/BACKUP_OK:(\d+):([^:]+):(.+)/);
+        if (match) {
+          const [, age, size, filename] = match;
+          if (parseInt(age) > 48) {
+            sendTelegram(`⚠️ <b>Backup เก่าเกินไป!</b>
+🖥️ ${srv.name}
+⏰ Backup ล่าสุด: ${age} ชั่วโมงที่แล้ว
+📦 ไฟล์: ${filename} (${size})`);
+          } else {
+            console.log(`[Backup] ${srv.name}: OK - ${age}h ago, ${size}`);
+          }
+        }
+      }
+    }, 90000);
+  }
+}
+
+// ===== DOMAIN EXPIRY MONITOR =====
+async function checkDomainExpiry() {
+  console.log('[DomainExpiry] ตรวจสอบวันหมดอายุโดเมน...');
+  
+  // เช็คโดเมนที่ใกล้หมดอายุ (30, 7, 1 วัน)
+  const thresholds = [30, 7, 1];
+  const now = new Date();
+  
+  for (const domain of memoryDomains) {
+    if (!domain.expiryDate) continue;
+    
+    const expiry = new Date(domain.expiryDate);
+    const daysLeft = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    
+    // Update daysLeft
+    const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+    if (idx !== -1) memoryDomains[idx].daysLeft = daysLeft;
+    
+    for (const threshold of thresholds) {
+      if (daysLeft === threshold) {
+        const urgency = threshold === 1 ? '🚨' : threshold === 7 ? '🔴' : '⚠️';
+        sendTelegram(
+          `${urgency} <b>Domain หมดอายุใน ${daysLeft} วัน!</b>
+` +
+          `🌐 <code>${domain.domain}</code>
+` +
+          `📅 หมดอายุ: ${domain.expiryDate}
+` +
+          `🖥️ Server: ${domain.pleskServer || '—'}
+` +
+          `💡 กรุณาต่ออายุโดเมนด่วน!`
+        );
+      }
+    }
+    
+    // Mark as expiring soon
+    if (daysLeft <= 30 && daysLeft > 0) {
+      if (idx !== -1) memoryDomains[idx].status = memoryDomains[idx].status === 'up' ? 'up' : memoryDomains[idx].status;
+    }
+  }
+}
+
+// ===== PERFORMANCE MONITOR =====
+const performanceHistory = {}; // { domain: [responseTimes] }
+
+function trackPerformance(domain, responseTime) {
+  if (!performanceHistory[domain]) performanceHistory[domain] = [];
+  performanceHistory[domain].push({ time: responseTime, at: Date.now() });
+  
+  // Keep last 10 readings
+  if (performanceHistory[domain].length > 10) {
+    performanceHistory[domain].shift();
+  }
+  
+  // Alert if consistently slow (avg > 5000ms over last 3 checks)
+  const recent = performanceHistory[domain].slice(-3);
+  if (recent.length === 3) {
+    const avg = recent.reduce((s, r) => s + r.time, 0) / 3;
+    if (avg > 5000) {
+      const idx = memoryDomains.findIndex(d => d.domain === domain);
+      const srv = idx !== -1 ? memoryDomains[idx].pleskServer : '—';
+      console.log(`[Perf] ${domain}: ช้าผิดปกติ avg ${Math.round(avg)}ms`);
+      // Only alert once per hour
+      const lastAlert = performanceHistory[domain].lastAlert || 0;
+      if (Date.now() - lastAlert > 60 * 60 * 1000) {
+        performanceHistory[domain].lastAlert = Date.now();
+        sendTelegram(
+          `🐌 <b>Performance Warning!</b>
+` +
+          `🌐 <code>${domain}</code>
+` +
+          `⏱️ Response time เฉลี่ย: ${Math.round(avg)}ms
+` +
+          `🖥️ Server: ${srv}
+` +
+          `💡 ควรตรวจสอบ server load`
+        );
+      }
+    }
+  }
+}
+
+// ===== EMAIL/SPAM MONITOR =====
+async function checkEmailSpam() {
+  console.log('[Email] ตรวจสอบ mail queue...');
+  
+  for (const srv of PLESK_SERVERS) {
+    const cmd = [
+      'QUEUE=$(postqueue -p 2>/dev/null | tail -1)',
+      'DEFERRED=$(postqueue -p 2>/dev/null | grep -c "^[A-F0-9]" 2>/dev/null || echo 0)',
+      'BL_CHECK=$(grep -c "blocked" /var/log/maillog 2>/dev/null | head -1 || echo 0)',
+      'echo "MAIL_QUEUE:$QUEUE DEFERRED:$DEFERRED BLOCKED:$BL_CHECK"'
+    ].join('; ');
+    
+    const cmdId = queueCommand(srv.host, cmd);
+    
+    setTimeout(async () => {
+      const result = agentResults[cmdId];
+      if (!result) return;
+      delete agentResults[cmdId];
+      
+      const output = (result.output || '').replace(/~/g, ' ');
+      const deferred = parseInt((output.match(/DEFERRED:(\d+)/) || [])[1] || 0);
+      const blocked = parseInt((output.match(/BLOCKED:(\d+)/) || [])[1] || 0);
+      
+      if (deferred > 100) {
+        sendTelegram(
+          `📧 <b>Email Queue Warning!</b>
+` +
+          `🖥️ ${srv.name}
+` +
+          `📬 Deferred mail: ${deferred} ข้อความ
+` +
+          `🚫 Blocked: ${blocked}
+` +
+          `💡 อาจถูก blacklist หรือมี spam`
+        );
+      }
+      console.log(`[Email] ${srv.name}: deferred=${deferred} blocked=${blocked}`);
+    }, 90000);
+  }
+}
+
+// ===== MONTHLY REPORT =====
+async function sendMonthlyReport() {
+  const now = new Date();
+  const upDomains = memoryDomains.filter(d => d.status === 'up').length;
+  const downDomains = memoryDomains.filter(d => d.status === 'down').length;
+  const uptimePct = memoryDomains.length ? Math.round(upDomains / memoryDomains.length * 100) : 0;
+  const sslExpiring = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30 && d.sslDaysLeft > 0).length;
+  const suspended = memoryDomains.filter(d => d.pleskId && !d.pleskActive).length;
+  const domainExpiring = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0).length;
+  
+  // Server stats summary
+  const serverSummary = PLESK_SERVERS.map(srv => {
+    const domains = memoryDomains.filter(d => d.pleskServer === srv.name);
+    const up = domains.filter(d => d.status === 'up').length;
+    const pct = domains.length ? Math.round(up / domains.length * 100) : 0;
+    return `  🖥️ ${srv.name}: ${up}/${domains.length} Up (${pct}%)`;
+  }).join('\n');
+  
+  sendTelegram(
+    `📊 <b>Monthly Report — ${now.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}</b>
+
+` +
+    `🌐 โดเมนทั้งหมด: ${memoryDomains.length}
+` +
+    `✅ Uptime: ${uptimePct}% (${upDomains} Up / ${downDomains} Down)
+` +
+    `🚫 Plesk Suspended: ${suspended}
+` +
+    `🔒 SSL ใกล้หมด: ${sslExpiring} โดเมน
+` +
+    `📅 Domain ใกล้หมด: ${domainExpiring} โดเมน
+
+` +
+    `<b>สรุปแต่ละ Server:</b>
+${serverSummary}
+
+` +
+    `🕐 ${now.toLocaleString('th-TH')}`
+  );
+  
+  console.log('[Monthly] ส่ง Monthly Report แล้ว');
+}
+
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
   console.log(`║   DomainIntel + Plesk + Google Sheets    ║`);
@@ -1837,7 +2101,13 @@ server.listen(PORT, async () => {
   setInterval(autoInstallSSL, 12 * 60 * 60 * 1000); // Auto SSL install ทุก 12 ชั่วโมง
   setTimeout(autoInstallSSL, 5 * 60 * 1000); // รัน SSL install ครั้งแรกหลัง 5 นาที
   setInterval(checkBlacklists, 24 * 60 * 60 * 1000); // Blacklist check ทุกวัน
-  setInterval(sendWeeklyReport, 7 * 24 * 60 * 60 * 1000); // Weekly report ทุก 7 วัน
+  setInterval(sendWeeklyReport, 7 * 24 * 60 * 60 * 1000); // Weekly report
+  setInterval(checkDatabaseBackups, 24 * 60 * 60 * 1000); // Backup check ทุกวัน
+  setInterval(checkDomainExpiry, 12 * 60 * 60 * 1000); // Domain expiry ทุก 12 ชั่วโมง
+  setInterval(checkEmailSpam, 6 * 60 * 60 * 1000); // Email check ทุก 6 ชั่วโมง
+  setInterval(sendMonthlyReport, 30 * 24 * 60 * 60 * 1000); // Monthly report
+  setTimeout(checkDomainExpiry, 3 * 60 * 1000); // รันครั้งแรกหลัง 3 นาที
+  setTimeout(checkDatabaseBackups, 10 * 60 * 1000); // รันครั้งแรกหลัง 10 นาที
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
   console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
 });
