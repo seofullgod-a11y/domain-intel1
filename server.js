@@ -2105,25 +2105,7 @@ server.listen(PORT, async () => {
   setInterval(checkDatabaseBackups, 24 * 60 * 60 * 1000); // Backup check ทุกวัน
   setInterval(checkDomainExpiry, 12 * 60 * 60 * 1000); // Domain expiry ทุก 12 ชั่วโมง
   setInterval(checkEmailSpam, 6 * 60 * 60 * 1000); // Email check ทุก 6 ชั่วโมง
-  // Monthly report - รันวันที่ 1 ของทุกเดือน เวลา 08:00 ครั้งเดียว
-  const scheduleMonthlyReport = () => {
-    const now = new Date();
-    // ถ้าเป็นวันที่ 1 และยังไม่ถึง 08:00 รอถึง 08:00
-    // ถ้าเลย 08:00 แล้ว รอเดือนหน้า
-    let next;
-    if (now.getDate() === 1 && now.getHours() < 8) {
-      next = new Date(now.getFullYear(), now.getMonth(), 1, 8, 0, 0);
-    } else {
-      next = new Date(now.getFullYear(), now.getMonth() + 1, 1, 8, 0, 0);
-    }
-    const msUntilNext = next.getTime() - now.getTime();
-    setTimeout(() => {
-      sendMonthlyReport();
-      scheduleMonthlyReport();
-    }, msUntilNext);
-    console.log(`[Monthly] จะส่ง report ใน ${Math.round(msUntilNext/3600000)} ชั่วโมง (${next.toLocaleDateString('th-TH')})`);
-  };
-  scheduleMonthlyReport();
+  // Monthly report - disabled
   setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
   setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
