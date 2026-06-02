@@ -667,6 +667,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <button class="btn" onclick="refreshServerHealth()" id="sm-refresh-btn"><i class="ti ti-refresh"></i> รีเฟรช</button>
           <button class="btn" onclick="fixAllServers()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)"><i class="ti ti-wand"></i> Fix ทั้งหมด</button>
           <button class="btn" onclick="unsuspendAllServers()" style="background:var(--green-dim);color:var(--green);border-color:rgba(34,197,94,0.3)"><i class="ti ti-player-play"></i> Unsuspend ทั้งหมด</button>
+          <button class="btn" onclick="installApacheWatchdog()" style="background:rgba(14,165,233,0.12);color:var(--teal);border-color:rgba(14,165,233,0.3)" title="ติดตั้ง Apache Watchdog บนทุก server อัตโนมัติ"><i class="ti ti-shield-check"></i> Install Watchdog</button>
         </div>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:20px">
@@ -3123,6 +3124,32 @@ document.addEventListener('DOMContentLoaded', () => {
   const saved = localStorage.getItem('di_theme') || 'dark';
   if (saved === 'light') document.documentElement.classList.add('light');
 })();
+</script>
+<script>
+// ===== APACHE WATCHDOG =====
+async function installApacheWatchdog() {
+  if (!confirm(
+    '🛡️ ติดตั้ง Apache Watchdog บนทุก 4 Server?\n\n' +
+    '✅ ปลอดภัย 100%: แค่ auto-restart Apache ถ้าล่ม\n' +
+    '✅ ไม่แตะไฟล์, database หรือ config ของโดเมน\n' +
+    '✅ ข้อมูลโดเมนทุกตัวปลอดภัยแน่นอน\n\n' +
+    'ดำเนินการต่อไหม?'
+  )) return;
+  
+  toast('⏳ กำลังติดตั้ง Apache Watchdog บนทุก server...', 'info');
+  
+  try {
+    const res = await fetch(`${API}/api/install-apache-watchdog`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      toast('✅ เริ่มติดตั้ง Watchdog แล้ว — ดูผลใน Telegram', 'success');
+    } else {
+      toast('❌ ติดตั้งไม่สำเร็จ', 'error');
+    }
+  } catch(e) {
+    toast('เชื่อมต่อ Server ไม่ได้', 'error');
+  }
+}
 </script>
 </body>
 </html>
