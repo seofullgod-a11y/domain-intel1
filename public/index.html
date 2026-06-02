@@ -10,143 +10,196 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
 <style>
 :root {
-  --bg: #0d0f14;
-  --bg2: #13161e;
-  --bg3: #1a1e28;
-  --bg4: #222736;
-  --border: rgba(255,255,255,0.07);
+  /* ===== DARK MODE (default) ===== */
+  --bg:      #0b1120;
+  --bg2:     #111827;
+  --bg3:     #1a2436;
+  --bg4:     #243048;
+  --border:  rgba(255,255,255,0.07);
   --border2: rgba(255,255,255,0.13);
-  --text: #e8eaf0;
-  --text2: #8b93a8;
-  --text3: #555e75;
-  --green: #22d07a;
-  --green-dim: rgba(34,208,122,0.12);
-  --red: #f05252;
-  --red-dim: rgba(240,82,82,0.12);
-  --amber: #f59e0b;
-  --amber-dim: rgba(245,158,11,0.12);
-  --blue: #60a5fa;
-  --blue-dim: rgba(96,165,250,0.12);
-  --purple: #a78bfa;
-  --purple-dim: rgba(167,139,250,0.1);
-  --radius: 10px;
-  --radius-sm: 6px;
+  --text:    #e2e8f0;
+  --text2:   #94a3b8;
+  --text3:   #4a5568;
+  --teal:    #0ea5e9;
+  --teal-dim:rgba(14,165,233,0.12);
+  --green:   #10b981;
+  --green-dim:rgba(16,185,129,0.12);
+  --red:     #ef4444;
+  --red-dim: rgba(239,68,68,0.12);
+  --amber:   #f59e0b;
+  --amber-dim:rgba(245,158,11,0.12);
+  --blue:    #60a5fa;
+  --blue-dim:rgba(96,165,250,0.12);
+  --purple:  #a78bfa;
+  --purple-dim:rgba(167,139,250,0.1);
+  --radius:  8px;
+  --radius-sm: 5px;
+  --sidebar-w: 220px;
   --font: 'IBM Plex Sans Thai', sans-serif;
   --mono: 'IBM Plex Mono', monospace;
+  --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+/* ===== LIGHT MODE ===== */
+html.light {
+  --bg:      #f0f4f8;
+  --bg2:     #ffffff;
+  --bg3:     #f7fafc;
+  --bg4:     #edf2f7;
+  --border:  rgba(0,0,0,0.08);
+  --border2: rgba(0,0,0,0.14);
+  --text:    #1a202c;
+  --text2:   #4a5568;
+  --text3:   #a0aec0;
+  --teal:    #0284c7;
+  --teal-dim:rgba(2,132,199,0.1);
+  --green:   #059669;
+  --green-dim:rgba(5,150,105,0.1);
+  --red:     #dc2626;
+  --red-dim: rgba(220,38,38,0.1);
+  --amber:   #d97706;
+  --amber-dim:rgba(217,119,6,0.1);
+  --blue:    #2563eb;
+  --blue-dim:rgba(37,99,235,0.1);
+  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
 }
 * { box-sizing: border-box; margin: 0; padding: 0; }
 html, body { height: 100%; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; }
+body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; transition: background 0.2s, color 0.2s; }
 
 /* SCROLLBAR */
-::-webkit-scrollbar { width: 6px; height: 6px; }
-::-webkit-scrollbar-track { background: var(--bg2); }
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text3); }
 
 /* LAYOUT */
 .app { display: flex; height: 100vh; overflow: hidden; }
-.sidebar { width: 220px; min-width: 220px; background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; overflow-y: auto; }
-.main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; }
+.sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; overflow-y: auto; transition: background 0.2s; }
+.main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg); }
 
-/* SIDEBAR */
-.logo { padding: 22px 20px 16px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
-.logo-icon { width: 32px; height: 32px; background: var(--green); border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 16px; color: #000; font-weight: 700; }
-.logo-text { font-size: 16px; font-weight: 600; color: var(--text); }
-.logo-text span { color: var(--green); }
-.nav { padding: 12px 10px; flex: 1; }
-.nav-section { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); padding: 8px 10px 4px; }
-.nav-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: var(--radius-sm); cursor: pointer; color: var(--text2); font-size: 13px; transition: all 0.15s; margin-bottom: 2px; }
+/* ===== SIDEBAR ===== */
+.logo { padding: 18px 16px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.logo-icon { width: 30px; height: 30px; background: linear-gradient(135deg,var(--teal),var(--green)); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; font-weight: 700; flex-shrink: 0; box-shadow: 0 2px 8px rgba(14,165,233,0.35); }
+.logo-text { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0; font-family: var(--font); }
+.logo-text span { color: var(--teal); }
+.logo-ver { font-size: 10px; color: var(--text3); margin-top: 1px; }
+.nav { padding: 8px 0; flex: 1; overflow-y: auto; scrollbar-width: none; }
+.nav::-webkit-scrollbar { display: none; }
+.nav-section { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); padding: 12px 16px 4px; font-weight: 600; }
+.nav-item { display: flex; align-items: center; gap: 9px; padding: 7px 16px; border-radius: 0; border-left: 2px solid transparent; cursor: pointer; color: var(--text2); font-size: 12px; font-family: var(--font); transition: all 0.12s; margin-bottom: 1px; }
 .nav-item:hover { background: var(--bg3); color: var(--text); }
-.nav-item.active { background: var(--green-dim); color: var(--green); }
-.nav-item i { width: 16px; text-align: center; font-size: 14px; }
-.nav-badge { margin-left: auto; background: var(--red-dim); color: var(--red); font-size: 11px; padding: 1px 6px; border-radius: 20px; font-weight: 600; }
+.nav-item.active { background: rgba(14,165,233,0.1); color: var(--teal); border-left-color: var(--teal); font-weight: 500; }
+.nav-item i { width: 15px; text-align: center; font-size: 14px; flex-shrink: 0; opacity: 0.8; }
+.nav-item.active i { opacity: 1; }
+.nav-badge { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; background: var(--red-dim); color: var(--red); }
 .nav-badge.amber { background: var(--amber-dim); color: var(--amber); }
-.sidebar-footer { padding: 12px 10px; border-top: 1px solid var(--border); }
-.status-indicator { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text2); padding: 8px 10px; }
-.dot-live { width: 7px; height: 7px; border-radius: 50%; background: var(--green); box-shadow: 0 0 8px var(--green); animation: pulse 2s infinite; }
-@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+.nav-badge.green { background: var(--green-dim); color: var(--green); }
+.sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
+.status-indicator { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text2); padding: 4px 0; }
+.dot-live { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; box-shadow: 0 0 6px var(--green); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+@keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 6px var(--green)} 50%{opacity:0.6;box-shadow:0 0 12px var(--green)} }
 
-/* TOPBAR */
-.topbar { display: flex; align-items: center; padding: 16px 24px; gap: 12px; border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0; }
-.topbar-title { font-size: 17px; font-weight: 600; color: var(--text); }
-.topbar-sub { font-size: 12px; color: var(--text3); margin-top: 1px; }
-.topbar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
-.btn { padding: 7px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg3); color: var(--text); font-size: 13px; cursor: pointer; font-family: var(--font); display: inline-flex; align-items: center; gap: 6px; transition: all 0.15s; white-space: nowrap; }
-.btn:hover { background: var(--bg4); border-color: var(--border2); }
-.btn-green { background: var(--green); color: #000; border-color: var(--green); font-weight: 600; }
-.btn-green:hover { background: #1ab668; border-color: #1ab668; }
-.btn-red { background: var(--red-dim); color: var(--red); border-color: rgba(240,82,82,0.3); }
+/* ===== TOPBAR ===== */
+.topbar { display: flex; align-items: center; padding: 10px 20px; gap: 10px; border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0; box-shadow: var(--shadow); }
+.topbar-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.topbar-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
+.topbar-right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+
+/* ===== BUTTONS ===== */
+.btn { padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg3); color: var(--text2); font-size: 12px; cursor: pointer; font-family: var(--font); display: inline-flex; align-items: center; gap: 5px; transition: all 0.15s; white-space: nowrap; font-weight: 500; }
+.btn:hover { background: var(--bg4); color: var(--text); border-color: var(--text3); }
+.btn i { font-size: 13px; }
+.btn-green { background: var(--teal); color: #fff; border-color: var(--teal); font-weight: 600; }
+.btn-green:hover { background: #0284c7; border-color: #0284c7; color: #fff; }
+.btn-red { background: var(--red-dim); color: var(--red); border-color: rgba(239,68,68,0.3); }
+.btn-red:hover { background: rgba(239,68,68,0.2); }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text2); }
 .btn-ghost:hover { background: var(--bg3); color: var(--text); }
-.btn-red { background: var(--red-dim); color: var(--red); border-color: rgba(240,82,82,0.3); }
-.btn-red:hover { background: rgba(240,82,82,0.2); }
-.btn-sm { padding: 4px 10px; font-size: 12px; }
-.btn-icon { padding: 7px; }
+.btn-amber { background: var(--amber-dim); color: var(--amber); border-color: rgba(245,158,11,0.3); }
+.btn-amber:hover { background: rgba(245,158,11,0.2); }
+.btn-sm { padding: 4px 9px; font-size: 11px; }
+.btn-icon { padding: 6px 8px; }
 
-/* CONTENT */
-.content { padding: 24px; flex: 1; }
+/* DARK MODE TOGGLE */
+.theme-toggle { width: 34px; height: 18px; background: var(--bg4); border: 1px solid var(--border2); border-radius: 10px; cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0; }
+.theme-toggle.on { background: var(--teal); border-color: var(--teal); }
+.theme-toggle::after { content: ''; position: absolute; width: 12px; height: 12px; background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+.theme-toggle.on::after { left: 18px; }
+.theme-toggle-wrap { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text2); }
 
-/* METRIC CARDS */
-.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(155px, 1fr)); gap: 12px; margin-bottom: 24px; }
-.metric-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
-.metric-card.highlight-green { border-color: rgba(34,208,122,0.25); }
-.metric-card.highlight-red { border-color: rgba(240,82,82,0.25); }
-.metric-card.highlight-amber { border-color: rgba(245,158,11,0.25); }
-.metric-card.clickable { cursor: pointer; transition: all 0.15s; }
-.metric-card.clickable:hover { transform: translateY(-2px); border-color: var(--border2); background: var(--bg3); }
-.metric-card.clickable:hover .metric-label { color: var(--text); }
-.metric-card.clickable::after { content: '→'; position: absolute; bottom: 12px; right: 14px; font-size: 12px; color: var(--text3); opacity: 0; transition: opacity 0.15s; }
-.metric-card.clickable { position: relative; }
+/* ===== CONTENT ===== */
+.content { padding: 16px 20px; flex: 1; }
+
+/* ===== METRIC CARDS ===== */
+.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; margin-bottom: 18px; }
+.metric-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; position: relative; overflow: hidden; transition: all 0.15s; box-shadow: var(--shadow); }
+.metric-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--teal); opacity: 0; transition: opacity 0.15s; }
+.metric-card.highlight-green { border-color: rgba(16,185,129,0.2); }
+.metric-card.highlight-green::after { background: var(--green); opacity: 0.6; }
+.metric-card.highlight-red { border-color: rgba(239,68,68,0.2); }
+.metric-card.highlight-red::after { background: var(--red); opacity: 0.6; }
+.metric-card.highlight-amber { border-color: rgba(245,158,11,0.2); }
+.metric-card.highlight-amber::after { background: var(--amber); opacity: 0.6; }
+.metric-card.highlight-blue { border-color: rgba(96,165,250,0.2); }
+.metric-card.highlight-blue::after { background: var(--blue); opacity: 0.6; }
+.metric-card.clickable { cursor: pointer; }
+.metric-card.clickable:hover { background: var(--bg3); border-color: var(--border2); transform: translateY(-1px); box-shadow: var(--shadow-md); }
 .metric-card.clickable:hover::after { opacity: 1; }
-.metric-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; }
-.metric-val { font-size: 28px; font-weight: 600; color: var(--text); font-family: var(--mono); }
+.metric-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; font-weight: 600; }
+.metric-val { font-size: 26px; font-weight: 700; color: var(--text); font-family: var(--mono); line-height: 1; }
 .metric-val.green { color: var(--green); }
 .metric-val.red { color: var(--red); }
 .metric-val.amber { color: var(--amber); }
-.metric-val.blue { color: var(--blue); }
-.metric-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+.metric-val.blue { color: var(--teal); }
+.metric-sub { font-size: 11px; color: var(--text3); margin-top: 5px; }
 
-/* TOOLBAR */
-.toolbar { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; align-items: center; }
-.search-box { position: relative; flex: 1; min-width: 220px; }
-.search-box i { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 13px; }
-.search-box input { width: 100%; padding: 8px 12px 8px 34px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
-.search-box input:focus { border-color: var(--green); }
+/* ===== TOOLBAR ===== */
+.toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+.search-box { position: relative; flex: 1; min-width: 200px; }
+.search-box i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 13px; }
+.search-box input { width: 100%; padding: 7px 12px 7px 32px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
+.search-box input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(14,165,233,0.1); }
 .search-box input::placeholder { color: var(--text3); }
-select.sel { padding: 8px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; cursor: pointer; }
-select.sel:focus { border-color: var(--green); }
+select.sel { padding: 7px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; font-family: var(--font); outline: none; cursor: pointer; }
+select.sel:focus { border-color: var(--teal); }
+select.sel option { background: var(--bg2); }
 
-/* TABS */
-.tabs { display: flex; gap: 2px; margin-bottom: 16px; border-bottom: 1px solid var(--border); overflow-x: auto; }
-.tab { padding: 9px 16px; font-size: 13px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+/* ===== TABS ===== */
+.tabs { display: flex; gap: 0; margin-bottom: 14px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tab { padding: 8px 14px; font-size: 12px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: all 0.12s; display: flex; align-items: center; gap: 6px; font-weight: 500; }
 .tab:hover { color: var(--text); }
-.tab.active { color: var(--green); border-bottom-color: var(--green); font-weight: 500; }
-.tab-count { background: var(--bg3); border-radius: 20px; font-size: 11px; padding: 1px 6px; }
-.tab.active .tab-count { background: var(--green-dim); color: var(--green); }
+.tab.active { color: var(--teal); border-bottom-color: var(--teal); }
+.tab-count { background: var(--bg3); border-radius: 10px; font-size: 10px; padding: 1px 6px; }
+.tab.active .tab-count { background: var(--teal-dim); color: var(--teal); }
 
-/* TABLE */
-.table-container { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+/* ===== TABLE ===== */
+.table-container { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
-thead th { padding: 11px 14px; text-align: left; font-size: 11px; color: var(--text3); font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em; background: var(--bg3); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
+thead th { padding: 10px 14px; text-align: left; font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; background: var(--bg3); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
 thead th:hover { color: var(--text2); }
-thead th.sort-asc::after { content: ' ↑'; color: var(--green); }
-thead th.sort-desc::after { content: ' ↓'; color: var(--green); }
+thead th.sort-asc::after { content: ' ↑'; color: var(--teal); }
+thead th.sort-desc::after { content: ' ↓'; color: var(--teal); }
 tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
 tbody tr:last-child { border-bottom: none; }
 tbody tr:hover { background: var(--bg3); }
-tbody td { padding: 10px 14px; font-size: 13px; color: var(--text); vertical-align: middle; }
-.domain-name { font-family: var(--mono); font-size: 13px; color: var(--text); font-weight: 500; }
+tbody td { padding: 10px 14px; font-size: 12px; color: var(--text); vertical-align: middle; }
+.domain-name { font-family: var(--mono); font-size: 12px; color: var(--teal); font-weight: 500; }
 .domain-name a { color: inherit; text-decoration: none; }
-.domain-name a:hover { color: var(--green); }
+.domain-name a:hover { opacity: 0.8; text-decoration: underline; }
 
-/* BADGES */
+/* ===== BADGES ===== */
 .badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
 .badge-up { background: var(--green-dim); color: var(--green); }
 .badge-down { background: var(--red-dim); color: var(--red); }
 .badge-warn { background: var(--amber-dim); color: var(--amber); }
-.badge-unknown { background: var(--bg4); color: var(--text3); }
-.badge-blue { background: var(--blue-dim); color: var(--blue); }
+.badge-unknown { background: var(--bg4); color: var(--text3); border: 1px solid var(--border); }
+.badge-blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(0,170,255,0.2); }
 
 /* TRAFFIC BAR */
 .traffic-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
@@ -178,17 +231,17 @@ tbody td { padding: 10px 14px; font-size: 13px; color: var(--text); vertical-ali
 .page-btns { display: flex; gap: 4px; }
 .page-btn { padding: 4px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text2); cursor: pointer; font-size: 12px; font-family: var(--font); }
 .page-btn:hover { background: var(--bg4); }
-.page-btn.active { background: var(--green); color: #000; border-color: var(--green); font-weight: 600; }
+.page-btn.active { background: var(--teal); color: #fff; border-color: var(--teal); font-weight: 600; }
 .page-btn:disabled { opacity: 0.4; cursor: default; }
 
 /* MODAL */
 .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-.modal { background: var(--bg2); border: 1px solid var(--border2); border-radius: 14px; padding: 28px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; }
-.modal-title { font-size: 17px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 28px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-md); }
+.modal-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
 .form-group { margin-bottom: 16px; }
 .form-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; display: block; font-weight: 500; }
 .form-input { width: 100%; padding: 9px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
-.form-input:focus { border-color: var(--green); }
+.form-input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(14,165,233,0.1); }
 .form-input::placeholder { color: var(--text3); }
 textarea.form-input { resize: vertical; min-height: 80px; }
 .form-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
@@ -197,18 +250,18 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
 /* LOADING */
 .loading { display: flex; align-items: center; gap: 8px; color: var(--text3); font-size: 13px; padding: 40px; justify-content: center; }
-.spinner { width: 16px; height: 16px; border: 2px solid var(--bg4); border-top-color: var(--green); border-radius: 50%; animation: spin 0.7s linear infinite; }
+.spinner { width: 16px; height: 16px; border: 2px solid var(--bg4); border-top-color: var(--teal); border-radius: 50%; animation: spin 0.7s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* TOAST */
 .toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
 .toast { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; display: flex; align-items: center; gap: 10px; min-width: 280px; animation: slideIn 0.2s ease; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
-.toast.success { border-color: rgba(34,208,122,0.3); }
-.toast.error { border-color: rgba(240,82,82,0.3); }
+.toast.success { border-color: rgba(16,185,129,0.3); background: var(--bg2); }
+.toast.error { border-color: rgba(239,68,68,0.3); background: var(--bg2); }
 .toast i { font-size: 16px; }
 .toast.success i { color: var(--green); }
 .toast.error i { color: var(--red); }
-.toast.info i { color: var(--blue); }
+.toast.info i { color: var(--teal); }
 @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
 
 /* DETAIL PANEL */
@@ -221,7 +274,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 .kw-table-wrap table th { position: sticky; top: 0; z-index: 1; }
 
 /* GSC CONNECT BANNER */
-.gsc-banner { background: linear-gradient(135deg, #1a1e28, #1e2535); border: 1px solid rgba(96,165,250,0.2); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 16px; }
+.gsc-banner { background: linear-gradient(135deg, var(--bg3), var(--bg2)); border: 1px solid rgba(96,165,250,0.2); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 16px; }
 .gsc-banner-icon { font-size: 28px; }
 .gsc-banner-text h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
 .gsc-banner-text p { font-size: 12px; color: var(--text2); }
@@ -230,7 +283,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 /* SETTINGS PAGE */
 .settings-section { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
 .settings-section-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; color: var(--text); }
-.settings-section-title i { color: var(--green); }
+.settings-section-title i { color: var(--teal); }
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .server-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 20px; }
 .server-ok { background: var(--green-dim); color: var(--green); }
@@ -315,6 +368,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
+<div id="matrix-rain" style="position:fixed;inset:0;overflow:hidden;pointer-events:none;opacity:0.03;z-index:0"></div>
 <div id="global-loading" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;flex-direction:column;gap:16px">
   <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:28px 36px;text-align:center;min-width:280px">
     <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
@@ -340,14 +394,17 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   <aside class="sidebar" id="sidebar">
     <div class="logo">
       <div class="logo-icon">D</div>
-      <div class="logo-text">Domain<span>Intel</span></div>
+      <div>
+        <div class="logo-text">Domain<span>Intel</span></div>
+        <div class="logo-ver">v2.0 · SEO Intelligence</div>
+      </div>
     </div>
     <nav class="nav">
-      <div class="nav-section">Overview</div>
+      <div class="nav-section">// OVERVIEW</div>
       <div class="nav-item active" onclick="showPage('dashboard')">
         <i class="ti ti-dashboard"></i> Dashboard
       </div>
-      <div class="nav-section">Monitoring</div>
+      <div class="nav-section">// MONITORING</div>
       <div class="nav-item" onclick="showPage('domains');currentTab='all';applyFilters();">
         <i class="ti ti-world"></i> โดเมนทั้งหมด
         <span class="nav-badge" id="nav-total">0</span>
@@ -360,14 +417,14 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         <i class="ti ti-clock"></i> หมดอายุเร็วๆ
         <span class="nav-badge amber" id="nav-expiring">0</span>
       </div>
-      <div class="nav-section">Analytics</div>
+      <div class="nav-section">// ANALYTICS</div>
       <div class="nav-item" onclick="showPage('traffic')">
         <i class="ti ti-chart-line"></i> Traffic & GSC
       </div>
       <div class="nav-item" onclick="showPage('keywords')">
         <i class="ti ti-award"></i> Keyword Rankings
       </div>
-      <div class="nav-section">Tools</div>
+      <div class="nav-section">// TOOLS</div>
       <div class="nav-item" onclick="showPageFiltered('domains','cannot-fix')">
         <i class="ti ti-alert-circle"></i>
         <span>แก้ไขไม่ได้</span>
@@ -384,6 +441,10 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="showPage('server-manager')">
         <i class="ti ti-server"></i> Server Manager
         <span class="badge" id="nav-server-alerts" style="background:var(--red);color:#fff;display:none"></span>
+      </div>
+      <div class="nav-item" onclick="showPage('botwatch')">
+        <i class="ti ti-shield-check"></i> Bot Watch
+        <span class="nav-badge" id="nav-botwatch" style="display:none"></span>
       </div>
       <div class="nav-item" onclick="showPage('settings')">
         <i class="ti ti-settings"></i> Settings
@@ -413,6 +474,11 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="topbar-sub" id="dash-subtitle">โหลดข้อมูล...</div>
         </div>
         <div class="topbar-right">
+          <div class="theme-toggle-wrap" title="สลับ Dark/Light Mode">
+            <i class="ti ti-sun" style="font-size:13px;color:var(--amber)"></i>
+            <div class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"></div>
+            <i class="ti ti-moon" style="font-size:13px;color:var(--teal)"></i>
+          </div>
           <button class="btn" onclick="syncPlesk()" id="plesk-sync-btn"><i class="ti ti-server"></i> Sync Plesk</button>
           <button class="btn" id="refresh-btn" onclick="refreshNow()"><i class="ti ti-refresh"></i> รีเฟรช</button>
           <button class="btn" onclick="checkAllNow()"><i class="ti ti-refresh"></i> เช็คทุกโดเมน</button>
@@ -744,6 +810,60 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   </main>
 </div>
 
+
+    <!-- BOT WATCH PAGE -->
+    <div id="page-botwatch" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-shield-check" style="color:var(--red)"></i> Bot Watch</div>
+          <div class="topbar-sub">ตรวจจับ IP ที่เข้าระบบผิดปกติ</div>
+        </div>
+        <div class="topbar-right">
+          <input type="date" id="bw-date" class="form-input" style="width:160px;padding:6px 10px;font-size:13px" />
+          <select id="bw-domain" class="sel" onchange="loadBotWatch()">
+            <option value="">ทุกโดเมน</option>
+          </select>
+          <button class="btn" onclick="loadBotWatch()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+          <button class="btn" style="background:var(--red-dim);color:var(--red);border-color:rgba(240,82,82,0.3)" onclick="syncBotWatch()"><i class="ti ti-refresh"></i> Sync ข้อมูล</button>
+        </div>
+      </div>
+      <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-shield-x"></i> Bot IPs วันนี้</div><div class="metric-val red" id="bw-stat-ips">—</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-click"></i> จำนวนครั้งรวม</div><div class="metric-val amber" id="bw-stat-hits">—</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-world"></i> โดเมนที่ถูก hit</div><div class="metric-val blue" id="bw-stat-domains">—</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-clock"></i> อัพเดตล่าสุด</div><div style="font-size:12px;color:var(--text2);margin-top:4px" id="bw-stat-sync">—</div></div>
+        </div>
+        <div class="table-container">
+          <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:14px;font-weight:600"><i class="ti ti-robot" style="color:var(--red)"></i> รายการ Bot IPs</div>
+            <div style="font-size:12px;color:var(--text3)">IP ที่เข้าระบบซ้ำ ≥ 5 ครั้ง/วัน</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>IP Address</th>
+                  <th>เว็บไซต์</th>
+                  <th>การกระทำ</th>
+                  <th>ช่วงเวลา</th>
+                  <th style="color:var(--red)">จำนวนครั้ง</th>
+                  <th>จัดการ</th>
+                </tr>
+              </thead>
+              <tbody id="bw-table-body">
+                <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+          <div style="font-size:14px;font-weight:600;margin-bottom:16px"><i class="ti ti-chart-bar" style="color:var(--blue)"></i> ประวัติ 7 วันล่าสุด</div>
+          <div id="bw-history" style="display:grid;gap:8px"></div>
+        </div>
+      </div>
+    </div>
+
 <!-- MODALS -->
 <div id="add-modal" class="modal-overlay" style="display:none">
   <div class="modal">
@@ -795,7 +915,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     
     <!-- Progress Bar -->
     <div style="background:var(--bg4);border-radius:8px;overflow:hidden;height:10px;margin-bottom:12px">
-      <div id="progress-bar-fill" style="height:100%;background:linear-gradient(90deg,var(--green),#34d399);border-radius:8px;width:0%;transition:width 0.3s;"></div>
+      <div id="progress-bar-fill" style="height:100%;background:linear-gradient(90deg,var(--teal),var(--green));border-radius:8px;width:0%;transition:width 0.3s;"></div>
     </div>
     <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:20px">
       <span id="progress-count">0 / 0 โดเมน</span>
@@ -2055,6 +2175,9 @@ function showPage(name) {
   if (name === 'dashboard') renderQuickTable();
   if (name === 'traffic') renderTrafficPage();
   if (name === 'keywords') renderKeywordsPage();
+  if (name === 'botwatch') {
+    initBotWatch();
+  }
   if (name === 'server-manager') {
     if (!window._pleskServers || window._pleskServers.length === 0) {
       loadData().then(() => refreshServerHealth());
@@ -2945,5 +3068,190 @@ document.querySelectorAll('.nav-item').forEach(item => {
   });
 });
 </script>
+
+<script id="matrix-rain-init">
+// Matrix rain background
+(function() {
+  const bg = document.getElementById('matrix-rain');
+  if (!bg) return;
+  const chars = '01アイウエオカキクケコ{}[]<>=>;:#$%&*!?/\\';
+  const style = document.createElement('style');
+  style.textContent = '@keyframes mfall{0%{transform:translateY(-100%);opacity:0}5%{opacity:1}90%{opacity:0.15}100%{transform:translateY(110vh);opacity:0}}';
+  document.head.appendChild(style);
+  for (let i = 0; i < 22; i++) {
+    const c = document.createElement('div');
+    c.style.cssText = 'position:absolute;font-size:9px;color:#22d07a;line-height:14px;letter-spacing:3px;white-space:pre;animation:mfall linear infinite;font-family:monospace';
+    c.style.left = (i * 4.8) + '%';
+    c.style.animationDuration = (4 + Math.random() * 5) + 's';
+    c.style.animationDelay = (-Math.random() * 7) + 's';
+    let s = '';
+    for (let j = 0; j < 50; j++) s += chars[Math.floor(Math.random() * chars.length)] + '\n';
+    c.textContent = s;
+    bg.appendChild(c);
+  }
+})();
+</script>
+<script>
+// ===== DARK/LIGHT MODE TOGGLE =====
+function toggleTheme() {
+  const html = document.documentElement;
+  const toggle = document.getElementById('theme-toggle');
+  const isLight = html.classList.toggle('light');
+  if (toggle) toggle.classList.toggle('on', !isLight); // on = dark mode
+  localStorage.setItem('di_theme', isLight ? 'light' : 'dark');
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('di_theme') || 'dark';
+  const html = document.documentElement;
+  const toggle = document.getElementById('theme-toggle');
+  if (saved === 'light') {
+    html.classList.add('light');
+    if (toggle) toggle.classList.remove('on');
+  } else {
+    html.classList.remove('light');
+    if (toggle) toggle.classList.add('on');
+  }
+}
+
+// รัน initTheme ทันที
+document.addEventListener('DOMContentLoaded', () => {
+  initTheme();
+});
+// รัน early เพื่อป้องกัน flash
+(function() {
+  const saved = localStorage.getItem('di_theme') || 'dark';
+  if (saved === 'light') document.documentElement.classList.add('light');
+})();
+</script>
 </body>
 </html>
+<script>
+// ===== BOT WATCH =====
+let bwData = [];
+
+function initBotWatch() {
+  const dateEl = document.getElementById('bw-date');
+  if (dateEl && !dateEl.value) {
+    dateEl.value = new Date().toISOString().split('T')[0];
+  }
+  loadBotWatch();
+}
+
+async function loadBotWatch() {
+  const date = document.getElementById('bw-date')?.value || new Date().toISOString().split('T')[0];
+  const domain = document.getElementById('bw-domain')?.value || '';
+  const tbody = document.getElementById('bw-table-body');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</td></tr>';
+  try {
+    const [dataRes, histRes] = await Promise.all([
+      fetch(`${API}/api/botwatch/data?date=${date}&domain=${domain}`),
+      fetch(`${API}/api/botwatch/history?days=7&domain=${domain}`)
+    ]);
+    const data = await dataRes.json();
+    const hist = await histRes.json();
+    bwData = data.logs || [];
+    const domSel = document.getElementById('bw-domain');
+    if (domSel && data.sites) {
+      const cur = domSel.value;
+      domSel.innerHTML = '<option value="">ทุกโดเมน</option>' +
+        data.sites.map(s => `<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
+    }
+    const navBadge = document.getElementById('nav-botwatch');
+    if (navBadge) { navBadge.textContent = bwData.length || ''; navBadge.style.display = bwData.length > 0 ? '' : 'none'; }
+    const totalHits = bwData.reduce((s,l) => s + l.count, 0);
+    const uniqueDomains = new Set(bwData.map(l => l.domain)).size;
+    document.getElementById('bw-stat-ips').textContent = bwData.length;
+    document.getElementById('bw-stat-hits').textContent = totalHits.toLocaleString();
+    document.getElementById('bw-stat-domains').textContent = uniqueDomains;
+    const syncEl = document.getElementById('bw-stat-sync');
+    if (syncEl) syncEl.textContent = data.lastSync ? timeAgo(data.lastSync) : 'ยังไม่มีข้อมูล';
+    renderBotTable(bwData);
+    renderBotHistory(hist.summary || []);
+  } catch(e) {
+    const tbody = document.getElementById('bw-table-body');
+    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--red)">เชื่อมต่อ Server ไม่ได้: ${e.message}</td></tr>`;
+  }
+}
+
+function renderBotTable(logs) {
+  const tbody = document.getElementById('bw-table-body');
+  if (!tbody) return;
+  if (!logs.length) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--green)"><i class="ti ti-shield-check" style="font-size:24px;display:block;margin-bottom:8px"></i> ไม่พบ Bot IP ในวันที่เลือก</td></tr>';
+    return;
+  }
+  tbody.innerHTML = logs.map(l => {
+    const countColor = l.count >= 20 ? 'var(--red)' : l.count >= 10 ? 'var(--amber)' : 'var(--text2)';
+    return `<tr>
+      <td><span style="font-family:var(--mono);font-size:13px;background:var(--red-dim);color:var(--red);padding:2px 8px;border-radius:4px">${l.ip}</span></td>
+      <td><a href="https://${l.domain}" target="_blank" style="color:var(--text);font-family:var(--mono);font-size:13px">${l.domain}</a></td>
+      <td><span style="font-size:12px;color:var(--text2)">${l.action}</span></td>
+      <td style="font-size:11px;color:var(--text3);font-family:var(--mono)">${l.firstSeen}<br>→ ${l.lastSeen}</td>
+      <td><span style="color:${countColor};font-weight:700;font-size:15px;font-family:var(--mono)">${l.count}</span></td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button onclick="copyBotIP('${l.ip}')" class="btn btn-sm"><i class="ti ti-copy"></i> Copy IP</button>
+          <button onclick="showBlockGuide('${l.ip}')" class="btn btn-sm btn-red"><i class="ti ti-ban"></i> Block Guide</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function renderBotHistory(summary) {
+  const el = document.getElementById('bw-history');
+  if (!el) return;
+  if (!summary.length) { el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:20px">ยังไม่มีข้อมูลย้อนหลัง</div>'; return; }
+  const maxIPs = Math.max(...summary.map(s => s.uniqueIPs), 1);
+  el.innerHTML = summary.map(s => {
+    const pct = Math.round(s.uniqueIPs / maxIPs * 100);
+    const color = pct >= 80 ? 'var(--red)' : pct >= 40 ? 'var(--amber)' : 'var(--green)';
+    return `<div style="display:flex;align-items:center;gap:12px">
+      <div style="font-size:12px;font-family:var(--mono);color:var(--text2);min-width:90px">${s.date}</div>
+      <div style="flex:1;background:var(--bg4);border-radius:4px;height:20px;overflow:hidden">
+        <div style="width:${pct}%;background:${color};height:100%;border-radius:4px;transition:width 0.5s"></div>
+      </div>
+      <div style="font-size:12px;color:${color};font-weight:600;min-width:100px">${s.uniqueIPs} IPs / ${s.total} hits</div>
+    </div>`;
+  }).join('');
+}
+
+function copyBotIP(ip) {
+  navigator.clipboard.writeText(ip);
+  toast(`Copy IP ${ip} แล้ว`, 'success');
+}
+
+function showBlockGuide(ip) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
+  modal.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:28px;max-width:500px;width:100%">
+    <div style="font-size:16px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px">
+      <i class="ti ti-ban" style="color:var(--red)"></i> Block IP Guide: ${ip}
+    </div>
+    <div style="background:var(--bg3);border-radius:8px;padding:14px;font-family:var(--mono);font-size:12px;color:var(--text);line-height:1.8;margin-bottom:12px">
+      <div style="color:var(--text3);margin-bottom:6px"># วิธีที่ 1: .htaccess</div>
+      <div>Deny from ${ip}</div><br>
+      <div style="color:var(--text3);margin-bottom:6px"># วิธีที่ 2: iptables (SSH)</div>
+      <div>iptables -A INPUT -s ${ip} -j DROP</div><br>
+      <div style="color:var(--text3);margin-bottom:6px"># วิธีที่ 3: Cloudflare Firewall Rule</div>
+      <div>ip.src eq ${ip} → Block</div>
+    </div>
+    <div style="display:flex;gap:8px;justify-content:flex-end">
+      <button onclick="navigator.clipboard.writeText('iptables -A INPUT -s ${ip} -j DROP');toast('Copy คำสั่งแล้ว','success')" class="btn btn-sm"><i class="ti ti-copy"></i> Copy iptables</button>
+      <button onclick="this.closest('[style*=fixed]').remove()" class="btn btn-sm">ปิด</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
+async function syncBotWatch() {
+  toast('⏳ กำลัง Sync Bot Watch data...', 'info');
+  try {
+    await fetch(`${API}/api/botwatch/sync`, { method: 'POST' });
+    toast('✅ Sync เริ่มแล้ว รอประมาณ 1 นาที', 'success');
+    setTimeout(loadBotWatch, 65000);
+  } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
+}
+</script>
