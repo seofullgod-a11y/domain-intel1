@@ -1193,6 +1193,55 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // ===== BOT WATCH API =====
+  if (req.method === 'GET' && url === '/api/botwatch/data') {
+    const params = new URLSearchParams(rawUrl.split('?')[1] || '');
+    const date = params.get('date') || new Date().toISOString().split('T')[0];
+    const domain = params.get('domain') || '';
+    let logs = botWatchLogs.filter(l => l.date === date);
+    if (domain) logs = logs.filter(l => l.domain === domain);
+    logs.sort((a,b) => b.count - a.count);
+    json(res, { logs, lastSync: botWatchLastSync, sites: BOT_WATCH_SITES.map(s => s.domain), total: logs.length });
+    return;
+  }
+
+  if (req.method === 'GET' && url === '/api/botwatch/history') {
+    const params = new URLSearchParams(rawUrl.split('?')[1] || '');
+    const domain = params.get('domain') || '';
+    const days = parseInt(params.get('days') || '7');
+    const cutoff = new Date(Date.now() - days*86400000).toISOString().split('T')[0];
+    let logs = botWatchLogs.filter(l => l.date >= cutoff);
+    if (domain) logs = logs.filter(l => l.domain === domain);
+    // group by date
+    const byDate = {};
+    logs.forEach(l => {
+      if (!byDate[l.date]) byDate[l.date] = { date: l.date, total: 0, uniqueIPs: new Set(), domains: new Set() };
+      byDate[l.date].total += l.count;
+      byDate[l.date].uniqueIPs.add(l.ip);
+      byDate[l.date].domains.add(l.domain);
+    });
+    const summary = Object.values(byDate).map(d => ({
+      date: d.date, total: d.total,
+      uniqueIPs: d.uniqueIPs.size,
+      domains: d.domains.size
+    })).sort((a,b) => b.date.localeCompare(a.date));
+    json(res, { summary, logs, sites: BOT_WATCH_SITES.map(s => s.domain) });
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/botwatch/sync') {
+    collectBotWatchData().catch(console.error);
+    json(res, { success: true, message: 'กำลัง collect Bot Watch data...' });
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/botwatch/sites') {
+    // เพิ่ม/แก้ไข site config (ยังไม่ persist — ต้อง restart)
+    json(res, { success: true, sites: BOT_WATCH_SITES });
+    return;
+  }
+
   // Telegram Webhook
   if (req.method === 'POST' && url === '/api/telegram/webhook') {
     const body = await parseBody(req);
@@ -2105,9 +2154,107 @@ server.listen(PORT, async () => {
   setInterval(checkDatabaseBackups, 24 * 60 * 60 * 1000); // Backup check ทุกวัน
   setInterval(checkDomainExpiry, 12 * 60 * 60 * 1000); // Domain expiry ทุก 12 ชั่วโมง
   setInterval(checkEmailSpam, 6 * 60 * 60 * 1000); // Email check ทุก 6 ชั่วโมง
+  setInterval(collectBotWatchData, 60 * 60 * 1000); // Bot Watch ทุก 1 ชั่วโมง
+  setTimeout(async () => {
+    botWatchLogs = await loadBotWatchFromSheets();
+    console.log(`[BotWatch] โหลด ${botWatchLogs.length} records จาก Sheets`);
+    await collectBotWatchData();
+  }, 3 * 60 * 1000); // รันครั้งแรกหลัง 3 นาที
   // Monthly report - disabled
   setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
   setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
   console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
 });
+
+// ===== BOT WATCH SYSTEM =====
+const BOT_WATCH_SITES = [
+  {
+    domain: 'romazeed.pro',
+    server: 'Server 1',
+    serverHost: '139.59.102.1',
+    dbName: 'wp_swdlt',
+    dbUser: 'wp_ofaof',
+    dbPass: '?51qko5eYDM_OS7^',
+    tablePrefix: 'NFgEJywIR_',
+    type: 'wordpress'
+  }
+];
+
+let botWatchLogs = [];
+let botWatchLastSync = null;
+
+async function saveBotWatchToSheets(logs) {
+  if (!SHEET_ID) return;
+  const token = await getGoogleToken('https://www.googleapis.com/auth/spreadsheets');
+  if (!token) return;
+  const BWHEADERS = ['date','domain','ip','action','count','firstSeen','lastSeen','server'];
+  await sheetsRequest('POST', `/v4/spreadsheets/${SHEET_ID}/values/Sheet2!A1:H5000:clear`, {}, token);
+  const values = [BWHEADERS, ...logs.map(l => [
+    l.date||'', l.domain||'', l.ip||'', l.action||'',
+    l.count||0, l.firstSeen||'', l.lastSeen||'', l.server||''
+  ])];
+  await sheetsRequest('PUT', `/v4/spreadsheets/${SHEET_ID}/values/Sheet2!A1:H${values.length}?valueInputOption=RAW`, { values }, token);
+  console.log(`[BotWatch] บันทึก ${logs.length} records ลง Sheet2`);
+}
+
+async function loadBotWatchFromSheets() {
+  if (!SHEET_ID) return [];
+  const res = await sheetsRequest('GET', `/v4/spreadsheets/${SHEET_ID}/values/Sheet2!A2:H5000`);
+  if (!res?.values) return [];
+  return res.values.map(row => ({
+    date: row[0]||'', domain: row[1]||'', ip: row[2]||'',
+    action: row[3]||'', count: parseInt(row[4])||0,
+    firstSeen: row[5]||'', lastSeen: row[6]||'', server: row[7]||''
+  })).filter(r => r.domain && r.ip);
+}
+
+async function collectBotWatchData() {
+  console.log('[BotWatch] เริ่ม collect data...');
+  const today = new Date().toISOString().split('T')[0];
+  const newLogs = [];
+
+  for (const site of BOT_WATCH_SITES) {
+    try {
+      const table = site.tablePrefix + 'login_log';
+      const query = `mysql -u ${site.dbUser} -p'${site.dbPass}' ${site.dbName} -e "SELECT user_ip as ip, COUNT(*) as cnt, MIN(logged_at) as first_seen, MAX(logged_at) as last_seen FROM ${table} WHERE DATE(logged_at) = '${today}' GROUP BY user_ip HAVING COUNT(*) >= 5 ORDER BY cnt DESC;" 2>/dev/null`;
+
+      const cmdId = queueCommand(site.serverHost, query);
+      let result = null;
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        if (agentResults[cmdId]) { result = agentResults[cmdId]; delete agentResults[cmdId]; break; }
+      }
+
+      if (!result || result.exitCode !== 0) { console.log(`[BotWatch] ${site.domain}: no result`); continue; }
+
+      const lines = (result.output||'').replace(/~/g,'\n').split('\n').filter(l => l && !l.startsWith('ip') && !l.startsWith('+') && !l.startsWith('|'));
+      for (const line of lines) {
+        const parts = line.trim().split(/\t/);
+        if (parts.length < 4) continue;
+        const ip = parts[0].trim();
+        const cnt = parseInt(parts[1]) || 0;
+        const firstSeen = (parts[2]||'').trim();
+        const lastSeen = (parts[3]||'').trim();
+        if (!ip || ip === 'ip' || cnt < 5) continue;
+        newLogs.push({ date: today, domain: site.domain, ip, action: 'เข้าสู่ระบบ', count: cnt, firstSeen, lastSeen, server: site.server });
+      }
+      console.log(`[BotWatch] ${site.domain}: ${newLogs.filter(l=>l.domain===site.domain).length} bot IPs`);
+    } catch(e) {
+      console.error(`[BotWatch] ${site.domain}:`, e.message);
+    }
+  }
+
+  const cutoff = new Date(Date.now() - 90*86400000).toISOString().split('T')[0];
+  const oldLogs = botWatchLogs.filter(l => l.date >= cutoff && l.date !== today);
+  botWatchLogs = [...oldLogs, ...newLogs];
+  botWatchLastSync = new Date().toISOString();
+
+  if (botWatchLogs.length > 0) await saveBotWatchToSheets(botWatchLogs);
+
+  if (newLogs.length > 0) {
+    const top = [...newLogs].sort((a,b) => b.count - a.count)[0];
+    sendTelegram(`🤖 <b>Bot Watch Alert!</b>\n🌐 ${top.domain}\n🔴 IP: <code>${top.ip}</code>\n📊 ${top.count} ครั้ง\n⏱️ ${top.firstSeen} → ${top.lastSeen}\nพบ Bot ทั้งหมด ${newLogs.length} IPs วันนี้`);
+  }
+  console.log(`[BotWatch] รวม ${botWatchLogs.length} records`);
+}
