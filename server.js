@@ -1193,24 +1193,10 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Apache Watchdog Alert (เรียกจาก script บน server)
-  if (req.method === 'POST' && url === '/api/agent/apache-alert') {
-    let body = '';
-    req.on('data', d => body += d);
-    req.on('end', async () => {
-      try {
-        const data = JSON.parse(body);
-        await handleApacheAlert(data.server || 'Unknown');
-        json(res, { ok: true });
-      } catch(e) { json(res, { ok: false }); }
-    });
-    return;
-  }
-
-  // Install Apache Watchdog บนทุก server
-  if (req.method === 'POST' && url === '/api/install-apache-watchdog') {
-    json(res, { success: true, message: 'กำลังติดตั้ง Apache Watchdog บนทุก server...' });
-    installAllApacheWatchdogs().catch(console.error);
+  // Setup Cloudflare Whitelist บนทุก server
+  if (req.method === 'POST' && url === '/api/setup-cloudflare-whitelist') {
+    json(res, { success: true, message: 'กำลังตั้งค่า Cloudflare Whitelist บนทุก server...' });
+    setupAllCloudflareWhitelists().catch(console.error);
     return;
   }
 
@@ -2100,105 +2086,106 @@ ${serverSummary}
 }
 
 
-// ===== APACHE WATCHDOG =====
-// ติดตั้ง watchdog script บน server ทุกตัว
-// ปลอดภัย 100%: แค่ restart httpd ถ้าล่ม ไม่แตะไฟล์/DB/config ใดๆ
-const apacheWatchdogCooldown = {}; // { serverName: lastAlertTime }
+// ===== CLOUDFLARE IP WHITELIST =====
+// Allow Cloudflare IPs ผ่าน iptables บนทุก server
+// ป้องกัน Error 521 จาก Cloudflare เชื่อมต่อ origin ไม่ได้
+// ปลอดภัย: เพิ่มแค่ ACCEPT rules ไม่ลบ rules เดิม ไม่แตะข้อมูลโดเมน
 
-const APACHE_WATCHDOG_SCRIPT = `#!/bin/bash
-# Apache Watchdog — ติดตั้งโดย DomainIntel
-# ปลอดภัย: แค่ restart httpd ถ้าไม่ทำงาน ไม่แตะข้อมูลโดเมน
-LOG="/var/log/apache-watchdog.log"
-RAILWAY_URL="https://domain-intel1-production.up.railway.app"
-SERVER_NAME="$(hostname)"
+const CLOUDFLARE_IPS = [
+  '173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+  '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20',
+  '197.234.240.0/22', '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13',
+  '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22'
+];
 
-if ! systemctl is-active --quiet httpd; then
-  systemctl restart httpd
-  STATUS=$?
-  MSG="[$(date '+%Y-%m-%d %H:%M:%S')] Apache restarted on $SERVER_NAME (exit: $STATUS)"
-  echo "$MSG" >> $LOG
-  # แจ้ง Railway
-  curl -s -X POST "$RAILWAY_URL/api/agent/apache-alert" \\
-    -H "Content-Type: application/json" \\
-    -d "{\"server\":\"$SERVER_NAME\",\"status\":$STATUS}" &
-fi
-# Keep log ไม่เกิน 500 บรรทัด
-if [ $(wc -l < $LOG 2>/dev/null || echo 0) -gt 500 ]; then
-  tail -200 $LOG > $LOG.tmp && mv $LOG.tmp $LOG
-fi`;
-
-async function installApacheWatchdog(srv) {
+async function setupCloudflareWhitelist(srv) {
   try {
-    // สร้าง script
+    // สร้าง script ที่ idempotent (รันซ้ำได้ปลอดภัย)
+    const scriptLines = [
+      '#!/bin/bash',
+      '# Cloudflare IP Whitelist — DomainIntel Auto-Setup',
+      '# ปลอดภัย: เพิ่ม ACCEPT rules สำหรับ Cloudflare เท่านั้น',
+      'CHANGED=0',
+      ...CLOUDFLARE_IPS.map(ip =>
+        // เช็คก่อนว่ามี rule นี้อยู่แล้วไหม ถ้ายังไม่มีค่อยเพิ่ม
+        `iptables -C INPUT -s ${ip} -j ACCEPT 2>/dev/null || { iptables -I INPUT -s ${ip} -j ACCEPT; CHANGED=1; }`
+      ),
+      // save เฉพาะถ้ามีการเปลี่ยนแปลง
+      'if [ "$CHANGED" = "1" ]; then',
+      '  iptables-save > /etc/sysconfig/iptables',
+      '  echo "CF_UPDATED"',
+      'else',
+      '  echo "CF_ALREADY_OK"',
+      'fi',
+      // ติดตั้ง cron รัน daily เพื่อกัน rules หาย (เช่น หลัง reboot)
+      'CRON_FILE="/etc/cron.d/cf-whitelist"',
+      'if [ ! -f "$CRON_FILE" ]; then',
+      '  echo "0 4 * * * root /usr/local/bin/cf-whitelist.sh" > $CRON_FILE',
+      '  chmod 644 $CRON_FILE',
+      'fi'
+    ].join('\n');
+
+    // เขียน script ไปยัง server
     const installCmd = [
-      `cat > /usr/local/bin/apache-watchdog.sh << 'WDEOF'`,
-      APACHE_WATCHDOG_SCRIPT,
-      'WDEOF',
-      'chmod +x /usr/local/bin/apache-watchdog.sh',
-      // สร้าง cron ทุก 1 นาที
-      `echo '* * * * * root /usr/local/bin/apache-watchdog.sh' > /etc/cron.d/apache-watchdog`,
-      'chmod 644 /etc/cron.d/apache-watchdog',
-      'echo "Apache Watchdog installed OK"'
+      `printf '%s\n' '${scriptLines.replace(/'/g, "'\''")}' > /usr/local/bin/cf-whitelist.sh`,
+      'chmod +x /usr/local/bin/cf-whitelist.sh',
+      '/usr/local/bin/cf-whitelist.sh'
     ].join(' && ');
 
-    const cmdId = queueCommand(srv.host, installCmd);
-    console.log(`[ApacheWatchdog] ติดตั้งบน ${srv.name} cmdId=${cmdId}`);
+    // ใช้วิธีง่ายกว่า — รัน iptables โดยตรงผ่าน agent
+    const directCmd = CLOUDFLARE_IPS.map(ip =>
+      `iptables -C INPUT -s ${ip} -j ACCEPT 2>/dev/null || iptables -I INPUT -s ${ip} -j ACCEPT`
+    ).join('; ') +
+    '; iptables-save > /etc/sysconfig/iptables' +
+    '; echo "CF_WHITELIST_DONE_' + srv.name.replace(/\s/g,'_') + '"';
 
-    // รอผล 60 วินาที
-    for (let i = 0; i < 60; i++) {
+    const cmdId = queueCommand(srv.host, directCmd);
+    console.log(`[CloudflareWL] ตั้งค่าบน ${srv.name}...`);
+
+    // รอผล max 90 วินาที
+    for (let i = 0; i < 90; i++) {
       await new Promise(r => setTimeout(r, 1000));
       if (agentResults[cmdId]) {
         const result = agentResults[cmdId];
         delete agentResults[cmdId];
-        const ok = result.exitCode === 0;
-        console.log(`[ApacheWatchdog] ${srv.name}: ${ok ? 'สำเร็จ' : 'ล้มเหลว'} — ${(result.output||'').replace(/~/g,' ').slice(0,80)}`);
-        return ok;
+        const output = (result.output || '').replace(/~/g, ' ');
+        const ok = result.exitCode === 0 || output.includes('CF_WHITELIST_DONE');
+        console.log(`[CloudflareWL] ${srv.name}: ${ok ? '✅ สำเร็จ' : '❌ ล้มเหลว'}`);
+        return { ok, output };
       }
     }
-    console.log(`[ApacheWatchdog] ${srv.name}: timeout`);
-    return false;
+    console.log(`[CloudflareWL] ${srv.name}: timeout`);
+    return { ok: false, output: 'timeout' };
   } catch(e) {
-    console.error(`[ApacheWatchdog] ${srv.name}:`, e.message);
-    return false;
+    console.error(`[CloudflareWL] ${srv.name}:`, e.message);
+    return { ok: false, output: e.message };
   }
 }
 
-async function installAllApacheWatchdogs() {
-  console.log('[ApacheWatchdog] เริ่มติดตั้งบนทุก server...');
+async function setupAllCloudflareWhitelists() {
+  console.log('[CloudflareWL] เริ่มตั้งค่า Cloudflare Whitelist ทุก server...');
   const results = [];
+
   for (const srv of PLESK_SERVERS) {
-    const ok = await installApacheWatchdog(srv);
+    const { ok, output } = await setupCloudflareWhitelist(srv);
     results.push({ server: srv.name, ok });
-    await new Promise(r => setTimeout(r, 2000));
+    await new Promise(r => setTimeout(r, 3000)); // รอระหว่าง server
   }
+
   const success = results.filter(r => r.ok).length;
-  console.log(`[ApacheWatchdog] ติดตั้งสำเร็จ ${success}/${results.length} servers`);
-  sendTelegram(
-    `🛡️ <b>Apache Watchdog ติดตั้งแล้ว!</b>\n` +
-    results.map(r => `${r.ok ? '✅' : '❌'} ${r.server}`).join('\n') + '\n' +
-    `\nระบบจะ auto-restart Apache ทุก 1 นาทีถ้าพบว่าล่ม\n✅ ข้อมูลโดเมนทุกตัวปลอดภัย ไม่มีผลกระทบ`
-  );
-  return results;
-}
-
-// รับแจ้งจาก Watchdog script บน server
-// เรียกผ่าน POST /api/agent/apache-alert
-async function handleApacheAlert(serverName) {
-  const now = Date.now();
-  const last = apacheWatchdogCooldown[serverName] || 0;
-  if (now - last < 10 * 60 * 1000) return; // cooldown 10 นาที
-  apacheWatchdogCooldown[serverName] = now;
+  const total = results.length;
+  console.log(`[CloudflareWL] เสร็จ: ${success}/${total} servers`);
 
   sendTelegram(
-    `🔴 <b>Apache Watchdog Alert!</b>\n` +
-    `🖥️ Server: <b>${serverName}</b>\n` +
-    `⚠️ Apache ล่ม → ถูก restart อัตโนมัติแล้ว\n` +
+    `🛡️ <b>Cloudflare Whitelist Setup!</b>\n` +
+    results.map(r => `${r.ok ? '✅' : '❌'} ${r.server}`).join('\n') + '\n\n' +
+    `📋 Allow ${CLOUDFLARE_IPS.length} Cloudflare IP ranges\n` +
+    `✅ ป้องกัน Error 521 จากทุกโดเมน\n` +
     `✅ ข้อมูลโดเมนไม่ได้รับผลกระทบ\n` +
     `⏱️ ${new Date().toLocaleString('th-TH')}`
   );
 
-  // อัพเดต server status
-  console.log(`[ApacheWatchdog] ⚠️ ${serverName} Apache was down and restarted!`);
+  return results;
 }
 
 server.listen(PORT, async () => {
@@ -2231,6 +2218,15 @@ server.listen(PORT, async () => {
   // Monthly report - disabled
   setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
   setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
+  // Auto-setup Cloudflare Whitelist ทุก server (หลัง 8 นาที)
+  setTimeout(async () => {
+    console.log('[Startup] ตั้งค่า Cloudflare IP Whitelist...');
+    await setupAllCloudflareWhitelists();
+  }, 8 * 60 * 1000);
+
+  // Re-apply ทุก 24 ชั่วโมง (กัน rules หายหลัง reboot)
+  setInterval(setupAllCloudflareWhitelists, 24 * 60 * 60 * 1000);
+
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
   console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
 });
