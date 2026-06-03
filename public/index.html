@@ -666,6 +666,8 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         <div class="topbar-right">
           <button class="btn" onclick="refreshServerHealth()" id="sm-refresh-btn"><i class="ti ti-refresh"></i> รีเฟรช</button>
           <button class="btn" onclick="fixAllServers()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)"><i class="ti ti-wand"></i> Fix ทั้งหมด</button>
+          <button class="btn" onclick="runDiskCleanup()" style="background:rgba(16,185,129,0.12);color:var(--green);border-color:rgba(16,185,129,0.3)" title="ล้าง log/tmp/cache เก่า ป้องกัน disk เต็ม"><i class="ti ti-trash"></i> Disk Cleanup</button>
+          <button class="btn" onclick="runPhpFpmLimit()" style="background:rgba(167,139,250,0.12);color:var(--purple);border-color:rgba(167,139,250,0.3)" title="จำกัด PHP-FPM max_children=3 ต่อโดเมน ทุก server"><i class="ti ti-adjustments"></i> PHP-FPM Limit</button>
           <button class="btn" onclick="unsuspendAllServers()" style="background:var(--green-dim);color:var(--green);border-color:rgba(34,197,94,0.3)"><i class="ti ti-player-play"></i> Unsuspend ทั้งหมด</button>
           <button class="btn" onclick="installApacheWatchdog()" style="background:rgba(14,165,233,0.12);color:var(--teal);border-color:rgba(14,165,233,0.3)" title="ติดตั้ง Apache Watchdog บนทุก server"><i class="ti ti-shield-check"></i> Apache Watchdog</button>
           <button class="btn" onclick="setupCFWhitelist()" style="background:rgba(245,158,11,0.12);color:var(--amber);border-color:rgba(245,158,11,0.3)" title="Allow Cloudflare IPs — ป้องกัน Error 521"><i class="ti ti-cloud-lock"></i> CF Whitelist</button>
@@ -3177,6 +3179,44 @@ async function setupCFWhitelist() {
   } catch(e) {
     toast('เชื่อมต่อ Server ไม่ได้', 'error');
   }
+}
+</script>
+<script>
+// ===== DISK CLEANUP =====
+async function runDiskCleanup() {
+  if (!confirm(
+    '🧹 Disk Auto-Cleanup บนทุก 4 Server?\n\n' +
+    '✅ ลบ: log เก่า (>3 วัน), tmp, PHP sessions, WP cache\n' +
+    '✅ ปลอดภัย: ไม่แตะไฟล์โดเมน, database, หรือ config\n' +
+    '✅ ข้อมูลโดเมนทุกตัวปลอดภัย 100%\n\n' +
+    'ดำเนินการต่อไหม?'
+  )) return;
+  toast('⏳ กำลัง Disk Cleanup บนทุก server...', 'info');
+  try {
+    const res = await fetch(`${API}/api/disk-cleanup`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) toast('✅ เริ่ม Cleanup แล้ว — ดูผลใน Telegram 2-3 นาที', 'success');
+    else toast('❌ Cleanup ไม่สำเร็จ', 'error');
+  } catch(e) { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
+}
+
+// ===== PHP-FPM LIMITER =====
+async function runPhpFpmLimit() {
+  if (!confirm(
+    '⚙️ จำกัด PHP-FPM max_children = 3 ต่อโดเมน ทุก 4 Server?\n\n' +
+    '✅ ป้องกัน 1 โดเมนกิน resource จนโดเมนอื่นพัง\n' +
+    '✅ ปลอดภัย: แค่แก้ config ไม่แตะไฟล์โดเมน\n' +
+    '✅ PHP-FPM จะ restart หลังแก้ (เว็บอาจหน่วง 3-5 วินาที)\n' +
+    '✅ ข้อมูลโดเมนทุกตัวปลอดภัย 100%\n\n' +
+    'ดำเนินการต่อไหม?'
+  )) return;
+  toast('⏳ กำลังจำกัด PHP-FPM บนทุก server...', 'info');
+  try {
+    const res = await fetch(`${API}/api/limit-phpfpm`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) toast('✅ เริ่มจำกัด PHP-FPM แล้ว — ดูผลใน Telegram 3-5 นาที', 'success');
+    else toast('❌ ล้มเหลว', 'error');
+  } catch(e) { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
 }
 </script>
 </body>
