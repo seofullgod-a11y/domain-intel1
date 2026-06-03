@@ -331,6 +331,19 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   .bulk-bar-inner { flex-wrap: wrap; }
   #progress-modal .modal { margin: 12px; }
 }
+.ov-flow-item { display:inline-flex; align-items:center; gap:5px; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius-sm); padding:5px 10px; font-size:11px; color:var(--text); }
+.ov-auto-row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--border); font-size:11px; }
+.ov-auto-row:last-child { border-bottom:none; }
+.ov-pill { font-size:10px; padding:1px 7px; border-radius:10px; border:1px solid var(--border2); color:var(--text2); white-space:nowrap; }
+.ov-rule-card { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; }
+.ov-integ-row { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--border); font-size:11px; }
+.ov-integ-row:last-child { border-bottom:none; }
+.ov-server-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:14px; }
+.ov-badge { display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:600; padding:2px 7px; border-radius:10px; }
+.ov-badge-green { background:var(--green-dim); color:var(--green); }
+.ov-badge-amber { background:var(--amber-dim); color:var(--amber); }
+.ov-badge-red { background:var(--red-dim); color:var(--red); }
+.ov-badge-gray { background:var(--bg4); color:var(--text2); }
 @keyframes loadbar {
   0%{width:10%;margin-left:0}
   50%{width:50%;margin-left:30%}
@@ -403,6 +416,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-section">// OVERVIEW</div>
       <div class="nav-item active" onclick="showPage('dashboard')">
         <i class="ti ti-dashboard"></i> Dashboard
+      </div>
+      <div class="nav-item" onclick="showPage('overview')">
+        <i class="ti ti-topology-star"></i> System Overview
       </div>
       <div class="nav-section">// MONITORING</div>
       <div class="nav-item" onclick="showPage('domains');currentTab='all';applyFilters();">
@@ -865,6 +881,144 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div style="font-size:14px;font-weight:600;margin-bottom:16px"><i class="ti ti-chart-bar" style="color:var(--blue)"></i> ประวัติ 7 วันล่าสุด</div>
           <div id="bw-history" style="display:grid;gap:8px"></div>
         </div>
+      </div>
+    </div>
+
+
+    <!-- SYSTEM OVERVIEW PAGE -->
+    <div id="page-overview" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-topology-star" style="color:var(--teal)"></i> System Overview</div>
+          <div class="topbar-sub" id="ov-last-updated">ภาพรวมระบบทั้งหมด</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="loadOverview()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px">
+
+        <!-- Stat Cards -->
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
+          <div class="metric-card highlight-green clickable" onclick="showPage('domains')">
+            <div class="metric-label"><i class="ti ti-world"></i> โดเมนทั้งหมด</div>
+            <div class="metric-val green" id="ov-total">—</div>
+            <div class="metric-sub" id="ov-up-pct">—</div>
+          </div>
+          <div class="metric-card highlight-red clickable" onclick="showPage('domains');currentTab='down';applyFilters()">
+            <div class="metric-label"><i class="ti ti-circle-x"></i> Down</div>
+            <div class="metric-val red" id="ov-down">—</div>
+            <div class="metric-sub">ต้องตรวจสอบ</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label"><i class="ti ti-server"></i> Servers</div>
+            <div class="metric-val blue">4</div>
+            <div class="metric-sub">Plesk Hosting</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label"><i class="ti ti-robot"></i> Auto Systems</div>
+            <div class="metric-val" style="color:var(--teal)">18</div>
+            <div class="metric-sub">ทำงาน 24/7</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label"><i class="ti ti-shield-check"></i> SSL</div>
+            <div class="metric-val green" id="ov-ssl">—</div>
+            <div class="metric-sub">Let's Encrypt</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label"><i class="ti ti-ban"></i> Suspended</div>
+            <div class="metric-val" id="ov-suspended">—</div>
+            <div class="metric-sub">Plesk suspended</div>
+          </div>
+        </div>
+
+        <!-- Architecture Flow -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+          <div style="font-size:12px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px">
+            <i class="ti ti-sitemap" style="color:var(--teal)"></i> สถาปัตยกรรมระบบ
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+            <div class="ov-flow-item" style="border-color:var(--border2)"><i class="ti ti-world" style="color:var(--blue)"></i> Browser</div>
+            <i class="ti ti-arrow-right" style="color:var(--text3);font-size:12px"></i>
+            <div class="ov-flow-item" style="border-color:var(--border2)"><i class="ti ti-cloud" style="color:var(--purple)"></i> Cloudflare</div>
+            <i class="ti ti-arrow-right" style="color:var(--text3);font-size:12px"></i>
+            <div class="ov-flow-item" style="border-color:var(--border2)"><i class="ti ti-brand-github"></i> GitHub</div>
+            <i class="ti ti-arrow-right" style="color:var(--text3);font-size:12px"></i>
+            <div class="ov-flow-item" style="border-color:var(--teal);background:rgba(14,165,233,0.08)"><i class="ti ti-server" style="color:var(--teal)"></i> Railway · Node.js</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
+            <div class="ov-flow-item"><i class="ti ti-table" style="color:var(--green)"></i> Google Sheets</div>
+            <i class="ti ti-arrows-horizontal" style="color:var(--text3);font-size:12px"></i>
+            <div class="ov-flow-item" style="border-color:var(--teal);background:rgba(14,165,233,0.08)"><i class="ti ti-server" style="color:var(--teal)"></i> Railway · Node.js</div>
+            <i class="ti ti-arrows-horizontal" style="color:var(--text3);font-size:12px"></i>
+            <div class="ov-flow-item"><i class="ti ti-server-2" style="color:var(--amber)"></i> Plesk API (4 servers)</div>
+            <i class="ti ti-arrow-right" style="color:var(--text3);font-size:12px"></i>
+            <div class="ov-flow-item"><i class="ti ti-brand-telegram" style="color:var(--blue)"></i> Telegram Bot</div>
+          </div>
+        </div>
+
+        <!-- 4 Servers -->
+        <div>
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:8px">4 Plesk Servers</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px" id="ov-servers">
+            <div style="text-align:center;padding:20px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
+          </div>
+        </div>
+
+        <!-- Auto Systems + Rules -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+
+          <!-- Auto Systems -->
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+            <div style="font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+              <i class="ti ti-robot" style="color:var(--teal)"></i> ระบบอัตโนมัติ
+            </div>
+            <div id="ov-auto-systems"></div>
+          </div>
+
+          <!-- Auto-Heal Rules + Integrations -->
+          <div style="display:flex;flex-direction:column;gap:10px">
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+              <div style="font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+                <i class="ti ti-heart-rate-monitor" style="color:var(--red)"></i> Auto-Heal Rules
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+                <div class="ov-rule-card" style="border-color:rgba(239,68,68,0.3)">
+                  <div style="font-size:13px;font-weight:600;color:var(--red)">Load &gt;15</div>
+                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Kill WP Toolkit<br>Restart PHP-FPM</div>
+                </div>
+                <div class="ov-rule-card" style="border-color:rgba(239,68,68,0.3)">
+                  <div style="font-size:13px;font-weight:600;color:var(--red)">Load &gt;30</div>
+                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Kill heavy procs<br>Restart Apache</div>
+                </div>
+                <div class="ov-rule-card" style="border-color:rgba(245,158,11,0.3)">
+                  <div style="font-size:13px;font-weight:600;color:var(--amber)">RAM &gt;90%</div>
+                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Clear cache<br>Restart PHP-FPM</div>
+                </div>
+                <div class="ov-rule-card" style="border-color:rgba(245,158,11,0.3)">
+                  <div style="font-size:13px;font-weight:600;color:var(--amber)">Disk &gt;80%</div>
+                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Auto-Cleanup<br>logs/tmp/cache</div>
+                </div>
+              </div>
+            </div>
+
+            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+              <div style="font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+                <i class="ti ti-plug" style="color:var(--blue)"></i> Integrations
+              </div>
+              <div id="ov-integrations"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pending Tasks -->
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
+          <div style="font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
+            <i class="ti ti-clock-exclamation" style="color:var(--amber)"></i> งานที่ยังค้างอยู่
+          </div>
+          <div id="ov-pending"></div>
+        </div>
+
       </div>
     </div>
 
@@ -2182,6 +2336,9 @@ function showPage(name) {
   if (name === 'botwatch') {
     initBotWatch();
   }
+  if (name === 'overview') {
+    loadOverview();
+  }
   if (name === 'server-manager') {
     if (!window._pleskServers || window._pleskServers.length === 0) {
       loadData().then(() => refreshServerHealth());
@@ -3348,5 +3505,164 @@ async function syncBotWatch() {
     toast('✅ Sync เริ่มแล้ว รอประมาณ 1 นาที', 'success');
     setTimeout(loadBotWatch, 65000);
   } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
+}
+</script>
+<script>
+// ===== SYSTEM OVERVIEW =====
+const AUTO_SYSTEMS = [
+  { icon:'ti-activity',       name:'Proactive Monitor',     interval:'ทุก 5 นาที',      cat:'heal' },
+  { icon:'ti-shield',         name:'Apache Watchdog',        interval:'ทุก 1 นาที',      cat:'heal' },
+  { icon:'ti-database',       name:'MySQL Watchdog',         interval:'ทุก 1 นาที',      cat:'heal' },
+  { icon:'ti-heartbeat',      name:'Smart Status Check',     interval:'ทุก 10 นาที',     cat:'heal' },
+  { icon:'ti-trash',          name:'Disk Auto-Cleanup',      interval:'ทุก 6 ชั่วโมง',   cat:'heal' },
+  { icon:'ti-adjustments',    name:'PHP-FPM Limiter',        interval:'startup+ทบทวน',   cat:'heal' },
+  { icon:'ti-certificate',    name:'SSL Renewal Check',      interval:'ทุก 6 ชั่วโมง',   cat:'sec'  },
+  { icon:'ti-lock',           name:'Auto SSL Install',       interval:'ทุก 12 ชั่วโมง',  cat:'sec'  },
+  { icon:'ti-cloud-lock',     name:'Cloudflare Whitelist',   interval:'ทุก 24 ชั่วโมง',  cat:'sec'  },
+  { icon:'ti-robot',          name:'Bot Watch',              interval:'ทุก 1 ชั่วโมง',   cat:'sec'  },
+  { icon:'ti-shield-x',       name:'DDoS Detection',         interval:'real-time',        cat:'sec'  },
+  { icon:'ti-list-check',     name:'Blacklist Monitor',      interval:'ทุกวัน',           cat:'sec'  },
+  { icon:'ti-mail',           name:'Email/Spam Monitor',     interval:'ทุก 6 ชั่วโมง',   cat:'report'},
+  { icon:'ti-calendar',       name:'Domain Expiry Monitor',  interval:'ทุก 12 ชั่วโมง',  cat:'report'},
+  { icon:'ti-database-export',name:'Backup Monitor',         interval:'ทุกวัน',           cat:'report'},
+  { icon:'ti-chart-bar',      name:'Performance Monitor',    interval:'real-time',        cat:'report'},
+  { icon:'ti-chart-line',     name:'Weekly Report',          interval:'ทุก 7 วัน',        cat:'report'},
+  { icon:'ti-refresh',        name:'Plesk Auto-Sync',        interval:'ทุก 1 ชั่วโมง',   cat:'sync' },
+];
+
+const INTEGRATIONS = [
+  { icon:'ti-table',          name:'Google Sheets',    desc:'Primary storage — domain data + Bot Watch logs', color:'var(--green)' },
+  { icon:'ti-brand-telegram', name:'Telegram Bot',     desc:'แจ้งเตือน + รับคำสั่ง /status /fix /down',       color:'var(--blue)'  },
+  { icon:'ti-brand-google',   name:'Google Search Console', desc:'Traffic, Clicks, Keywords ranking',          color:'var(--blue)'  },
+  { icon:'ti-cloud',          name:'Cloudflare API',   desc:'Auto-fix + IP Whitelist (15 IP ranges)',          color:'var(--amber)' },
+  { icon:'ti-server',         name:'Plesk API',        desc:'4 servers — domain management, PHP-FPM, SSL',     color:'var(--teal)'  },
+];
+
+const PENDING_TASKS = [
+  { status:'ค้าง',    color:'var(--red)',   bg:'var(--red-dim)',   text:'Restore okc-4.net จาก Server 4 → Server 1 (ติด encryption)' },
+  { status:'บางส่วน', color:'var(--amber)', bg:'var(--amber-dim)', text:'Server 4 hardening — MySQL /etc/my.cnf ยังไม่ได้ทำ' },
+  { status:'ใหม่',    color:'var(--teal)',  bg:'rgba(14,165,233,0.12)', text:'Bot Watch — มีแค่ romazeed.pro รอเพิ่มโดเมนอื่น' },
+];
+
+const SERVER_CONFIG = [
+  { name:'Server 1', host:'139.59.102.1', domains:258, status:'ok',    load:'~0.6'  },
+  { name:'Server 2', host:'139.59.119.43', domains:225, status:'ok',   load:'~0.2'  },
+  { name:'Server 3', host:'143.198.218.78', domains:255, status:'ok',  load:'~16'   },
+  { name:'Server 4', host:'178.128.104.227', domains:255, status:'warn',load:'สูงบ่อย'},
+];
+
+let ovLoaded = false;
+
+async function loadOverview() {
+  renderOvAutoSystems();
+  renderOvIntegrations();
+  renderOvPending();
+  renderOvServers(null);
+
+  // ดึง live data
+  try {
+    const [domRes, statsRes] = await Promise.all([
+      fetch(`${API}/api/domains`),
+      fetch(`${API}/api/stats`)
+    ]);
+    const domData = await domRes.json();
+    const stats = await statsRes.json();
+
+    const total = stats.total || domData.domains?.length || 0;
+    const down = stats.down || 0;
+    const up = stats.up || 0;
+    const suspended = stats.pleskSuspended ?? 0;
+
+    const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
+    set('ov-total', total.toLocaleString());
+    set('ov-down', down.toLocaleString());
+    set('ov-ssl', total > 0 ? (total - down).toLocaleString() : '—');
+    set('ov-suspended', suspended.toLocaleString());
+    set('ov-up-pct', total > 0 ? `Up ${Math.round(up/total*100)}%` : '—');
+    set('ov-last-updated', 'อัพเดต ' + timeAgo(new Date().toISOString()));
+
+    // ใช้ live server data ถ้ามี
+    if (domData.pleskServerConfigs) {
+      const liveServers = SERVER_CONFIG.map(s => {
+        const live = domData.pleskServerConfigs.find(l => l.host === s.host);
+        const domCount = (domData.domains || []).filter(d => d.pleskHost === s.host || d.pleskServer === s.name).length;
+        return { ...s, domains: domCount || s.domains };
+      });
+      renderOvServers(liveServers);
+    }
+  } catch(e) {
+    // fallback เป็น static data
+    console.log('[Overview] fallback to static data');
+  }
+
+  ovLoaded = true;
+}
+
+function renderOvServers(servers) {
+  const el = document.getElementById('ov-servers');
+  if (!el) return;
+  const list = servers || SERVER_CONFIG;
+  el.innerHTML = list.map(s => {
+    const isOk = s.status === 'ok';
+    const dotColor = isOk ? 'var(--green)' : 'var(--amber)';
+    const borderAcc = isOk ? '' : 'border-color:rgba(245,158,11,0.35)';
+    return `<div class="ov-server-card" style="${borderAcc}">
+      <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
+        <div style="width:8px;height:8px;border-radius:50%;background:${dotColor};box-shadow:0 0 6px ${dotColor}"></div>
+        <div style="font-size:12px;font-weight:600">${s.name}</div>
+        ${!isOk ? `<span class="ov-badge ov-badge-amber" style="margin-left:auto">⚠️ Load สูง</span>` : ''}
+      </div>
+      <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:8px">${s.host}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span class="ov-badge ${isOk ? 'ov-badge-green' : 'ov-badge-amber'}">${s.domains} โดเมน</span>
+        <span style="font-size:10px;color:var(--text2)">Load ${s.load}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderOvAutoSystems() {
+  const el = document.getElementById('ov-auto-systems');
+  if (!el) return;
+  const catColors = {
+    heal:   'var(--teal)',
+    sec:    'var(--red)',
+    report: 'var(--blue)',
+    sync:   'var(--green)',
+  };
+  el.innerHTML = AUTO_SYSTEMS.map(s => `
+    <div class="ov-auto-row">
+      <span style="display:flex;align-items:center;gap:6px;color:var(--text)">
+        <i class="ti ${s.icon}" style="font-size:12px;color:${catColors[s.cat]};width:14px;text-align:center"></i>
+        ${s.name}
+      </span>
+      <span class="ov-pill">${s.interval}</span>
+    </div>
+  `).join('');
+}
+
+function renderOvIntegrations() {
+  const el = document.getElementById('ov-integrations');
+  if (!el) return;
+  el.innerHTML = INTEGRATIONS.map(i => `
+    <div class="ov-integ-row">
+      <i class="ti ${i.icon}" style="font-size:14px;color:${i.color};flex-shrink:0"></i>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;font-weight:500">${i.name}</div>
+        <div style="font-size:10px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${i.desc}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderOvPending() {
+  const el = document.getElementById('ov-pending');
+  if (!el) return;
+  el.innerHTML = PENDING_TASKS.map(t => `
+    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
+      <span style="background:${t.bg};color:${t.color};font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;white-space:nowrap">${t.status}</span>
+      <span style="color:var(--text)">${t.text}</span>
+    </div>
+  `).join('').replace(/border-bottom[^}]+}$/, '');
 }
 </script>
