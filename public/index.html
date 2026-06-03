@@ -667,7 +667,8 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <button class="btn" onclick="refreshServerHealth()" id="sm-refresh-btn"><i class="ti ti-refresh"></i> รีเฟรช</button>
           <button class="btn" onclick="fixAllServers()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)"><i class="ti ti-wand"></i> Fix ทั้งหมด</button>
           <button class="btn" onclick="unsuspendAllServers()" style="background:var(--green-dim);color:var(--green);border-color:rgba(34,197,94,0.3)"><i class="ti ti-player-play"></i> Unsuspend ทั้งหมด</button>
-          <button class="btn" onclick="installApacheWatchdog()" style="background:rgba(14,165,233,0.12);color:var(--teal);border-color:rgba(14,165,233,0.3)" title="ติดตั้ง Apache Watchdog บนทุก server อัตโนมัติ"><i class="ti ti-shield-check"></i> Install Watchdog</button>
+          <button class="btn" onclick="installApacheWatchdog()" style="background:rgba(14,165,233,0.12);color:var(--teal);border-color:rgba(14,165,233,0.3)" title="ติดตั้ง Apache Watchdog บนทุก server"><i class="ti ti-shield-check"></i> Apache Watchdog</button>
+          <button class="btn" onclick="setupCFWhitelist()" style="background:rgba(245,158,11,0.12);color:var(--amber);border-color:rgba(245,158,11,0.3)" title="Allow Cloudflare IPs — ป้องกัน Error 521"><i class="ti ti-cloud-lock"></i> CF Whitelist</button>
         </div>
       </div>
       <div style="padding:20px;display:flex;flex-direction:column;gap:20px">
@@ -3145,6 +3146,33 @@ async function installApacheWatchdog() {
       toast('✅ เริ่มติดตั้ง Watchdog แล้ว — ดูผลใน Telegram', 'success');
     } else {
       toast('❌ ติดตั้งไม่สำเร็จ', 'error');
+    }
+  } catch(e) {
+    toast('เชื่อมต่อ Server ไม่ได้', 'error');
+  }
+}
+</script>
+<script>
+// ===== CLOUDFLARE WHITELIST =====
+async function setupCFWhitelist() {
+  if (!confirm(
+    '🛡️ Allow Cloudflare IPs บนทุก 4 Server?\n\n' +
+    '✅ ป้องกัน Error 521 จากทุกโดเมน\n' +
+    '✅ ปลอดภัย: เพิ่มแค่ ACCEPT rules ไม่ลบ rules เดิม\n' +
+    '✅ ข้อมูลโดเมนทุกตัวปลอดภัย ไม่มีผลกระทบ\n' +
+    '🔄 รัน daily อัตโนมัติเพื่อกัน rules หายหลัง reboot\n\n' +
+    'ดำเนินการต่อไหม?'
+  )) return;
+
+  toast('⏳ กำลัง Allow Cloudflare IPs บนทุก server...', 'info');
+
+  try {
+    const res = await fetch(`${API}/api/setup-cloudflare-whitelist`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      toast('✅ เริ่มตั้งค่าแล้ว — ดูผลใน Telegram ประมาณ 2-3 นาที', 'success');
+    } else {
+      toast('❌ ตั้งค่าไม่สำเร็จ', 'error');
     }
   } catch(e) {
     toast('เชื่อมต่อ Server ไม่ได้', 'error');
