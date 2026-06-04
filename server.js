@@ -1090,6 +1090,61 @@ async function handleRequest(req, res) {
   }
 
   // Debug: เช็ค domain overlap ระหว่าง GSC และ DomainIntel
+  // Import domains จาก GSC เข้า DomainIntel
+  if (req.method === 'POST' && url === '/api/gsc/import-domains') {
+    (async () => {
+      const token = await refreshGSCToken();
+      if (!token) return json(res, { error: 'no token' });
+
+      _gscSites = null;
+      const sites = await getGSCSiteList(token);
+      const existingDomains = new Set(memoryDomains.map(d => d.domain.toLowerCase()));
+
+      let imported = 0;
+      const newDomains = [];
+
+      for (const site of sites) {
+        // แปลง https://domain.com → domain.com
+        const domain = site.replace('https://', '').replace('http://', '').replace(/\/$/, '').toLowerCase();
+        if (!existingDomains.has(domain)) {
+          const newD = {
+            domain,
+            status: 'unknown',
+            statusCode: 0,
+            responseTime: 0,
+            checkedAt: null,
+            error: null,
+            sslExpiry: null,
+            sslDaysLeft: null,
+            expiryDate: null,
+            daysLeft: null,
+            notes: 'นำเข้าจาก GSC',
+            tags: ['gsc'],
+            gsc: null,
+            addedAt: new Date().toISOString()
+          };
+          memoryDomains.push(newD);
+          newDomains.push(domain);
+          imported++;
+        }
+      }
+
+      if (imported > 0) {
+        await saveToSheets(memoryDomains);
+        console.log('[GSC] Import', imported, 'domains from GSC');
+        sendTelegram('📥 <b>GSC Import เสร็จ!</b>\n✅ เพิ่ม ' + imported + ' โดเมนจาก GSC\nรวมทั้งหมด: ' + memoryDomains.length + ' โดเมน');
+      }
+
+      json(res, {
+        success: true,
+        imported,
+        total: memoryDomains.length,
+        newDomains: newDomains.slice(0, 20)
+      });
+    })().catch(e => { console.error('[GSC Import]', e.message); json(res, { error: e.message }); });
+    return;
+  }
+
   if (req.method === 'GET' && url === '/api/gsc/debug') {
     (async () => {
       const token = await refreshGSCToken();
