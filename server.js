@@ -1193,27 +1193,21 @@ async function handleRequest(req, res) {
     return;
   }
 
-  // Apply PHP-FPM Ondemand ทุก server
   if (req.method === 'POST' && url === '/api/phpfpm-ondemand') {
-    json(res, { success: true, message: 'กำลังเปลี่ยน PHP-FPM เป็น ondemand...' });
+    json(res, { success: true });
     applyAllPhpFpmOndemand().catch(console.error);
     return;
   }
-
-  // Disk Auto-Cleanup
   if (req.method === 'POST' && url === '/api/disk-cleanup') {
-    json(res, { success: true, message: 'กำลัง cleanup disk บนทุก server...' });
-    runManualDiskCleanup().catch(console.error);
+    json(res, { success: true });
+    if (typeof runManualDiskCleanup === 'function') runManualDiskCleanup().catch(console.error);
     return;
   }
-
-  // PHP-FPM Per-Domain Limiter
   if (req.method === 'POST' && url === '/api/limit-phpfpm') {
-    json(res, { success: true, message: 'กำลังจำกัด PHP-FPM บนทุก server...' });
-    limitAllPhpFpm().catch(console.error);
+    json(res, { success: true });
+    if (typeof limitAllPhpFpm === 'function') limitAllPhpFpm().catch(console.error);
     return;
   }
-
   // Telegram Webhook
   if (req.method === 'POST' && url === '/api/telegram/webhook') {
     const body = await parseBody(req);
@@ -1442,122 +1436,57 @@ async function handleRequest(req, res) {
 const server = http.createServer(handleRequest);
 
 // ===== PROACTIVE MONITOR =====
-// cooldown สำหรับ auto-heal แต่ละ server
+// cooldown per server
 const healCooldown = {};
-const HEAL_COOLDOWN_MS = 10 * 60 * 1000; // 10 นาที
+const HEAL_COOLDOWN_MS = 10 * 60 * 1000;
 
 async function proactiveMonitor() {
   for (const srv of PLESK_SERVERS) {
     try {
-      const statCmd2 = [
-        'L=$(cat /proc/loadavg | cut -d" " -f1)',
-        'MU=$(free -m | grep Mem | tr -s " " | cut -d" " -f3)',
-        'MT=$(free -m | grep Mem | tr -s " " | cut -d" " -f2)',
-        'D=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%")',
-        'P=$(ps aux | grep php-fpm | grep -v grep | wc -l)',
-        'echo LOAD:$L RAMU:$MU RAMT:$MT DISK:$D PHPFPM:$P'
-      ].join('; ');
-
+      const statCmd2 = 'L=$(cat /proc/loadavg | cut -d" " -f1); MU=$(free -m | grep Mem | tr -s " " | cut -d" " -f3); MT=$(free -m | grep Mem | tr -s " " | cut -d" " -f2); D=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); P=$(ps aux | grep php-fpm | grep -v grep | wc -l); echo LOAD:$L RAMU:$MU RAMT:$MT DISK:$D PHPFPM:$P';
       const cmdId = queueCommand(srv.host, statCmd2);
-
       setTimeout(async () => {
         const result = agentResults[cmdId];
         if (!result) return;
         delete agentResults[cmdId];
-
         const o = result.output || '';
-        const load   = parseFloat((o.match(/LOAD:([\d.]+)/) || [])[1] || 0);
-        const ramUsed = parseInt((o.match(/RAMU:(\d+)/) || [])[1] || 0);
-        const ramTotal = parseInt((o.match(/RAMT:(\d+)/) || [])[1] || 1);
-        const disk   = parseInt((o.match(/DISK:(\d+)/) || [])[1] || 0);
-        const phpfpm = parseInt((o.match(/PHPFPM:(\d+)/) || [])[1] || 0);
-        const ramPct = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
-
+        const load    = parseFloat((o.match(/LOAD:([d.]+)/) || [])[1] || 0);
+        const ramUsed = parseInt((o.match(/RAMU:(d+)/) || [])[1] || 0);
+        const ramTotal = parseInt((o.match(/RAMT:(d+)/) || [])[1] || 1);
+        const disk    = parseInt((o.match(/DISK:(d+)/) || [])[1] || 0);
+        const phpfpm  = parseInt((o.match(/PHPFPM:(d+)/) || [])[1] || 0);
+        const ramPct  = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
         const now = Date.now();
-        const lastHeal = healCooldown[srv.name] || 0;
-        const canHeal = (now - lastHeal) > HEAL_COOLDOWN_MS;
+        const canHeal = (now - (healCooldown[srv.name] || 0)) > HEAL_COOLDOWN_MS;
 
-        console.log(\`[Proactive] \${srv.name}: load=\${load} ram=\${ramPct}% disk=\${disk}% phpfpm=\${phpfpm}\`);
+        console.log('[Proactive] ' + srv.name + ': load=' + load + ' ram=' + ramPct + '% phpfpm=' + phpfpm);
 
-        // ===== RULE 1: PHP-FPM > 80 processes → restart PHP-FPM ทันที =====
         if (phpfpm > 80 && canHeal) {
           healCooldown[srv.name] = now;
-          sendTelegram(
-            \`⚠️ <b>PHP-FPM Overload!</b>\n\` +
-            \`🖥️ \${srv.name}: PHP-FPM <b>\${phpfpm} processes</b>\n\` +
-            \`🔄 กำลัง restart PHP-FPM อัตโนมัติ...\`
-          );
-          queueCommand(srv.host,
-            'for svc in $(systemctl list-units --state=active --no-legend | grep plesk-php | awk '{print $1}'); do ' +
-            '  systemctl restart $svc 2>/dev/null; ' +
-            'done; echo "PHP-FPM restarted"'
-          );
-          console.log(\`[AutoHeal] \${srv.name}: PHP-FPM \${phpfpm} → restarting\`);
-        }
-
-        // ===== RULE 2: Load > 30 → Emergency kill + restart all =====
-        else if (load > 30 && canHeal) {
+          sendTelegram('⚠️ <b>PHP-FPM Overload!</b>\n🖥️ ' + srv.name + ': PHP-FPM <b>' + phpfpm + ' processes</b>\n🔄 กำลัง restart...');
+          const restartCmd = 'systemctl list-units --state=active --no-legend | grep plesk-php | awk "{print \$1}" | xargs -I_ systemctl restart _; echo PHPFPM_RESTARTED';
+          queueCommand(srv.host, restartCmd);
+        } else if (load > 30 && canHeal) {
           healCooldown[srv.name] = now;
-          sendTelegram(
-            \`🚨 <b>Emergency Auto-Heal!</b>\n\` +
-            \`🖥️ \${srv.name}: Load <b>\${load}</b>\n\` +
-            \`🔄 กำลัง fix อัตโนมัติ...\`
-          );
-          queueCommand(srv.host,
-            'pkill -f "wp-toolkit" 2>/dev/null; ' +
-            'pkill -f "auto-update" 2>/dev/null; ' +
-            'ps aux --sort=-%cpu | awk 'NR>1 && $3>50 {print $2}' | head -5 | xargs kill -9 2>/dev/null; ' +
-            'for svc in $(systemctl list-units --state=active --no-legend | grep plesk-php | awk '{print $1}'); do ' +
-            '  systemctl restart $svc 2>/dev/null; ' +
-            'done; ' +
-            'systemctl restart httpd 2>/dev/null; ' +
-            'echo "Emergency heal done"'
-          );
-          console.log(\`[AutoHeal] \${srv.name}: Emergency load=\${load}\`);
-        }
-
-        // ===== RULE 3: Load > 15 → Fix PHP-FPM + kill WP cron =====
-        else if (load > 15 && canHeal) {
+          sendTelegram('🚨 <b>Emergency Auto-Heal!</b>\n🖥️ ' + srv.name + ': Load <b>' + load + '</b>\n🔄 กำลัง fix...');
+          const emergCmd = 'pkill -f wp-toolkit 2>/dev/null; ps aux --sort=-%cpu | awk "NR>1 && $3>50 {print $2}" | head -5 | xargs kill -9 2>/dev/null; systemctl restart httpd 2>/dev/null; echo EMERGENCY_DONE';
+          queueCommand(srv.host, emergCmd);
+        } else if (load > 15 && canHeal) {
           healCooldown[srv.name] = now;
-          sendTelegram(
-            \`⚠️ <b>Auto-Heal: Load สูง</b>\n\` +
-            \`🖥️ \${srv.name}: Load <b>\${load}</b>, PHP-FPM <b>\${phpfpm}</b>\n\` +
-            \`🔄 กำลัง fix...\`
-          );
-          queueCommand(srv.host,
-            'pkill -f "wp-toolkit" 2>/dev/null; ' +
-            'pkill -f "auto-update" 2>/dev/null; ' +
-            'systemctl restart sw-engine 2>/dev/null; ' +
-            'echo "Fix done"'
-          );
-          console.log(\`[AutoHeal] \${srv.name}: load=\${load}\`);
+          sendTelegram('⚠️ <b>Auto-Heal: Load สูง</b>\n🖥️ ' + srv.name + ': Load <b>' + load + '</b>\n🔄 กำลัง fix...');
+          queueCommand(srv.host, 'pkill -f wp-toolkit 2>/dev/null; systemctl restart sw-engine 2>/dev/null; echo FIX_DONE');
         }
 
-        // ===== RULE 4: RAM > 90% → clear cache =====
         if (ramPct > 90 && canHeal) {
           healCooldown[srv.name] = now;
-          sendTelegram(
-            \`⚠️ <b>High RAM!</b>\n\` +
-            \`🖥️ \${srv.name}: RAM <b>\${ramPct}%</b>\n\` +
-            \`🔄 กำลัง clear cache...\`
-          );
-          queueCommand(srv.host,
-            'sync; echo 3 > /proc/sys/vm/drop_caches; ' +
-            'systemctl restart sw-engine 2>/dev/null; ' +
-            'echo "Cache cleared"'
-          );
+          sendTelegram('⚠️ <b>High RAM!</b>\n🖥️ ' + srv.name + ': RAM <b>' + ramPct + '%</b>\n🔄 clearing...');
+          queueCommand(srv.host, 'sync; echo 3 > /proc/sys/vm/drop_caches; echo CACHE_CLEARED');
         }
 
-        // ===== RULE 5: Disk > 80% → auto cleanup =====
         if (disk > 80) {
-          sendTelegram(
-            \`💾 <b>Disk Warning!</b>\n\` +
-            \`🖥️ \${srv.name}: Disk <b>\${disk}%</b>\n\` +
-            \`🧹 กำลัง cleanup...\`
-          );
-          await diskCleanup(srv, disk);
+          sendTelegram('💾 <b>Disk Warning!</b>\n🖥️ ' + srv.name + ': Disk <b>' + disk + '%</b>');
+          if (typeof diskCleanup === 'function') diskCleanup(srv, disk).catch(console.error);
         }
-
       }, 35000);
     } catch(e) {
       console.error('[Proactive]', srv.name, e.message);
@@ -2190,101 +2119,47 @@ ${serverSummary}
 
 
 // ===== PHP-FPM ONDEMAND FIXER =====
-// เปลี่ยน pm = dynamic → pm = ondemand
-// processes ตายอัตโนมัติหลัง idle 10 วินาที ไม่สะสมค้าง
-// ปลอดภัย: แก้แค่ config ไม่แตะข้อมูลโดเมน
-
-const PHPFPM_ONDEMAND_SCRIPT = `
-CHANGED=0
-# หา PHP-FPM config ทุก version ทุกโดเมน
-for CONF in $(find /opt/plesk/php/*/etc/php-fpm.d/ -name "*.conf" 2>/dev/null | grep -v "plesk.conf" | grep -v "www.conf"); do
-  # เปลี่ยนเป็น ondemand
-  if grep -q "^pm = dynamic" "$CONF" 2>/dev/null || grep -q "^pm = static" "$CONF" 2>/dev/null; then
-    sed -i 's/^pm = .*/pm = ondemand/' "$CONF"
-    CHANGED=$((CHANGED+1))
-  fi
-  # ตั้ง max_children = 3
-  if grep -q "^pm.max_children" "$CONF" 2>/dev/null; then
-    sed -i 's/^pm.max_children.*/pm.max_children = 3/' "$CONF"
-  else
-    echo "pm.max_children = 3" >> "$CONF"
-  fi
-  # ตั้ง idle timeout 10 วินาที (processes ตายเร็ว)
-  if grep -q "^pm.process_idle_timeout" "$CONF" 2>/dev/null; then
-    sed -i 's/^pm.process_idle_timeout.*/pm.process_idle_timeout = 10s/' "$CONF"
-  else
-    echo "pm.process_idle_timeout = 10s" >> "$CONF"
-  fi
-done
-
-# ตั้ง global sw-engine pool ด้วย
-GLOBAL="/etc/sw-engine/pool.d/plesk.conf"
-if [ -f "$GLOBAL" ]; then
-  sed -i 's/^pm = .*/pm = ondemand/' "$GLOBAL" 2>/dev/null
-  sed -i 's/^pm.max_children.*/pm.max_children = 40/' "$GLOBAL" 2>/dev/null
-  grep -q "^pm.process_idle_timeout" "$GLOBAL" || echo "pm.process_idle_timeout = 10s" >> "$GLOBAL"
-fi
-
-# Restart PHP-FPM ทุก service
-for SVC in $(systemctl list-units --state=active --no-legend | grep plesk-php | awk '{print $1}'); do
-  systemctl restart $SVC 2>/dev/null
-done
-systemctl restart sw-engine 2>/dev/null
-
-echo "ONDEMAND_DONE CHANGED:$CHANGED"
-`;
-
 async function applyPhpFpmOndemand(srv) {
   try {
-    console.log(`[OndemandFix] ${srv.name}: เปลี่ยน PHP-FPM เป็น ondemand...`);
-    const cmdId = queueCommand(srv.host, PHPFPM_ONDEMAND_SCRIPT.replace(/
-/g, '; '));
-
+    const script = [
+      'CHANGED=0',
+      'for CONF in $(find /opt/plesk/php/*/etc/php-fpm.d/ -name "*.conf" 2>/dev/null | grep -v plesk.conf | grep -v www.conf); do',
+      '  sed -i "s/^pm = .*/pm = ondemand/" "$CONF" 2>/dev/null && CHANGED=$((CHANGED+1));',
+      '  grep -q "^pm.max_children" "$CONF" && sed -i "s/^pm.max_children.*/pm.max_children = 3/" "$CONF" || echo "pm.max_children = 3" >> "$CONF";',
+      '  grep -q "^pm.process_idle_timeout" "$CONF" || echo "pm.process_idle_timeout = 10s" >> "$CONF";',
+      'done',
+      'GLOBAL=/etc/sw-engine/pool.d/plesk.conf',
+      '[ -f "$GLOBAL" ] && sed -i "s/^pm = .*/pm = ondemand/" "$GLOBAL"',
+      '[ -f "$GLOBAL" ] && grep -q "^pm.process_idle_timeout" "$GLOBAL" || echo "pm.process_idle_timeout = 10s" >> "$GLOBAL"',
+      'systemctl list-units --state=active --no-legend | grep plesk-php | awk "{print $1}" | xargs -I_ systemctl restart _ 2>/dev/null',
+      'systemctl restart sw-engine 2>/dev/null',
+      'echo ONDEMAND_DONE_CHANGED:$CHANGED'
+    ].join('; ');
+    const cmdId = queueCommand(srv.host, script);
     for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 1000));
       if (agentResults[cmdId]) {
-        const result = agentResults[cmdId];
-        delete agentResults[cmdId];
-        const output = (result.output || '').replace(/~/g, ' ');
-        const changed = parseInt((output.match(/CHANGED:(\d+)/) || [])[1] || 0);
-        const ok = output.includes('ONDEMAND_DONE');
-        console.log(`[OndemandFix] ${srv.name}: ${ok ? '✅' : '❌'} แก้ ${changed} configs`);
+        const res = agentResults[cmdId]; delete agentResults[cmdId];
+        const out = (res.output || '').replace(/~/g, ' ');
+        const changed = parseInt((out.match(/CHANGED:(d+)/) || [])[1] || 0);
+        const ok = out.includes('ONDEMAND_DONE');
+        console.log('[OndemandFix] ' + srv.name + ': ' + (ok?'✅':'❌') + ' ' + changed + ' configs');
         return { ok, changed };
       }
     }
     return { ok: false, changed: 0 };
-  } catch(e) {
-    console.error(`[OndemandFix] ${srv.name}:`, e.message);
-    return { ok: false, changed: 0 };
-  }
+  } catch(e) { console.error('[OndemandFix]', srv.name, e.message); return { ok: false, changed: 0 }; }
 }
 
 async function applyAllPhpFpmOndemand() {
-  console.log('[OndemandFix] เปลี่ยน PHP-FPM ondemand ทุก server...');
   const results = [];
-  let total = 0;
-
   for (const srv of PLESK_SERVERS) {
-    const { ok, changed } = await applyPhpFpmOndemand(srv);
-    results.push({ server: srv.name, ok, changed });
-    total += changed;
+    const r = await applyPhpFpmOndemand(srv);
+    results.push({ server: srv.name, ...r });
     await new Promise(r => setTimeout(r, 5000));
   }
-
-  const success = results.filter(r => r.ok).length;
-  sendTelegram(
-    `⚙️ <b>PHP-FPM Ondemand Applied!</b>
-` +
-    results.map(r => `${r.ok ? '✅' : '❌'} ${r.server}: ${r.changed} configs`).join('
-') + '
-
-' +
-    `📊 pm = ondemand + idle_timeout = 10s
-` +
-    `✅ Processes ตายอัตโนมัติหลัง idle → Load ลดลง
-` +
-    `⏱️ ${new Date().toLocaleString('th-TH')}`
-  );
+  const msg = results.map(r => (r.ok?'✅':'❌') + ' ' + r.server + ': ' + r.changed + ' configs').join('\n');
+  sendTelegram('⚙️ <b>PHP-FPM Ondemand Done!</b>\n' + msg + '\n\n✅ pm=ondemand + idle=10s\n✅ Load จะลดลง');
   return results;
 }
 
@@ -2318,14 +2193,10 @@ server.listen(PORT, async () => {
   // Monthly report - disabled
   setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
   setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
-
-  // PHP-FPM Ondemand — รันหลัง 12 นาที แก้ root cause load สูง
   setTimeout(async () => {
-    console.log('[Startup] เปลี่ยน PHP-FPM เป็น ondemand ทุก server...');
+    console.log('[Startup] PHP-FPM Ondemand...');
     await applyAllPhpFpmOndemand();
   }, 12 * 60 * 1000);
-
-  // Re-apply ทุก 24 ชั่วโมง กัน config reset
   setInterval(applyAllPhpFpmOndemand, 24 * 60 * 60 * 1000);
 
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
