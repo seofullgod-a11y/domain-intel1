@@ -1671,31 +1671,51 @@ function renderQuickTable() {
 function renderTrafficPage() {
   const el = document.getElementById('traffic-content');
   if (!el) return;
-  const withGSC = allDomains.filter(d => d.gsc);
+
+  // แสดงทุกโดเมนที่อยู่ใน GSC แม้ไม่มี traffic
+  const withGSC = allDomains.filter(d => d.gsc && d.gsc.inGSC);
+  const hasTraffic = withGSC.filter(d => d.gsc.clicks > 0);
+  const noTraffic = withGSC.filter(d => d.gsc.clicks === 0);
+
   if (!withGSC.length) {
-    el.innerHTML = `<div class="gsc-banner"><div class="gsc-banner-icon">📊</div><div class="gsc-banner-text"><h3>ยังไม่มีข้อมูล GSC</h3><p>เชื่อมต่อ Google Search Console API แล้วกด Sync เพื่อดูข้อมูล Traffic</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="ti ti-settings"></i> ตั้งค่า</button></div></div>`; return;
+    el.innerHTML = '<div class="gsc-banner"><h3>ยังไม่มีข้อมูล GSC</h3><p>กด Sync GSC เพื่อดูข้อมูล</p></div>';
+    return;
   }
-  const sorted = [...withGSC].sort((a,b)=>(b.gsc?.clicks||0)-(a.gsc?.clicks||0));
-  const totalClicks = sorted.reduce((s,d)=>s+(d.gsc?.clicks||0),0);
+
+  const sorted = [...withGSC].sort((a,b) => (b.gsc?.clicks||0) - (a.gsc?.clicks||0));
+  const totalClicks = sorted.reduce((s,d) => s + (d.gsc?.clicks||0), 0);
+  const totalImpressions = sorted.reduce((s,d) => s + (d.gsc?.impressions||0), 0);
+
+  // filter ตาม tab
+  let filterTab = window._gscFilterTab || 'all';
+  let display = sorted;
+  if (filterTab === 'traffic') display = hasTraffic;
+  if (filterTab === 'notraffic') display = noTraffic;
+
   el.innerHTML = `
-    <div class="metrics-grid" style="margin-bottom:20px">
-      <div class="metric-card"><div class="metric-label">โดเมนที่มีข้อมูล GSC</div><div class="metric-val blue">${withGSC.length}</div></div>
-      <div class="metric-card"><div class="metric-label">Total Clicks (30 วัน)</div><div class="metric-val green">${totalClicks.toLocaleString()}</div></div>
-      <div class="metric-card"><div class="metric-label">Total Impressions</div><div class="metric-val">${sorted.reduce((s,d)=>s+(d.gsc?.impressions||0),0).toLocaleString()}</div></div>
-      <div class="metric-card highlight-red"><div class="metric-label">ไม่มีทราฟฟิคเลย</div><div class="metric-val red">${withGSC.filter(d=>d.gsc.clicks===0).length}</div></div>
+    <div class="metrics-grid" style="margin-bottom:16px">
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-brand-google"></i> ใน GSC ทั้งหมด</div><div class="metric-val blue">${withGSC.length.toLocaleString()}</div></div>
+      <div class="metric-card highlight-green"><div class="metric-label"><i class="ti ti-mouse"></i> Total Clicks (90 วัน)</div><div class="metric-val green">${totalClicks.toLocaleString()}</div></div>
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-eye"></i> Total Impressions</div><div class="metric-val">${totalImpressions.toLocaleString()}</div></div>
+      <div class="metric-card highlight-red"><div class="metric-label"><i class="ti ti-chart-bar-off"></i> ไม่มี Traffic</div><div class="metric-val red">${noTraffic.length.toLocaleString()}</div></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:12px">
+      <button class="btn ${filterTab==='all'?'btn-green':''}" onclick="window._gscFilterTab='all';renderTrafficPage()">ทั้งหมด (${withGSC.length})</button>
+      <button class="btn ${filterTab==='traffic'?'btn-green':''}" onclick="window._gscFilterTab='traffic';renderTrafficPage()">มี Traffic (${hasTraffic.length})</button>
+      <button class="btn ${filterTab==='notraffic'?'btn-green':''}" onclick="window._gscFilterTab='notraffic';renderTrafficPage()">ไม่มี Traffic (${noTraffic.length})</button>
     </div>
     <div class="table-container">
       <div class="table-wrap">
         <table>
           <thead><tr><th>โดเมน</th><th>Clicks</th><th>Impressions</th><th>Avg Position</th><th>Keywords</th><th>Top Keyword</th></tr></thead>
           <tbody>
-            ${sorted.map(d => `<tr>
+            ${display.map(d => `<tr>
               <td class="domain-name">${d.domain}</td>
-              <td style="font-family:var(--mono)">${d.gsc.clicks.toLocaleString()}</td>
+              <td style="font-family:var(--mono);color:${d.gsc.clicks>0?'var(--green)':'var(--text3)'}">${d.gsc.clicks.toLocaleString()}</td>
               <td style="font-family:var(--mono);color:var(--text2)">${d.gsc.impressions.toLocaleString()}</td>
               <td style="font-family:var(--mono)">${d.gsc.avgPosition ? '#'+d.gsc.avgPosition : '—'}</td>
-              <td style="font-family:var(--mono);color:var(--blue)">${d.gsc.keywordCount}</td>
-              <td style="font-size:12px;color:var(--text2)">${d.gsc.topKeyword || '—'} ${d.gsc.topPosition ? `<span style="color:var(--green)">#${d.gsc.topPosition}</span>` : ''}</td>
+              <td style="font-family:var(--mono);color:var(--blue)">${d.gsc.keywordCount || 0}</td>
+              <td style="font-size:12px;color:var(--text2)">${d.gsc.topKeyword||'—'} ${d.gsc.topPosition?'<span style="color:var(--green)">#'+d.gsc.topPosition+'</span>':''}</td>
             </tr>`).join('')}
           </tbody>
         </table>
