@@ -774,27 +774,18 @@ function sendTelegramDirect(message, token, chatId) {
 // ===== CONFIG (local file — เล็กพอ) =====
 const CONFIG_FILE = path.join('/tmp', 'config.json');
 function loadConfig() {
-  let cfg;
-  try { cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
-  catch { cfg = { gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' }, alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 } }; }
-  return cfg;
+  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
+  catch { return { gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' }, alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 } }; }
 }
-function saveConfig(cfg) { try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2)); } catch(e) {} }
+function saveConfig(cfg) { fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2)); }
 
 // ===== GSC =====
 async function refreshGSCToken() {
-  // ใช้ cached token ถ้ายังไม่หมดอายุ
   if (gscTokenCache && Date.now() < gscTokenExpiry) return gscTokenCache;
-
   const clientId     = process.env.GSC_CLIENT_ID;
   const clientSecret = process.env.GSC_CLIENT_SECRET;
   const refreshToken = process.env.GSC_REFRESH_TOKEN;
-
-  if (!clientId || !clientSecret || !refreshToken) {
-    console.log('[GSC] env vars missing');
-    return null;
-  }
-
+  if (!clientId || !clientSecret || !refreshToken) { console.log('[GSC] env vars missing'); return null; }
   return new Promise(resolve => {
     const body = JSON.stringify({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: 'refresh_token' });
     const req = https.request({ hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
@@ -808,10 +799,7 @@ async function refreshGSCToken() {
             gscTokenExpiry = Date.now() + ((t.expires_in || 3600) - 120) * 1000;
             console.log('[GSC] Token refreshed OK');
             resolve(t.access_token);
-          } else {
-            console.log('[GSC] Token error:', JSON.stringify(t).slice(0, 100));
-            resolve(null);
-          }
+          } else { console.log('[GSC] Token error:', JSON.stringify(t).slice(0,100)); resolve(null); }
         } catch(e) { resolve(null); }
       });
     });
@@ -827,8 +815,7 @@ async function getGSCSiteList(token) {
       let d = ''; res.on('data', c => d += c);
       res.on('end', () => {
         try {
-          const data = JSON.parse(d);
-          const sites = (data.siteEntry || []).map(s => s.siteUrl.replace(/\/$/, ''));
+          const sites = (JSON.parse(d).siteEntry || []).map(s => s.siteUrl.replace(/\/$/, ''));
           gscSiteCache = sites;
           console.log('[GSC] Site list loaded:', sites.length, 'sites');
           resolve(sites);
@@ -842,42 +829,33 @@ async function getGSCSiteList(token) {
 
 async function syncGSCForDomain(domainObj) {
   const token = await refreshGSCToken();
-  if (!token) { console.log('[GSC] No token for ' + domainObj.domain); return domainObj; }
+  if (!token) return domainObj;
 
-  // เช็คว่าโดเมนอยู่ใน GSC ไหม
+  // เช็คว่าอยู่ใน GSC ไหม (ใช้ cache)
   const sites = await getGSCSiteList(token);
   const siteUrl = 'https://' + domainObj.domain;
   const inGSC = sites.includes(siteUrl) || sites.includes(siteUrl + '/');
-  if (!inGSC) return domainObj; // ไม่อยู่ใน GSC ข้ามไป
+  if (!inGSC) return domainObj; // ข้ามโดเมนที่ไม่อยู่ใน GSC
 
   const endDate = new Date().toISOString().split('T')[0];
   const startDate = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
 
   return new Promise(resolve => {
     const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
-    const encoded = encodeURIComponent(siteUrl + '/');
-    const apiPath = '/webmasters/v3/sites/' + encoded + '/searchAnalytics/query';
-    const req = https.request({
-      hostname: 'www.googleapis.com', path: apiPath, method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-    }, res => {
+    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(siteUrl + '/') + '/searchAnalytics/query';
+    const req = https.request({ hostname: 'www.googleapis.com', path: apiPath, method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
       let data = ''; res.on('data', c => data += c);
       res.on('end', () => {
         try {
-          const result = JSON.parse(data);
-          const rows = result?.rows || [];
+          const rows = JSON.parse(data)?.rows || [];
           const keywords = rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, position: Math.round(r.position * 10) / 10 }));
-          // ขึ้นทุกโดเมนที่อยู่ใน GSC แม้ไม่มี traffic
           domainObj.gsc = {
             inGSC: true,
-            clicks: rows.reduce((s, r) => s + r.clicks, 0),
-            impressions: rows.reduce((s, r) => s + r.impressions, 0),
-            avgPosition: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.position, 0) / keywords.length * 10) / 10 : 0,
-            keywords,
-            topKeyword: keywords[0]?.keyword || '-',
-            topPosition: keywords[0]?.position || 0,
-            keywordCount: keywords.length,
-            syncedAt: new Date().toISOString()
+            clicks: rows.reduce((s,r) => s+r.clicks, 0),
+            impressions: rows.reduce((s,r) => s+r.impressions, 0),
+            avgPosition: keywords.length ? Math.round(keywords.reduce((s,k) => s+k.position, 0) / keywords.length * 10) / 10 : 0,
+            keywords, topKeyword: keywords[0]?.keyword || '-', topPosition: keywords[0]?.position || 0,
+            keywordCount: keywords.length, syncedAt: new Date().toISOString()
           };
           console.log('[GSC] ' + domainObj.domain + ': clicks=' + domainObj.gsc.clicks + ' kw=' + keywords.length);
         } catch(e) {
@@ -1016,7 +994,7 @@ async function handleRequest(req, res) {
       user: s.user,
       pass: s.pass // frontend จะซ่อนด้วย *** แสดงเฉพาะตอนกดค้าง
     }));
-    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!process.env.GSC_REFRESH_TOKEN, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
+    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
     return;
   }
 
@@ -1124,12 +1102,24 @@ async function handleRequest(req, res) {
 
   if (req.method === 'POST' && url === '/api/gsc/sync-all') {
     (async () => {
+      console.log('[GSC] เริ่ม sync', memoryDomains.length, 'domains...');
+      // reset site cache เพื่อโหลดใหม่
+      gscSiteCache = null;
+      let synced = 0;
       for (let i = 0; i < memoryDomains.length; i++) {
         memoryDomains[i] = await syncGSCForDomain(memoryDomains[i]);
-        if (i % 10 === 0) await saveToSheets(memoryDomains);
+        if (memoryDomains[i].gsc?.inGSC) synced++;
+        // save ทุก 20 domains
+        if (i % 20 === 0 && i > 0) {
+          await saveToSheets(memoryDomains);
+          // delay 500ms ป้องกัน rate limit
+          await new Promise(r => setTimeout(r, 500));
+        }
       }
       await saveToSheets(memoryDomains);
-    })().catch(console.error);
+      console.log('[GSC] Sync เสร็จ:', synced, 'domains in GSC');
+      sendTelegram('✅ <b>GSC Sync เสร็จ!</b>\n📊 พบ ' + synced + ' โดเมนใน GSC\n⏱️ ' + new Date().toLocaleString('th-TH'));
+    })().catch(e => console.error('[GSC] sync-all error:', e.message));
     json(res, { success: true, message: 'Sync GSC กำลังทำงาน...' });
     return;
   }
