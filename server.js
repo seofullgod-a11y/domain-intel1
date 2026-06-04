@@ -771,10 +771,23 @@ function sendTelegramDirect(message, token, chatId) {
 // ===== CONFIG (local file — เล็กพอ) =====
 const CONFIG_FILE = path.join('/tmp', 'config.json');
 function loadConfig() {
-  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
-  catch { return { gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' }, alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 } }; }
+  let cfg;
+  try { cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
+  catch { cfg = { gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' }, alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 } }; }
+  // อ่านจาก Railway env vars (override ค่าใน config file)
+  if (process.env.GSC_CLIENT_ID)     cfg.gsc.clientId     = process.env.GSC_CLIENT_ID;
+  if (process.env.GSC_CLIENT_SECRET) cfg.gsc.clientSecret = process.env.GSC_CLIENT_SECRET;
+  if (process.env.GSC_REFRESH_TOKEN) cfg.gsc.refreshToken = process.env.GSC_REFRESH_TOKEN;
+  return cfg;
 }
-function saveConfig(cfg) { fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2)); }
+function saveConfig(cfg) {
+  // ไม่บันทึก credentials ที่มาจาก env var ลง file
+  const toSave = JSON.parse(JSON.stringify(cfg));
+  if (process.env.GSC_CLIENT_ID)     delete toSave.gsc.clientId;
+  if (process.env.GSC_CLIENT_SECRET) delete toSave.gsc.clientSecret;
+  if (process.env.GSC_REFRESH_TOKEN) delete toSave.gsc.refreshToken;
+  try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(toSave, null, 2)); } catch(e) {}
+}
 
 // ===== GSC =====
 async function refreshGSCToken() {
@@ -946,7 +959,7 @@ async function handleRequest(req, res) {
       user: s.user,
       pass: s.pass // frontend จะซ่อนด้วย *** แสดงเฉพาะตอนกดค้าง
     }));
-    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
+    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!(cfg.gsc?.accessToken || cfg.gsc?.refreshToken), pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
     return;
   }
 
@@ -1193,21 +1206,6 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if (req.method === 'POST' && url === '/api/phpfpm-ondemand') {
-    json(res, { success: true });
-    applyAllPhpFpmOndemand().catch(console.error);
-    return;
-  }
-  if (req.method === 'POST' && url === '/api/disk-cleanup') {
-    json(res, { success: true });
-    if (typeof runManualDiskCleanup === 'function') runManualDiskCleanup().catch(console.error);
-    return;
-  }
-  if (req.method === 'POST' && url === '/api/limit-phpfpm') {
-    json(res, { success: true });
-    if (typeof limitAllPhpFpm === 'function') limitAllPhpFpm().catch(console.error);
-    return;
-  }
   // Telegram Webhook
   if (req.method === 'POST' && url === '/api/telegram/webhook') {
     const body = await parseBody(req);
@@ -1436,56 +1434,32 @@ async function handleRequest(req, res) {
 const server = http.createServer(handleRequest);
 
 // ===== PROACTIVE MONITOR =====
-// cooldown per server
-const healCooldown = {};
-const HEAL_COOLDOWN_MS = 10 * 60 * 1000;
-
 async function proactiveMonitor() {
   for (const srv of PLESK_SERVERS) {
     try {
-      const statCmd2 = 'L=$(cat /proc/loadavg | cut -d" " -f1); MU=$(free -m | grep Mem | tr -s " " | cut -d" " -f3); MT=$(free -m | grep Mem | tr -s " " | cut -d" " -f2); D=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); P=$(ps aux | grep php-fpm | grep -v grep | wc -l); echo LOAD:$L RAMU:$MU RAMT:$MT DISK:$D PHPFPM:$P';
+      const statCmd2 = 'L=$(cat /proc/loadavg | cut -d" " -f1); D=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo LOAD:$L DISK:$D';
       const cmdId = queueCommand(srv.host, statCmd2);
       setTimeout(async () => {
         const result = agentResults[cmdId];
         if (!result) return;
         delete agentResults[cmdId];
-        const o = result.output || '';
-        const load    = parseFloat((o.match(/LOAD:([d.]+)/) || [])[1] || 0);
-        const ramUsed = parseInt((o.match(/RAMU:(d+)/) || [])[1] || 0);
-        const ramTotal = parseInt((o.match(/RAMT:(d+)/) || [])[1] || 1);
-        const disk    = parseInt((o.match(/DISK:(d+)/) || [])[1] || 0);
-        const phpfpm  = parseInt((o.match(/PHPFPM:(d+)/) || [])[1] || 0);
-        const ramPct  = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
-        const now = Date.now();
-        const canHeal = (now - (healCooldown[srv.name] || 0)) > HEAL_COOLDOWN_MS;
-
-        console.log('[Proactive] ' + srv.name + ': load=' + load + ' ram=' + ramPct + '% phpfpm=' + phpfpm);
-
-        if (phpfpm > 80 && canHeal) {
-          healCooldown[srv.name] = now;
-          sendTelegram('⚠️ <b>PHP-FPM Overload!</b>\n🖥️ ' + srv.name + ': PHP-FPM <b>' + phpfpm + ' processes</b>\n🔄 กำลัง restart...');
-          const restartCmd = 'systemctl list-units --state=active --no-legend | grep plesk-php | awk "{print \$1}" | xargs -I_ systemctl restart _; echo PHPFPM_RESTARTED';
-          queueCommand(srv.host, restartCmd);
-        } else if (load > 30 && canHeal) {
-          healCooldown[srv.name] = now;
-          sendTelegram('🚨 <b>Emergency Auto-Heal!</b>\n🖥️ ' + srv.name + ': Load <b>' + load + '</b>\n🔄 กำลัง fix...');
-          const emergCmd = 'pkill -f wp-toolkit 2>/dev/null; ps aux --sort=-%cpu | awk "NR>1 && $3>50 {print $2}" | head -5 | xargs kill -9 2>/dev/null; systemctl restart httpd 2>/dev/null; echo EMERGENCY_DONE';
-          queueCommand(srv.host, emergCmd);
-        } else if (load > 15 && canHeal) {
-          healCooldown[srv.name] = now;
-          sendTelegram('⚠️ <b>Auto-Heal: Load สูง</b>\n🖥️ ' + srv.name + ': Load <b>' + load + '</b>\n🔄 กำลัง fix...');
-          queueCommand(srv.host, 'pkill -f wp-toolkit 2>/dev/null; systemctl restart sw-engine 2>/dev/null; echo FIX_DONE');
+        const output = result.output || '';
+        const load = parseFloat((output.match(/LOAD:([\d.]+)/) || [])[1] || 0);
+        const disk = parseInt((output.match(/DISK:(\d+)/) || [])[1] || 0);
+        
+        if (load > 15) {
+          sendTelegram(`⚠️ <b>Proactive Alert!</b>
+🖥️ ${srv.name}: Load Average สูง <b>${load}</b>
+กำลัง Fix อัตโนมัติ...`);
+          queueCommand(srv.host, 
+            'pkill -f "wp-toolkit" 2>/dev/null; pkill -f "auto-update" 2>/dev/null; ' +
+            'systemctl restart sw-engine; echo "Auto-fixed"'
+          );
         }
-
-        if (ramPct > 90 && canHeal) {
-          healCooldown[srv.name] = now;
-          sendTelegram('⚠️ <b>High RAM!</b>\n🖥️ ' + srv.name + ': RAM <b>' + ramPct + '%</b>\n🔄 clearing...');
-          queueCommand(srv.host, 'sync; echo 3 > /proc/sys/vm/drop_caches; echo CACHE_CLEARED');
-        }
-
         if (disk > 80) {
-          sendTelegram('💾 <b>Disk Warning!</b>\n🖥️ ' + srv.name + ': Disk <b>' + disk + '%</b>');
-          if (typeof diskCleanup === 'function') diskCleanup(srv, disk).catch(console.error);
+          sendTelegram(`⚠️ <b>Disk Warning!</b>
+🖥️ ${srv.name}: Disk ใช้ไป <b>${disk}%</b>
+กรุณาตรวจสอบ!`);
         }
       }, 35000);
     } catch(e) {
@@ -2117,52 +2091,6 @@ ${serverSummary}
   console.log('[Monthly] ส่ง Monthly Report แล้ว');
 }
 
-
-// ===== PHP-FPM ONDEMAND FIXER =====
-async function applyPhpFpmOndemand(srv) {
-  try {
-    const script = [
-      'CHANGED=0',
-      'for CONF in $(find /opt/plesk/php/*/etc/php-fpm.d/ -name "*.conf" 2>/dev/null | grep -v plesk.conf | grep -v www.conf); do',
-      '  sed -i "s/^pm = .*/pm = ondemand/" "$CONF" 2>/dev/null && CHANGED=$((CHANGED+1));',
-      '  grep -q "^pm.max_children" "$CONF" && sed -i "s/^pm.max_children.*/pm.max_children = 3/" "$CONF" || echo "pm.max_children = 3" >> "$CONF";',
-      '  grep -q "^pm.process_idle_timeout" "$CONF" || echo "pm.process_idle_timeout = 10s" >> "$CONF";',
-      'done',
-      'GLOBAL=/etc/sw-engine/pool.d/plesk.conf',
-      '[ -f "$GLOBAL" ] && sed -i "s/^pm = .*/pm = ondemand/" "$GLOBAL"',
-      '[ -f "$GLOBAL" ] && grep -q "^pm.process_idle_timeout" "$GLOBAL" || echo "pm.process_idle_timeout = 10s" >> "$GLOBAL"',
-      'systemctl list-units --state=active --no-legend | grep plesk-php | awk "{print $1}" | xargs -I_ systemctl restart _ 2>/dev/null',
-      'systemctl restart sw-engine 2>/dev/null',
-      'echo ONDEMAND_DONE_CHANGED:$CHANGED'
-    ].join('; ');
-    const cmdId = queueCommand(srv.host, script);
-    for (let i = 0; i < 120; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      if (agentResults[cmdId]) {
-        const res = agentResults[cmdId]; delete agentResults[cmdId];
-        const out = (res.output || '').replace(/~/g, ' ');
-        const changed = parseInt((out.match(/CHANGED:(d+)/) || [])[1] || 0);
-        const ok = out.includes('ONDEMAND_DONE');
-        console.log('[OndemandFix] ' + srv.name + ': ' + (ok?'✅':'❌') + ' ' + changed + ' configs');
-        return { ok, changed };
-      }
-    }
-    return { ok: false, changed: 0 };
-  } catch(e) { console.error('[OndemandFix]', srv.name, e.message); return { ok: false, changed: 0 }; }
-}
-
-async function applyAllPhpFpmOndemand() {
-  const results = [];
-  for (const srv of PLESK_SERVERS) {
-    const r = await applyPhpFpmOndemand(srv);
-    results.push({ server: srv.name, ...r });
-    await new Promise(r => setTimeout(r, 5000));
-  }
-  const msg = results.map(r => (r.ok?'✅':'❌') + ' ' + r.server + ': ' + r.changed + ' configs').join('\n');
-  sendTelegram('⚙️ <b>PHP-FPM Ondemand Done!</b>\n' + msg + '\n\n✅ pm=ondemand + idle=10s\n✅ Load จะลดลง');
-  return results;
-}
-
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
   console.log(`║   DomainIntel + Plesk + Google Sheets    ║`);
@@ -2193,12 +2121,6 @@ server.listen(PORT, async () => {
   // Monthly report - disabled
   setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
   setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
-  setTimeout(async () => {
-    console.log('[Startup] PHP-FPM Ondemand...');
-    await applyAllPhpFpmOndemand();
-  }, 12 * 60 * 1000);
-  setInterval(applyAllPhpFpmOndemand, 24 * 60 * 60 * 1000);
-
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
   console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
 });
