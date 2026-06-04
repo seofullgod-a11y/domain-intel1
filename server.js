@@ -771,81 +771,109 @@ function sendTelegramDirect(message, token, chatId) {
 // ===== CONFIG (local file — เล็กพอ) =====
 const CONFIG_FILE = path.join('/tmp', 'config.json');
 function loadConfig() {
-  let cfg;
-  try { cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
-  catch { cfg = { gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' }, alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 } }; }
-  if (process.env.GSC_CLIENT_ID)     cfg.gsc.clientId     = process.env.GSC_CLIENT_ID;
-  if (process.env.GSC_CLIENT_SECRET) cfg.gsc.clientSecret = process.env.GSC_CLIENT_SECRET;
-  if (process.env.GSC_REFRESH_TOKEN) cfg.gsc.refreshToken = process.env.GSC_REFRESH_TOKEN;
-  return cfg;
+  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
+  catch { return { gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' }, alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 } }; }
 }
-function saveConfig(cfg) {
-  const toSave = JSON.parse(JSON.stringify(cfg));
-  if (process.env.GSC_CLIENT_ID)     delete toSave.gsc.clientId;
-  if (process.env.GSC_CLIENT_SECRET) delete toSave.gsc.clientSecret;
-  if (process.env.GSC_REFRESH_TOKEN) delete toSave.gsc.refreshToken;
-  try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(toSave, null, 2)); } catch(e) {}
-}
+function saveConfig(cfg) { fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2)); }
 
 // ===== GSC =====
-// cache access token ใน memory
-let gscAccessTokenCache = null;
-let gscAccessTokenExpiry = 0;
-
 async function refreshGSCToken() {
-  const clientId     = process.env.GSC_CLIENT_ID     || loadConfig().gsc?.clientId;
-  const clientSecret = process.env.GSC_CLIENT_SECRET || loadConfig().gsc?.clientSecret;
-  const refreshToken = process.env.GSC_REFRESH_TOKEN || loadConfig().gsc?.refreshToken;
-  if (!clientId || !clientSecret || !refreshToken) {
-    console.log('[GSC] Missing credentials');
-    return null;
-  }
+  const cfg = loadConfig();
+  if (!cfg.gsc?.refreshToken) return null;
   return new Promise(resolve => {
-    const body = JSON.stringify({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: 'refresh_token' });
+    const body = JSON.stringify({ client_id: cfg.gsc.clientId, client_secret: cfg.gsc.clientSecret, refresh_token: cfg.gsc.refreshToken, grant_type: 'refresh_token' });
     const req = https.request({ hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
       let data = '';
       res.on('data', c => data += c);
-      res.on('end', () => {
-        try {
-          const t = JSON.parse(data);
-          if (t.access_token) {
-            gscAccessTokenCache = t.access_token;
-            gscAccessTokenExpiry = Date.now() + (t.expires_in - 60) * 1000;
-            console.log('[GSC] Token refreshed OK');
-            resolve(t.access_token);
-          } else {
-            console.log('[GSC] Token error:', JSON.stringify(t));
-            resolve(null);
-          }
-        } catch(e) { resolve(null); }
-      });
+      res.on('end', () => { try { const t = JSON.parse(data); if (t.access_token) { cfg.gsc.accessToken = t.access_token; saveConfig(cfg); resolve(t.access_token); } else resolve(null); } catch { resolve(null); } });
     });
-    req.on('error', (e) => { console.log('[GSC] Request error:', e.message); resolve(null); });
+    req.on('error', () => resolve(null));
     req.write(body); req.end();
   });
 }
 
+// cache รายชื่อ GSC sites
+let gscSiteList = null;
+
+async function fetchGSCSiteList(token) {
+  return new Promise(resolve => {
+    const req = https.request({
+      hostname: 'www.googleapis.com',
+      path: '/webmasters/v3/sites',
+      headers: { 'Authorization': 'Bearer ' + token }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        try {
+          const data = JSON.parse(d);
+          resolve((data.siteEntry || []).map(s => s.siteUrl));
+        } catch { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.end();
+  });
+}
+
 async function syncGSCForDomain(domainObj) {
-  // ใช้ cached token ถ้ายังไม่หมดอายุ
   let token = (gscAccessTokenCache && Date.now() < gscAccessTokenExpiry) ? gscAccessTokenCache : null;
   if (!token) token = await refreshGSCToken();
-  if (!token) { console.log('[GSC] No token for', domainObj.domain); return domainObj; }
+  if (!token) { console.log('[GSC] No token for ' + domainObj.domain); return domainObj; }
+
   const endDate = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+  const startDate = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]; // 3 เดือน
+
+  // โหลด site list ครั้งแรกเท่านั้น
+  if (!gscSiteList) gscSiteList = await fetchGSCSiteList(token);
+
+  // เช็คว่าโดเมนนี้อยู่ใน GSC ไหม
+  const siteUrl = 'https://' + domainObj.domain + '/';
+  const inGSC = gscSiteList.some(s => s === siteUrl || s === siteUrl.replace(/\/$/, ''));
+
+  // ถ้าไม่อยู่ใน GSC ไม่ต้องดึงข้อมูล
+  if (!inGSC) return domainObj;
+
   return new Promise(resolve => {
     const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
-    const apiPath = `/webmasters/v3/sites/${encodeURIComponent(`https://${domainObj.domain}/`)}/searchAnalytics/query`;
-    const req = https.request({ hostname: 'www.googleapis.com', path: apiPath, method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
+    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(siteUrl) + '/searchAnalytics/query';
+    const req = https.request({
+      hostname: 'www.googleapis.com', path: apiPath, method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
         try {
           const result = JSON.parse(data);
-          if (result?.rows) {
-            const keywords = result.rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, position: Math.round(r.position * 10) / 10 }));
-            domainObj.gsc = { clicks: result.rows.reduce((s, r) => s + r.clicks, 0), impressions: result.rows.reduce((s, r) => s + r.impressions, 0), avgPosition: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.position, 0) / keywords.length * 10) / 10 : 0, keywords, topKeyword: keywords[0]?.keyword || '-', topPosition: keywords[0]?.position || 0, keywordCount: keywords.length };
+          if (result?.rows && result.rows.length > 0) {
+            // มี traffic
+            const keywords = result.rows.map(r => ({
+              keyword: r.keys[0], clicks: r.clicks,
+              impressions: r.impressions, position: Math.round(r.position * 10) / 10
+            }));
+            domainObj.gsc = {
+              inGSC: true,
+              clicks: result.rows.reduce((s, r) => s + r.clicks, 0),
+              impressions: result.rows.reduce((s, r) => s + r.impressions, 0),
+              avgPosition: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.position, 0) / keywords.length * 10) / 10 : 0,
+              keywords, topKeyword: keywords[0]?.keyword || '-',
+              topPosition: keywords[0]?.position || 0,
+              keywordCount: keywords.length,
+              syncedAt: new Date().toISOString()
+            };
+          } else {
+            // อยู่ใน GSC แต่ไม่มี traffic
+            domainObj.gsc = {
+              inGSC: true,
+              clicks: 0, impressions: 0, avgPosition: 0,
+              keywords: [], topKeyword: '-', topPosition: 0, keywordCount: 0,
+              syncedAt: new Date().toISOString()
+            };
           }
-        } catch {}
+        } catch(e) {
+          // error แต่ยังอยู่ใน GSC
+          domainObj.gsc = { inGSC: true, clicks: 0, impressions: 0, avgPosition: 0, keywords: [], topKeyword: '-', topPosition: 0, keywordCount: 0 };
+        }
         resolve(domainObj);
       });
     });
@@ -979,7 +1007,7 @@ async function handleRequest(req, res) {
       user: s.user,
       pass: s.pass // frontend จะซ่อนด้วย *** แสดงเฉพาะตอนกดค้าง
     }));
-    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!(gscAccessTokenCache || process.env.GSC_REFRESH_TOKEN), pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
+    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
     return;
   }
 
