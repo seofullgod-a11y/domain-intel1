@@ -51,6 +51,9 @@ const CF_WARN_CODES = new Set([520, 527, 528, 529]);
 let memoryDomains = [];
 let lastUpdated = null;
 let gscAccessToken = null;
+let gscAccessTokenCache = null;
+let gscAccessTokenExpiry = 0;
+let gscSiteList = null;
 
 // ===== HELPERS =====
 function cors(res) {
@@ -792,88 +795,27 @@ async function refreshGSCToken() {
   });
 }
 
-// cache รายชื่อ GSC sites
-let gscSiteList = null;
-
-async function fetchGSCSiteList(token) {
-  return new Promise(resolve => {
-    const req = https.request({
-      hostname: 'www.googleapis.com',
-      path: '/webmasters/v3/sites',
-      headers: { 'Authorization': 'Bearer ' + token }
-    }, res => {
-      let d = ''; res.on('data', c => d += c);
-      res.on('end', () => {
-        try {
-          const data = JSON.parse(d);
-          resolve((data.siteEntry || []).map(s => s.siteUrl));
-        } catch { resolve([]); }
-      });
-    });
-    req.on('error', () => resolve([]));
-    req.end();
-  });
-}
-
 async function syncGSCForDomain(domainObj) {
-  let token = (gscAccessTokenCache && Date.now() < gscAccessTokenExpiry) ? gscAccessTokenCache : null;
+  const cfg = loadConfig();
+  let token = cfg.gsc?.accessToken;
   if (!token) token = await refreshGSCToken();
-  if (!token) { console.log('[GSC] No token for ' + domainObj.domain); return domainObj; }
-
+  if (!token) return domainObj;
   const endDate = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0]; // 3 เดือน
-
-  // โหลด site list ครั้งแรกเท่านั้น
-  if (!gscSiteList) gscSiteList = await fetchGSCSiteList(token);
-
-  // เช็คว่าโดเมนนี้อยู่ใน GSC ไหม
-  const siteUrl = 'https://' + domainObj.domain + '/';
-  const inGSC = gscSiteList.some(s => s === siteUrl || s === siteUrl.replace(/\/$/, ''));
-
-  // ถ้าไม่อยู่ใน GSC ไม่ต้องดึงข้อมูล
-  if (!inGSC) return domainObj;
-
+  const startDate = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
   return new Promise(resolve => {
     const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
-    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(siteUrl) + '/searchAnalytics/query';
-    const req = https.request({
-      hostname: 'www.googleapis.com', path: apiPath, method: 'POST',
-      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
-    }, res => {
+    const apiPath = `/webmasters/v3/sites/${encodeURIComponent(`https://${domainObj.domain}/`)}/searchAnalytics/query`;
+    const req = https.request({ hostname: 'www.googleapis.com', path: apiPath, method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
       let data = '';
       res.on('data', c => data += c);
       res.on('end', () => {
         try {
           const result = JSON.parse(data);
-          if (result?.rows && result.rows.length > 0) {
-            // มี traffic
-            const keywords = result.rows.map(r => ({
-              keyword: r.keys[0], clicks: r.clicks,
-              impressions: r.impressions, position: Math.round(r.position * 10) / 10
-            }));
-            domainObj.gsc = {
-              inGSC: true,
-              clicks: result.rows.reduce((s, r) => s + r.clicks, 0),
-              impressions: result.rows.reduce((s, r) => s + r.impressions, 0),
-              avgPosition: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.position, 0) / keywords.length * 10) / 10 : 0,
-              keywords, topKeyword: keywords[0]?.keyword || '-',
-              topPosition: keywords[0]?.position || 0,
-              keywordCount: keywords.length,
-              syncedAt: new Date().toISOString()
-            };
-          } else {
-            // อยู่ใน GSC แต่ไม่มี traffic
-            domainObj.gsc = {
-              inGSC: true,
-              clicks: 0, impressions: 0, avgPosition: 0,
-              keywords: [], topKeyword: '-', topPosition: 0, keywordCount: 0,
-              syncedAt: new Date().toISOString()
-            };
+          if (result?.rows) {
+            const keywords = result.rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, position: Math.round(r.position * 10) / 10 }));
+            domainObj.gsc = { clicks: result.rows.reduce((s, r) => s + r.clicks, 0), impressions: result.rows.reduce((s, r) => s + r.impressions, 0), avgPosition: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.position, 0) / keywords.length * 10) / 10 : 0, keywords, topKeyword: keywords[0]?.keyword || '-', topPosition: keywords[0]?.position || 0, keywordCount: keywords.length };
           }
-        } catch(e) {
-          // error แต่ยังอยู่ใน GSC
-          domainObj.gsc = { inGSC: true, clicks: 0, impressions: 0, avgPosition: 0, keywords: [], topKeyword: '-', topPosition: 0, keywordCount: 0 };
-        }
+        } catch {}
         resolve(domainObj);
       });
     });
