@@ -774,15 +774,17 @@ function sendTelegramDirect(message, token, chatId) {
 // ===== CONFIG (local file — เล็กพอ) =====
 const CONFIG_FILE = path.join('/tmp', 'config.json');
 function loadConfig() {
-  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
-  catch { return { gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' }, alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 } }; }
+  let cfg;
+  try { cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
+  catch { cfg = { gsc: { clientId:'', clientSecret:'', refreshToken:'', accessToken:'' }, alerts: { lineToken:'', notifyOnDown:true, notifyOnExpiry:true, expiryDaysThreshold:30 } }; }
+  return cfg;
 }
-function saveConfig(cfg) { fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2)); }
+function saveConfig(cfg) { try { fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2)); } catch(e) {} }
 
 // ===== GSC =====
 async function refreshGSCToken() {
   if (gscTokenCache && Date.now() < gscTokenExpiry) return gscTokenCache;
-  const clientId     = process.env.GSC_CLIENT_ID;
+  const clientId = process.env.GSC_CLIENT_ID;
   const clientSecret = process.env.GSC_CLIENT_SECRET;
   const refreshToken = process.env.GSC_REFRESH_TOKEN;
   if (!clientId || !clientSecret || !refreshToken) { console.log('[GSC] env vars missing'); return null; }
@@ -815,7 +817,8 @@ async function getGSCSiteList(token) {
       let d = ''; res.on('data', c => d += c);
       res.on('end', () => {
         try {
-          const sites = (JSON.parse(d).siteEntry || []).map(s => s.siteUrl.replace(/\/$/, ''));
+          // เก็บ siteUrl แบบเต็มทั้ง with/without trailing slash
+          const sites = (JSON.parse(d).siteEntry || []).map(s => s.siteUrl.toLowerCase().replace(/\/$/, ''));
           gscSiteCache = sites;
           console.log('[GSC] Site list loaded:', sites.length, 'sites');
           resolve(sites);
@@ -831,18 +834,18 @@ async function syncGSCForDomain(domainObj) {
   const token = await refreshGSCToken();
   if (!token) return domainObj;
 
-  // เช็คว่าอยู่ใน GSC ไหม (ใช้ cache)
+  // normalize domain name แล้วเช็คใน GSC
   const sites = await getGSCSiteList(token);
-  const siteUrl = 'https://' + domainObj.domain;
-  const inGSC = sites.includes(siteUrl) || sites.includes(siteUrl + '/');
-  if (!inGSC) return domainObj; // ข้ามโดเมนที่ไม่อยู่ใน GSC
+  const normalized = ('https://' + domainObj.domain).toLowerCase().replace(/\/$/, '');
+  if (!sites.includes(normalized)) return domainObj; // ไม่อยู่ใน GSC ข้ามได้เลย
 
   const endDate = new Date().toISOString().split('T')[0];
   const startDate = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
 
   return new Promise(resolve => {
     const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
-    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(siteUrl + '/') + '/searchAnalytics/query';
+    // GSC API ต้องการ trailing slash
+    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(normalized + '/') + '/searchAnalytics/query';
     const req = https.request({ hostname: 'www.googleapis.com', path: apiPath, method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
       let data = ''; res.on('data', c => data += c);
       res.on('end', () => {
@@ -853,13 +856,13 @@ async function syncGSCForDomain(domainObj) {
             inGSC: true,
             clicks: rows.reduce((s,r) => s+r.clicks, 0),
             impressions: rows.reduce((s,r) => s+r.impressions, 0),
-            avgPosition: keywords.length ? Math.round(keywords.reduce((s,k) => s+k.position, 0) / keywords.length * 10) / 10 : 0,
-            keywords, topKeyword: keywords[0]?.keyword || '-', topPosition: keywords[0]?.position || 0,
+            avgPosition: keywords.length ? Math.round(keywords.reduce((s,k) => s+k.position,0)/keywords.length*10)/10 : 0,
+            keywords, topKeyword: keywords[0]?.keyword||'-', topPosition: keywords[0]?.position||0,
             keywordCount: keywords.length, syncedAt: new Date().toISOString()
           };
           console.log('[GSC] ' + domainObj.domain + ': clicks=' + domainObj.gsc.clicks + ' kw=' + keywords.length);
         } catch(e) {
-          domainObj.gsc = { inGSC: true, clicks: 0, impressions: 0, avgPosition: 0, keywords: [], topKeyword: '-', topPosition: 0, keywordCount: 0, syncedAt: new Date().toISOString() };
+          domainObj.gsc = { inGSC:true, clicks:0, impressions:0, avgPosition:0, keywords:[], topKeyword:'-', topPosition:0, keywordCount:0, syncedAt:new Date().toISOString() };
         }
         resolve(domainObj);
       });
@@ -994,7 +997,7 @@ async function handleRequest(req, res) {
       user: s.user,
       pass: s.pass // frontend จะซ่อนด้วย *** แสดงเฉพาะตอนกดค้าง
     }));
-    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
+    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!process.env.GSC_REFRESH_TOKEN, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
     return;
   }
 
@@ -1102,18 +1105,15 @@ async function handleRequest(req, res) {
 
   if (req.method === 'POST' && url === '/api/gsc/sync-all') {
     (async () => {
-      console.log('[GSC] เริ่ม sync', memoryDomains.length, 'domains...');
-      // reset site cache เพื่อโหลดใหม่
-      gscSiteCache = null;
+      gscSiteCache = null; // reset cache ทุกครั้ง
+      console.log('[GSC] เริ่ม sync-all', memoryDomains.length, 'domains...');
       let synced = 0;
       for (let i = 0; i < memoryDomains.length; i++) {
         memoryDomains[i] = await syncGSCForDomain(memoryDomains[i]);
         if (memoryDomains[i].gsc?.inGSC) synced++;
-        // save ทุก 20 domains
         if (i % 20 === 0 && i > 0) {
           await saveToSheets(memoryDomains);
-          // delay 500ms ป้องกัน rate limit
-          await new Promise(r => setTimeout(r, 500));
+          await new Promise(r => setTimeout(r, 300));
         }
       }
       await saveToSheets(memoryDomains);
