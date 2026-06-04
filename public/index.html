@@ -613,6 +613,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="topbar">
         <div><div class="topbar-title">Traffic & Google Search Console</div><div class="topbar-sub">ข้อมูล 30 วันล่าสุด</div></div>
         <div class="topbar-right">
+          <button class="btn" onclick="importGSCDomains()" style="background:rgba(14,165,233,0.12);color:var(--teal);border-color:rgba(14,165,233,0.3)"><i class="ti ti-download"></i> Import จาก GSC</button>
           <button class="btn btn-green" onclick="syncGSCAll()"><i class="ti ti-brand-google"></i> Sync GSC ทั้งหมด</button>
         </div>
       </div>
@@ -3413,6 +3414,28 @@ async function runPhpFpmOndemand() {
     const data = await res.json();
     if (data.success) toast('✅ เริ่มแล้ว — Load จะลดลงใน 5-10 นาที ดูผลใน Telegram', 'success');
     else toast('❌ ล้มเหลว', 'error');
+  } catch(e) { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
+}
+</script>
+<script>
+async function importGSCDomains() {
+  if (!confirm(
+    '📥 Import โดเมนจาก GSC เข้า DomainIntel?\n\n' +
+    'ระบบจะนำโดเมนทั้งหมดใน GSC (235 sites) \n' +
+    'ที่ยังไม่มีใน DomainIntel มาเพิ่มอัตโนมัติ\n\n' +
+    'ดำเนินการต่อไหม?'
+  )) return;
+  toast('⏳ กำลัง import โดเมนจาก GSC...', 'info');
+  try {
+    const res = await fetch(`${API}/api/gsc/import-domains`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      toast(`✅ Import สำเร็จ! เพิ่ม ${data.imported} โดเมน รวมทั้งหมด ${data.total} โดเมน`, 'success');
+      // รีโหลดข้อมูล
+      setTimeout(() => loadData(), 2000);
+    } else {
+      toast('❌ Import ล้มเหลว: ' + (data.error || 'unknown error'), 'error');
+    }
   } catch(e) { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
 }
 </script>
