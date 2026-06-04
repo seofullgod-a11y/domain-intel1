@@ -830,6 +830,39 @@ async function getGSCSiteList(token) {
   });
 }
 
+// ดึงข้อมูล GSC สำหรับ 1 period
+function fetchGSCPeriod(token, siteUrl, days) {
+  return new Promise(resolve => {
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+    const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
+    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(siteUrl + '/') + '/searchAnalytics/query';
+    const req = https.request({
+      hostname: 'www.googleapis.com', path: apiPath, method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let data = ''; res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const rows = JSON.parse(data)?.rows || [];
+          const kw = rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, position: Math.round(r.position*10)/10 }));
+          resolve({
+            clicks: rows.reduce((s,r) => s+r.clicks, 0),
+            impressions: rows.reduce((s,r) => s+r.impressions, 0),
+            avgPosition: kw.length ? Math.round(kw.reduce((s,k) => s+k.position,0)/kw.length*10)/10 : 0,
+            keywords: kw, topKeyword: kw[0]?.keyword||'-', topPosition: kw[0]?.position||0,
+            keywordCount: kw.length
+          });
+        } catch(e) {
+          resolve({ clicks:0, impressions:0, avgPosition:0, keywords:[], topKeyword:'-', topPosition:0, keywordCount:0 });
+        }
+      });
+    });
+    req.on('error', () => resolve({ clicks:0, impressions:0, avgPosition:0, keywords:[], topKeyword:'-', topPosition:0, keywordCount:0 }));
+    req.write(body); req.end();
+  });
+}
+
 async function syncGSCForDomain(domainObj) {
   const token = await refreshGSCToken();
   if (!token) return domainObj;
@@ -837,35 +870,26 @@ async function syncGSCForDomain(domainObj) {
   const normalized = 'https://' + domainObj.domain.toLowerCase().replace(/\/$/,'');
   if (sites.indexOf(normalized) < 0) return domainObj;
 
-  const endDate = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
-  return new Promise(resolve => {
-    const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
-    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(normalized + '/') + '/searchAnalytics/query';
-    const req = https.request({ hostname: 'www.googleapis.com', path: apiPath, method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
-      let data = ''; res.on('data', c => data += c);
-      res.on('end', () => {
-        try {
-          const rows = JSON.parse(data)?.rows || [];
-          const kw = rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, position: Math.round(r.position*10)/10 }));
-          domainObj.gsc = {
-            inGSC: true,
-            clicks: rows.reduce((s,r)=>s+r.clicks,0),
-            impressions: rows.reduce((s,r)=>s+r.impressions,0),
-            avgPosition: kw.length ? Math.round(kw.reduce((s,k)=>s+k.position,0)/kw.length*10)/10 : 0,
-            keywords: kw, topKeyword: kw[0]?.keyword||'-', topPosition: kw[0]?.position||0,
-            keywordCount: kw.length, syncedAt: new Date().toISOString()
-          };
-          console.log('[GSC] ' + domainObj.domain + ': clicks=' + domainObj.gsc.clicks + ' kw=' + kw.length);
-        } catch(e) {
-          domainObj.gsc = { inGSC:true, clicks:0, impressions:0, avgPosition:0, keywords:[], topKeyword:'-', topPosition:0, keywordCount:0, syncedAt:new Date().toISOString() };
-        }
-        resolve(domainObj);
-      });
-    });
-    req.on('error', ()=>resolve(domainObj));
-    req.write(body); req.end();
-  });
+  // ดึงข้อมูล 3 periods พร้อมกัน
+  const [d7, d30, d90] = await Promise.all([
+    fetchGSCPeriod(token, normalized, 7),
+    fetchGSCPeriod(token, normalized, 30),
+    fetchGSCPeriod(token, normalized, 90)
+  ]);
+
+  domainObj.gsc = {
+    inGSC: true,
+    // default แสดงข้อมูล 30 วัน
+    clicks: d30.clicks, impressions: d30.impressions,
+    avgPosition: d30.avgPosition, keywords: d30.keywords,
+    topKeyword: d30.topKeyword, topPosition: d30.topPosition,
+    keywordCount: d30.keywordCount,
+    // เก็บแยกทุก period
+    d7, d30, d90,
+    syncedAt: new Date().toISOString()
+  };
+  console.log('[GSC] ' + domainObj.domain + ': 7d=' + d7.clicks + ' 30d=' + d30.clicks + ' 90d=' + d90.clicks);
+  return domainObj;
 }
 
 // ===== CSV PARSER =====
@@ -2250,4 +2274,29 @@ server.listen(PORT, async () => {
   setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
   console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
+
+  // Auto Sync GSC ทุก 24 ชั่วโมง (ตี 2)
+  const scheduleGSCSync = () => {
+    const now = new Date();
+    const next = new Date();
+    next.setHours(2, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    const ms = next - now;
+    console.log('[GSC] Auto sync ครั้งต่อไป:', next.toLocaleString('th-TH'));
+    setTimeout(async () => {
+      console.log('[GSC] Auto sync เริ่ม...');
+      _gscSites = null;
+      let synced = 0;
+      for (let i = 0; i < memoryDomains.length; i++) {
+        memoryDomains[i] = await syncGSCForDomain(memoryDomains[i]);
+        if (memoryDomains[i].gsc && memoryDomains[i].gsc.inGSC) synced++;
+        if (i > 0 && i % 20 === 0) await new Promise(r => setTimeout(r, 300));
+      }
+      await saveToSheets(memoryDomains);
+      console.log('[GSC] Auto sync เสร็จ:', synced, 'domains');
+      sendTelegram('🔄 <b>GSC Auto Sync เสร็จ!</b>\n📊 ' + synced + ' โดเมน\n⏱️ ' + new Date().toLocaleString('th-TH'));
+      scheduleGSCSync(); // ตั้งรอบถัดไป
+    }, ms);
+  };
+  scheduleGSCSync();
 });
