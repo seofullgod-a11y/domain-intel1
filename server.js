@@ -777,46 +777,93 @@ function loadConfig() {
 function saveConfig(cfg) { fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2)); }
 
 // ===== GSC =====
+// cache token in memory
+let _gscToken = null;
+let _gscTokenExp = 0;
+
 async function refreshGSCToken() {
-  const cfg = loadConfig();
-  if (!cfg.gsc?.refreshToken) return null;
+  if (_gscToken && Date.now() < _gscTokenExp) return _gscToken;
+  const cid = process.env.GSC_CLIENT_ID;
+  const csec = process.env.GSC_CLIENT_SECRET;
+  const rtok = process.env.GSC_REFRESH_TOKEN;
+  if (!cid || !csec || !rtok) { console.log('[GSC] env vars missing'); return null; }
   return new Promise(resolve => {
-    const body = JSON.stringify({ client_id: cfg.gsc.clientId, client_secret: cfg.gsc.clientSecret, refresh_token: cfg.gsc.refreshToken, grant_type: 'refresh_token' });
+    const body = JSON.stringify({ client_id: cid, client_secret: csec, refresh_token: rtok, grant_type: 'refresh_token' });
     const req = https.request({ hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
-      let data = '';
-      res.on('data', c => data += c);
-      res.on('end', () => { try { const t = JSON.parse(data); if (t.access_token) { cfg.gsc.accessToken = t.access_token; saveConfig(cfg); resolve(t.access_token); } else resolve(null); } catch { resolve(null); } });
+      let data = ''; res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const t = JSON.parse(data);
+          if (t.access_token) {
+            _gscToken = t.access_token;
+            _gscTokenExp = Date.now() + ((t.expires_in||3600) - 120) * 1000;
+            console.log('[GSC] Token refreshed OK');
+            resolve(t.access_token);
+          } else { console.log('[GSC] Token error:', JSON.stringify(t).slice(0,80)); resolve(null); }
+        } catch(e) { resolve(null); }
+      });
     });
-    req.on('error', () => resolve(null));
+    req.on('error', e => { console.log('[GSC] error:', e.message); resolve(null); });
     req.write(body); req.end();
   });
 }
 
-async function syncGSCForDomain(domainObj) {
-  const cfg = loadConfig();
-  let token = cfg.gsc?.accessToken;
-  if (!token) token = await refreshGSCToken();
-  if (!token) return domainObj;
-  const endDate = new Date().toISOString().split('T')[0];
-  const startDate = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+// cache site list
+let _gscSites = null;
+
+async function getGSCSiteList(token) {
+  if (_gscSites) return _gscSites;
   return new Promise(resolve => {
-    const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
-    const apiPath = `/webmasters/v3/sites/${encodeURIComponent(`https://${domainObj.domain}/`)}/searchAnalytics/query`;
-    const req = https.request({ hostname: 'www.googleapis.com', path: apiPath, method: 'POST', headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
-      let data = '';
-      res.on('data', c => data += c);
+    const req = https.request({ hostname: 'www.googleapis.com', path: '/webmasters/v3/sites', headers: { 'Authorization': 'Bearer ' + token } }, res => {
+      let d = ''; res.on('data', c => d += c);
       res.on('end', () => {
         try {
-          const result = JSON.parse(data);
-          if (result?.rows) {
-            const keywords = result.rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, position: Math.round(r.position * 10) / 10 }));
-            domainObj.gsc = { clicks: result.rows.reduce((s, r) => s + r.clicks, 0), impressions: result.rows.reduce((s, r) => s + r.impressions, 0), avgPosition: keywords.length ? Math.round(keywords.reduce((s, k) => s + k.position, 0) / keywords.length * 10) / 10 : 0, keywords, topKeyword: keywords[0]?.keyword || '-', topPosition: keywords[0]?.position || 0, keywordCount: keywords.length };
-          }
-        } catch {}
+          const sites = (JSON.parse(d).siteEntry || []).map(s => s.siteUrl.toLowerCase().replace(/\/$/,''));
+          _gscSites = sites;
+          console.log('[GSC] Site list loaded:', sites.length);
+          resolve(sites);
+        } catch { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.end();
+  });
+}
+
+async function syncGSCForDomain(domainObj) {
+  const token = await refreshGSCToken();
+  if (!token) return domainObj;
+  const sites = await getGSCSiteList(token);
+  const normalized = 'https://' + domainObj.domain.toLowerCase().replace(/\/$/,'');
+  if (sites.indexOf(normalized) < 0) return domainObj;
+
+  const endDate = new Date().toISOString().split('T')[0];
+  const startDate = new Date(Date.now() - 90 * 86400000).toISOString().split('T')[0];
+  return new Promise(resolve => {
+    const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
+    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(normalized + '/') + '/searchAnalytics/query';
+    const req = https.request({ hostname: 'www.googleapis.com', path: apiPath, method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
+      let data = ''; res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const rows = JSON.parse(data)?.rows || [];
+          const kw = rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, position: Math.round(r.position*10)/10 }));
+          domainObj.gsc = {
+            inGSC: true,
+            clicks: rows.reduce((s,r)=>s+r.clicks,0),
+            impressions: rows.reduce((s,r)=>s+r.impressions,0),
+            avgPosition: kw.length ? Math.round(kw.reduce((s,k)=>s+k.position,0)/kw.length*10)/10 : 0,
+            keywords: kw, topKeyword: kw[0]?.keyword||'-', topPosition: kw[0]?.position||0,
+            keywordCount: kw.length, syncedAt: new Date().toISOString()
+          };
+          console.log('[GSC] ' + domainObj.domain + ': clicks=' + domainObj.gsc.clicks + ' kw=' + kw.length);
+        } catch(e) {
+          domainObj.gsc = { inGSC:true, clicks:0, impressions:0, avgPosition:0, keywords:[], topKeyword:'-', topPosition:0, keywordCount:0, syncedAt:new Date().toISOString() };
+        }
         resolve(domainObj);
       });
     });
-    req.on('error', () => resolve(domainObj));
+    req.on('error', ()=>resolve(domainObj));
     req.write(body); req.end();
   });
 }
@@ -946,7 +993,7 @@ async function handleRequest(req, res) {
       user: s.user,
       pass: s.pass // frontend จะซ่อนด้วย *** แสดงเฉพาะตอนกดค้าง
     }));
-    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!cfg.gsc?.accessToken, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
+    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!process.env.GSC_REFRESH_TOKEN, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
     return;
   }
 
@@ -1047,7 +1094,7 @@ async function handleRequest(req, res) {
     (async () => {
       const token = await refreshGSCToken();
       if (!token) return json(res, { error: 'no token' });
-      gscSiteCache = null;
+      _gscSites = null;
       const sites = await getGSCSiteList(token);
       const domainList = memoryDomains.map(d => d.domain.toLowerCase());
       const matched = sites.filter(s => {
@@ -1083,12 +1130,21 @@ async function handleRequest(req, res) {
 
   if (req.method === 'POST' && url === '/api/gsc/sync-all') {
     (async () => {
+      _gscSites = null; // reset site cache
+      console.log('[GSC] sync-all start:', memoryDomains.length, 'domains');
+      let synced = 0;
       for (let i = 0; i < memoryDomains.length; i++) {
         memoryDomains[i] = await syncGSCForDomain(memoryDomains[i]);
-        if (i % 10 === 0) await saveToSheets(memoryDomains);
+        if (memoryDomains[i].gsc && memoryDomains[i].gsc.inGSC) synced++;
+        if (i > 0 && i % 20 === 0) {
+          await saveToSheets(memoryDomains);
+          await new Promise(r => setTimeout(r, 300));
+        }
       }
       await saveToSheets(memoryDomains);
-    })().catch(console.error);
+      console.log('[GSC] sync-all done:', synced, 'in GSC');
+      sendTelegram('✅ <b>GSC Sync เสร็จ!</b>\n📊 ' + synced + ' โดเมนใน GSC');
+    })().catch(e => console.error('[GSC] sync-all error:', e.message));
     json(res, { success: true, message: 'Sync GSC กำลังทำงาน...' });
     return;
   }
