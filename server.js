@@ -774,14 +774,12 @@ function loadConfig() {
   let cfg;
   try { cfg = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
   catch { cfg = { gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' }, alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 } }; }
-  // อ่านจาก Railway env vars (override ค่าใน config file)
   if (process.env.GSC_CLIENT_ID)     cfg.gsc.clientId     = process.env.GSC_CLIENT_ID;
   if (process.env.GSC_CLIENT_SECRET) cfg.gsc.clientSecret = process.env.GSC_CLIENT_SECRET;
   if (process.env.GSC_REFRESH_TOKEN) cfg.gsc.refreshToken = process.env.GSC_REFRESH_TOKEN;
   return cfg;
 }
 function saveConfig(cfg) {
-  // ไม่บันทึก credentials ที่มาจาก env var ลง file
   const toSave = JSON.parse(JSON.stringify(cfg));
   if (process.env.GSC_CLIENT_ID)     delete toSave.gsc.clientId;
   if (process.env.GSC_CLIENT_SECRET) delete toSave.gsc.clientSecret;
@@ -790,26 +788,48 @@ function saveConfig(cfg) {
 }
 
 // ===== GSC =====
+// cache access token ใน memory
+let gscAccessTokenCache = null;
+let gscAccessTokenExpiry = 0;
+
 async function refreshGSCToken() {
-  const cfg = loadConfig();
-  if (!cfg.gsc?.refreshToken) return null;
+  const clientId     = process.env.GSC_CLIENT_ID     || loadConfig().gsc?.clientId;
+  const clientSecret = process.env.GSC_CLIENT_SECRET || loadConfig().gsc?.clientSecret;
+  const refreshToken = process.env.GSC_REFRESH_TOKEN || loadConfig().gsc?.refreshToken;
+  if (!clientId || !clientSecret || !refreshToken) {
+    console.log('[GSC] Missing credentials');
+    return null;
+  }
   return new Promise(resolve => {
-    const body = JSON.stringify({ client_id: cfg.gsc.clientId, client_secret: cfg.gsc.clientSecret, refresh_token: cfg.gsc.refreshToken, grant_type: 'refresh_token' });
+    const body = JSON.stringify({ client_id: clientId, client_secret: clientSecret, refresh_token: refreshToken, grant_type: 'refresh_token' });
     const req = https.request({ hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
       let data = '';
       res.on('data', c => data += c);
-      res.on('end', () => { try { const t = JSON.parse(data); if (t.access_token) { cfg.gsc.accessToken = t.access_token; saveConfig(cfg); resolve(t.access_token); } else resolve(null); } catch { resolve(null); } });
+      res.on('end', () => {
+        try {
+          const t = JSON.parse(data);
+          if (t.access_token) {
+            gscAccessTokenCache = t.access_token;
+            gscAccessTokenExpiry = Date.now() + (t.expires_in - 60) * 1000;
+            console.log('[GSC] Token refreshed OK');
+            resolve(t.access_token);
+          } else {
+            console.log('[GSC] Token error:', JSON.stringify(t));
+            resolve(null);
+          }
+        } catch(e) { resolve(null); }
+      });
     });
-    req.on('error', () => resolve(null));
+    req.on('error', (e) => { console.log('[GSC] Request error:', e.message); resolve(null); });
     req.write(body); req.end();
   });
 }
 
 async function syncGSCForDomain(domainObj) {
-  const cfg = loadConfig();
-  let token = cfg.gsc?.accessToken;
+  // ใช้ cached token ถ้ายังไม่หมดอายุ
+  let token = (gscAccessTokenCache && Date.now() < gscAccessTokenExpiry) ? gscAccessTokenCache : null;
   if (!token) token = await refreshGSCToken();
-  if (!token) return domainObj;
+  if (!token) { console.log('[GSC] No token for', domainObj.domain); return domainObj; }
   const endDate = new Date().toISOString().split('T')[0];
   const startDate = new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
   return new Promise(resolve => {
@@ -959,7 +979,7 @@ async function handleRequest(req, res) {
       user: s.user,
       pass: s.pass // frontend จะซ่อนด้วย *** แสดงเฉพาะตอนกดค้าง
     }));
-    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!(cfg.gsc?.accessToken || cfg.gsc?.refreshToken), pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
+    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!(gscAccessTokenCache || process.env.GSC_REFRESH_TOKEN), pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
     return;
   }
 
