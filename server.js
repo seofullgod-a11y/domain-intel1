@@ -1193,6 +1193,13 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Apply PHP-FPM Ondemand ทุก server
+  if (req.method === 'POST' && url === '/api/phpfpm-ondemand') {
+    json(res, { success: true, message: 'กำลังเปลี่ยน PHP-FPM เป็น ondemand...' });
+    applyAllPhpFpmOndemand().catch(console.error);
+    return;
+  }
+
   // Disk Auto-Cleanup
   if (req.method === 'POST' && url === '/api/disk-cleanup') {
     json(res, { success: true, message: 'กำลัง cleanup disk บนทุก server...' });
@@ -1204,13 +1211,6 @@ async function handleRequest(req, res) {
   if (req.method === 'POST' && url === '/api/limit-phpfpm') {
     json(res, { success: true, message: 'กำลังจำกัด PHP-FPM บนทุก server...' });
     limitAllPhpFpm().catch(console.error);
-    return;
-  }
-
-  // Setup Cloudflare Whitelist
-  if (req.method === 'POST' && url === '/api/setup-cloudflare-whitelist') {
-    json(res, { success: true, message: 'กำลังตั้งค่า Cloudflare Whitelist บนทุก server...' });
-    setupAllCloudflareWhitelists().catch(console.error);
     return;
   }
 
@@ -1442,33 +1442,122 @@ async function handleRequest(req, res) {
 const server = http.createServer(handleRequest);
 
 // ===== PROACTIVE MONITOR =====
+// cooldown สำหรับ auto-heal แต่ละ server
+const healCooldown = {};
+const HEAL_COOLDOWN_MS = 10 * 60 * 1000; // 10 นาที
+
 async function proactiveMonitor() {
   for (const srv of PLESK_SERVERS) {
     try {
-      const statCmd2 = 'L=$(cat /proc/loadavg | cut -d" " -f1); D=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo LOAD:$L DISK:$D';
+      const statCmd2 = [
+        'L=$(cat /proc/loadavg | cut -d" " -f1)',
+        'MU=$(free -m | grep Mem | tr -s " " | cut -d" " -f3)',
+        'MT=$(free -m | grep Mem | tr -s " " | cut -d" " -f2)',
+        'D=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%")',
+        'P=$(ps aux | grep php-fpm | grep -v grep | wc -l)',
+        'echo LOAD:$L RAMU:$MU RAMT:$MT DISK:$D PHPFPM:$P'
+      ].join('; ');
+
       const cmdId = queueCommand(srv.host, statCmd2);
+
       setTimeout(async () => {
         const result = agentResults[cmdId];
         if (!result) return;
         delete agentResults[cmdId];
-        const output = result.output || '';
-        const load = parseFloat((output.match(/LOAD:([\d.]+)/) || [])[1] || 0);
-        const disk = parseInt((output.match(/DISK:(\d+)/) || [])[1] || 0);
-        
-        if (load > 15) {
-          sendTelegram(`⚠️ <b>Proactive Alert!</b>
-🖥️ ${srv.name}: Load Average สูง <b>${load}</b>
-กำลัง Fix อัตโนมัติ...`);
-          queueCommand(srv.host, 
-            'pkill -f "wp-toolkit" 2>/dev/null; pkill -f "auto-update" 2>/dev/null; ' +
-            'systemctl restart sw-engine; echo "Auto-fixed"'
+
+        const o = result.output || '';
+        const load   = parseFloat((o.match(/LOAD:([\d.]+)/) || [])[1] || 0);
+        const ramUsed = parseInt((o.match(/RAMU:(\d+)/) || [])[1] || 0);
+        const ramTotal = parseInt((o.match(/RAMT:(\d+)/) || [])[1] || 1);
+        const disk   = parseInt((o.match(/DISK:(\d+)/) || [])[1] || 0);
+        const phpfpm = parseInt((o.match(/PHPFPM:(\d+)/) || [])[1] || 0);
+        const ramPct = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
+
+        const now = Date.now();
+        const lastHeal = healCooldown[srv.name] || 0;
+        const canHeal = (now - lastHeal) > HEAL_COOLDOWN_MS;
+
+        console.log(\`[Proactive] \${srv.name}: load=\${load} ram=\${ramPct}% disk=\${disk}% phpfpm=\${phpfpm}\`);
+
+        // ===== RULE 1: PHP-FPM > 80 processes → restart PHP-FPM ทันที =====
+        if (phpfpm > 80 && canHeal) {
+          healCooldown[srv.name] = now;
+          sendTelegram(
+            \`⚠️ <b>PHP-FPM Overload!</b>\n\` +
+            \`🖥️ \${srv.name}: PHP-FPM <b>\${phpfpm} processes</b>\n\` +
+            \`🔄 กำลัง restart PHP-FPM อัตโนมัติ...\`
+          );
+          queueCommand(srv.host,
+            'for svc in $(systemctl list-units --state=active --no-legend | grep plesk-php | awk '{print $1}'); do ' +
+            '  systemctl restart $svc 2>/dev/null; ' +
+            'done; echo "PHP-FPM restarted"'
+          );
+          console.log(\`[AutoHeal] \${srv.name}: PHP-FPM \${phpfpm} → restarting\`);
+        }
+
+        // ===== RULE 2: Load > 30 → Emergency kill + restart all =====
+        else if (load > 30 && canHeal) {
+          healCooldown[srv.name] = now;
+          sendTelegram(
+            \`🚨 <b>Emergency Auto-Heal!</b>\n\` +
+            \`🖥️ \${srv.name}: Load <b>\${load}</b>\n\` +
+            \`🔄 กำลัง fix อัตโนมัติ...\`
+          );
+          queueCommand(srv.host,
+            'pkill -f "wp-toolkit" 2>/dev/null; ' +
+            'pkill -f "auto-update" 2>/dev/null; ' +
+            'ps aux --sort=-%cpu | awk 'NR>1 && $3>50 {print $2}' | head -5 | xargs kill -9 2>/dev/null; ' +
+            'for svc in $(systemctl list-units --state=active --no-legend | grep plesk-php | awk '{print $1}'); do ' +
+            '  systemctl restart $svc 2>/dev/null; ' +
+            'done; ' +
+            'systemctl restart httpd 2>/dev/null; ' +
+            'echo "Emergency heal done"'
+          );
+          console.log(\`[AutoHeal] \${srv.name}: Emergency load=\${load}\`);
+        }
+
+        // ===== RULE 3: Load > 15 → Fix PHP-FPM + kill WP cron =====
+        else if (load > 15 && canHeal) {
+          healCooldown[srv.name] = now;
+          sendTelegram(
+            \`⚠️ <b>Auto-Heal: Load สูง</b>\n\` +
+            \`🖥️ \${srv.name}: Load <b>\${load}</b>, PHP-FPM <b>\${phpfpm}</b>\n\` +
+            \`🔄 กำลัง fix...\`
+          );
+          queueCommand(srv.host,
+            'pkill -f "wp-toolkit" 2>/dev/null; ' +
+            'pkill -f "auto-update" 2>/dev/null; ' +
+            'systemctl restart sw-engine 2>/dev/null; ' +
+            'echo "Fix done"'
+          );
+          console.log(\`[AutoHeal] \${srv.name}: load=\${load}\`);
+        }
+
+        // ===== RULE 4: RAM > 90% → clear cache =====
+        if (ramPct > 90 && canHeal) {
+          healCooldown[srv.name] = now;
+          sendTelegram(
+            \`⚠️ <b>High RAM!</b>\n\` +
+            \`🖥️ \${srv.name}: RAM <b>\${ramPct}%</b>\n\` +
+            \`🔄 กำลัง clear cache...\`
+          );
+          queueCommand(srv.host,
+            'sync; echo 3 > /proc/sys/vm/drop_caches; ' +
+            'systemctl restart sw-engine 2>/dev/null; ' +
+            'echo "Cache cleared"'
           );
         }
+
+        // ===== RULE 5: Disk > 80% → auto cleanup =====
         if (disk > 80) {
-          sendTelegram(`⚠️ <b>Disk Warning!</b>
-🖥️ ${srv.name}: Disk ใช้ไป <b>${disk}%</b>
-กรุณาตรวจสอบ!`);
+          sendTelegram(
+            \`💾 <b>Disk Warning!</b>\n\` +
+            \`🖥️ \${srv.name}: Disk <b>\${disk}%</b>\n\` +
+            \`🧹 กำลัง cleanup...\`
+          );
+          await diskCleanup(srv, disk);
         }
+
       }, 35000);
     } catch(e) {
       console.error('[Proactive]', srv.name, e.message);
@@ -2100,198 +2189,57 @@ ${serverSummary}
 }
 
 
-// ===== DISK AUTO-CLEANUP =====
-// ลบไฟล์ที่ไม่จำเป็นอัตโนมัติ ปลอดภัย: ไม่แตะข้อมูลโดเมน, database, config
-// ลบเฉพาะ: log เก่า, tmp, cache, core dumps
+// ===== PHP-FPM ONDEMAND FIXER =====
+// เปลี่ยน pm = dynamic → pm = ondemand
+// processes ตายอัตโนมัติหลัง idle 10 วินาที ไม่สะสมค้าง
+// ปลอดภัย: แก้แค่ config ไม่แตะข้อมูลโดเมน
 
-const DISK_CLEANUP_THRESHOLD = 80; // เริ่ม cleanup เมื่อ disk > 80%
-const DISK_CRITICAL_THRESHOLD = 90; // แจ้ง critical เมื่อ > 90%
-
-const DISK_CLEANUP_SCRIPT = `
-FREED=0
-LOG_CLEANED=0
-TMP_CLEANED=0
-
-# 1. ตัด Apache/Nginx access logs เก่า (เก็บแค่ 3 วันล่าสุด)
-find /var/www/vhosts/*/logs/ -name "*.log" -mtime +3 -size +10M 2>/dev/null | while read f; do
-  SIZE=$(du -k "$f" | cut -f1)
-  > "$f"
-  LOG_CLEANED=$((LOG_CLEANED + SIZE))
-done
-
-# 2. ลบ rotated logs เก่า (.gz, .1, .2)
-find /var/www/vhosts/*/logs/ -name "*.log.*" -mtime +7 -delete 2>/dev/null
-find /var/log/ -name "*.gz" -mtime +7 -delete 2>/dev/null
-find /var/log/ -name "*.old" -mtime +7 -delete 2>/dev/null
-
-# 3. ลบ PHP session files เก่า (> 1 วัน)
-find /tmp/ -name "sess_*" -mtime +1 -delete 2>/dev/null
-find /var/lib/php/sessions/ -mtime +1 -delete 2>/dev/null
-
-# 4. ลบ core dump files
-find / -maxdepth 3 -name "core.*" -size +10M -delete 2>/dev/null
-
-# 5. ลบ tmp files เก่า (> 7 วัน) แต่ไม่ลบ directory
-find /tmp/ -maxdepth 2 -mtime +7 -type f -delete 2>/dev/null
-
-# 6. ล้าง Plesk installer cache
-rm -rf /var/cache/plesk_installer/* 2>/dev/null
-
-# 7. ล้าง WP cache ของทุกโดเมน (ปลอดภัย: สร้างใหม่อัตโนมัติ)
-find /var/www/vhosts/*/httpdocs/wp-content/cache/ -type f -mtime +1 -delete 2>/dev/null
-
-# 8. ล้าง APT/YUM cache
-yum clean all -q 2>/dev/null || apt-get clean -q 2>/dev/null
-
-# รายงานผล
-DISK_AFTER=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%")
-echo "CLEANUP_DONE DISK_AFTER:$DISK_AFTER"
-`;
-
-async function diskCleanup(srv, diskPct) {
-  try {
-    console.log(`[DiskCleanup] ${srv.name}: disk ${diskPct}% — เริ่ม cleanup...`);
-    const cmdId = queueCommand(srv.host, DISK_CLEANUP_SCRIPT.replace(/\n/g, '; '));
-    
-    for (let i = 0; i < 120; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      if (agentResults[cmdId]) {
-        const result = agentResults[cmdId];
-        delete agentResults[cmdId];
-        const output = (result.output || '').replace(/~/g, ' ');
-        const diskAfter = parseInt((output.match(/DISK_AFTER:(\d+)/) || [])[1] || diskPct);
-        const freed = diskPct - diskAfter;
-        console.log(`[DiskCleanup] ${srv.name}: เสร็จ disk ${diskPct}% → ${diskAfter}% (ลดได้ ${freed}%)`);
-        
-        sendTelegram(
-          `🧹 <b>Disk Auto-Cleanup!</b>\n` +
-          `🖥️ ${srv.name}\n` +
-          `📊 Disk: <b>${diskPct}%</b> → <b>${diskAfter}%</b>\n` +
-          `✅ ข้อมูลโดเมนไม่ได้รับผลกระทบ\n` +
-          `⏱️ ${new Date().toLocaleString('th-TH')}`
-        );
-        return { ok: true, diskBefore: diskPct, diskAfter };
-      }
-    }
-    return { ok: false };
-  } catch(e) {
-    console.error(`[DiskCleanup] ${srv.name}:`, e.message);
-    return { ok: false };
-  }
-}
-
-async function checkAndCleanDisk() {
-  for (const srv of PLESK_SERVERS) {
-    try {
-      const cmdId = queueCommand(srv.host, 
-        'DP=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo "DISK:$DP"'
-      );
-      await new Promise(r => setTimeout(r, 35000));
-      const result = agentResults[cmdId];
-      if (!result) continue;
-      delete agentResults[cmdId];
-      
-      const diskPct = parseInt((result.output || '').match(/DISK:(\d+)/)?.[1] || 0);
-      if (!diskPct) continue;
-
-      console.log(`[DiskCheck] ${srv.name}: disk ${diskPct}%`);
-
-      if (diskPct >= DISK_CRITICAL_THRESHOLD) {
-        sendTelegram(
-          `🚨 <b>Disk Critical!</b>\n` +
-          `🖥️ ${srv.name}: Disk <b>${diskPct}%</b>\n` +
-          `🧹 กำลัง Auto-Cleanup...`
-        );
-        await diskCleanup(srv, diskPct);
-      } else if (diskPct >= DISK_CLEANUP_THRESHOLD) {
-        sendTelegram(
-          `⚠️ <b>Disk Warning!</b>\n` +
-          `🖥️ ${srv.name}: Disk <b>${diskPct}%</b>\n` +
-          `🧹 กำลัง Auto-Cleanup...`
-        );
-        await diskCleanup(srv, diskPct);
-      }
-    } catch(e) {
-      console.error(`[DiskCheck] ${srv.name}:`, e.message);
-    }
-  }
-}
-
-async function runManualDiskCleanup() {
-  console.log('[DiskCleanup] Manual cleanup ทุก server...');
-  const results = [];
-  for (const srv of PLESK_SERVERS) {
-    const r = await diskCleanup(srv, 0);
-    results.push({ server: srv.name, ok: r.ok });
-    await new Promise(r => setTimeout(r, 3000));
-  }
-  return results;
-}
-
-// ===== PHP-FPM PER-DOMAIN LIMITER =====
-// จำกัด max_children = 3 ต่อโดเมน ทุก server ทุก PHP version
-// ป้องกัน 1 โดเมนกิน resource จนโดเมนอื่นพัง
-// ปลอดภัย: แค่แก้ config ไม่แตะไฟล์โดเมน
-
-const PHPFPM_MAX_CHILDREN = 3;
-const PHPFPM_START_SERVERS = 1;
-const PHPFPM_MIN_SPARE = 1;
-const PHPFPM_MAX_SPARE = 2;
-
-const PHPFPM_LIMIT_SCRIPT = `
+const PHPFPM_ONDEMAND_SCRIPT = `
 CHANGED=0
-PHP_DIRS=$(ls -d /opt/plesk/php/*/etc/php-fpm.d/ 2>/dev/null)
-
-for PHP_DIR in $PHP_DIRS; do
-  PHP_VER=$(echo $PHP_DIR | grep -oP '\\d+\\.\\d+')
-  CONFS=$(ls $PHP_DIR*.conf 2>/dev/null | grep -v "plesk.conf" | grep -v "www.conf")
-  
-  for CONF in $CONFS; do
-    DOMAIN=$(basename $CONF .conf)
-    CURRENT=$(grep -m1 "^pm.max_children" $CONF 2>/dev/null | awk '{print $3}')
-    
-    # แก้เฉพาะถ้า max_children > 3 หรือยังไม่ได้ตั้ง
-    if [ -z "$CURRENT" ] || [ "$CURRENT" -gt ${PHPFPM_MAX_CHILDREN} ] 2>/dev/null; then
-      # ตั้ง pm mode
-      sed -i 's/^pm = .*/pm = dynamic/' $CONF 2>/dev/null
-      
-      # ตั้ง max_children
-      if grep -q "^pm.max_children" $CONF 2>/dev/null; then
-        sed -i "s/^pm.max_children.*/pm.max_children = ${PHPFPM_MAX_CHILDREN}/" $CONF
-      else
-        echo "pm.max_children = ${PHPFPM_MAX_CHILDREN}" >> $CONF
-      fi
-      
-      # ตั้ง start/spare servers
-      grep -q "^pm.start_servers" $CONF || echo "pm.start_servers = ${PHPFPM_START_SERVERS}" >> $CONF
-      grep -q "^pm.min_spare_servers" $CONF || echo "pm.min_spare_servers = ${PHPFPM_MIN_SPARE}" >> $CONF
-      grep -q "^pm.max_spare_servers" $CONF || echo "pm.max_spare_servers = ${PHPFPM_MAX_SPARE}" >> $CONF
-      
-      sed -i "s/^pm.start_servers.*/pm.start_servers = ${PHPFPM_START_SERVERS}/" $CONF
-      sed -i "s/^pm.min_spare_servers.*/pm.min_spare_servers = ${PHPFPM_MIN_SPARE}/" $CONF
-      sed -i "s/^pm.max_spare_servers.*/pm.max_spare_servers = ${PHPFPM_MAX_SPARE}/" $CONF
-      
-      CHANGED=$((CHANGED + 1))
-    fi
-  done
+# หา PHP-FPM config ทุก version ทุกโดเมน
+for CONF in $(find /opt/plesk/php/*/etc/php-fpm.d/ -name "*.conf" 2>/dev/null | grep -v "plesk.conf" | grep -v "www.conf"); do
+  # เปลี่ยนเป็น ondemand
+  if grep -q "^pm = dynamic" "$CONF" 2>/dev/null || grep -q "^pm = static" "$CONF" 2>/dev/null; then
+    sed -i 's/^pm = .*/pm = ondemand/' "$CONF"
+    CHANGED=$((CHANGED+1))
+  fi
+  # ตั้ง max_children = 3
+  if grep -q "^pm.max_children" "$CONF" 2>/dev/null; then
+    sed -i 's/^pm.max_children.*/pm.max_children = 3/' "$CONF"
+  else
+    echo "pm.max_children = 3" >> "$CONF"
+  fi
+  # ตั้ง idle timeout 10 วินาที (processes ตายเร็ว)
+  if grep -q "^pm.process_idle_timeout" "$CONF" 2>/dev/null; then
+    sed -i 's/^pm.process_idle_timeout.*/pm.process_idle_timeout = 10s/' "$CONF"
+  else
+    echo "pm.process_idle_timeout = 10s" >> "$CONF"
+  fi
 done
 
-# Restart PHP-FPM ถ้ามีการเปลี่ยนแปลง
-if [ "$CHANGED" -gt 0 ]; then
-  for SVC in $(systemctl list-units --state=active --no-legend | grep plesk-php | awk '{print $1}'); do
-    systemctl restart $SVC 2>/dev/null
-  done
-  echo "PHPFPM_DONE CHANGED:$CHANGED"
-else
-  echo "PHPFPM_DONE CHANGED:0"
+# ตั้ง global sw-engine pool ด้วย
+GLOBAL="/etc/sw-engine/pool.d/plesk.conf"
+if [ -f "$GLOBAL" ]; then
+  sed -i 's/^pm = .*/pm = ondemand/' "$GLOBAL" 2>/dev/null
+  sed -i 's/^pm.max_children.*/pm.max_children = 40/' "$GLOBAL" 2>/dev/null
+  grep -q "^pm.process_idle_timeout" "$GLOBAL" || echo "pm.process_idle_timeout = 10s" >> "$GLOBAL"
 fi
+
+# Restart PHP-FPM ทุก service
+for SVC in $(systemctl list-units --state=active --no-legend | grep plesk-php | awk '{print $1}'); do
+  systemctl restart $SVC 2>/dev/null
+done
+systemctl restart sw-engine 2>/dev/null
+
+echo "ONDEMAND_DONE CHANGED:$CHANGED"
 `;
 
-async function limitPhpFpm(srv) {
+async function applyPhpFpmOndemand(srv) {
   try {
-    console.log(`[PHP-FPM] จำกัด max_children บน ${srv.name}...`);
-    const cmdId = queueCommand(srv.host, PHPFPM_LIMIT_SCRIPT.replace(/\n/g, '; '));
-    
+    console.log(`[OndemandFix] ${srv.name}: เปลี่ยน PHP-FPM เป็น ondemand...`);
+    const cmdId = queueCommand(srv.host, PHPFPM_ONDEMAND_SCRIPT.replace(/
+/g, '; '));
+
     for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 1000));
       if (agentResults[cmdId]) {
@@ -2299,39 +2247,42 @@ async function limitPhpFpm(srv) {
         delete agentResults[cmdId];
         const output = (result.output || '').replace(/~/g, ' ');
         const changed = parseInt((output.match(/CHANGED:(\d+)/) || [])[1] || 0);
-        const ok = output.includes('PHPFPM_DONE');
-        console.log(`[PHP-FPM] ${srv.name}: ${ok ? '✅' : '❌'} แก้ ${changed} configs`);
+        const ok = output.includes('ONDEMAND_DONE');
+        console.log(`[OndemandFix] ${srv.name}: ${ok ? '✅' : '❌'} แก้ ${changed} configs`);
         return { ok, changed };
       }
     }
     return { ok: false, changed: 0 };
   } catch(e) {
-    console.error(`[PHP-FPM] ${srv.name}:`, e.message);
+    console.error(`[OndemandFix] ${srv.name}:`, e.message);
     return { ok: false, changed: 0 };
   }
 }
 
-async function limitAllPhpFpm() {
-  console.log('[PHP-FPM] จำกัด max_children ทุก server...');
+async function applyAllPhpFpmOndemand() {
+  console.log('[OndemandFix] เปลี่ยน PHP-FPM ondemand ทุก server...');
   const results = [];
-  let totalChanged = 0;
+  let total = 0;
 
   for (const srv of PLESK_SERVERS) {
-    const { ok, changed } = await limitPhpFpm(srv);
+    const { ok, changed } = await applyPhpFpmOndemand(srv);
     results.push({ server: srv.name, ok, changed });
-    totalChanged += changed;
-    await new Promise(r => setTimeout(r, 3000));
+    total += changed;
+    await new Promise(r => setTimeout(r, 5000));
   }
 
   const success = results.filter(r => r.ok).length;
-  console.log(`[PHP-FPM] เสร็จ: ${success}/${results.length} servers, แก้ ${totalChanged} configs`);
-
   sendTelegram(
-    `⚙️ <b>PHP-FPM Limiter เสร็จแล้ว!</b>\n` +
-    results.map(r => `${r.ok ? '✅' : '❌'} ${r.server}: แก้ ${r.changed} domains`).join('\n') + '\n\n' +
-    `📊 max_children = ${PHPFPM_MAX_CHILDREN} ต่อโดเมน\n` +
-    `✅ ป้องกัน 1 โดเมนกิน resource จนโดเมนอื่นพัง\n` +
-    `✅ ข้อมูลโดเมนทุกตัวปลอดภัย\n` +
+    `⚙️ <b>PHP-FPM Ondemand Applied!</b>
+` +
+    results.map(r => `${r.ok ? '✅' : '❌'} ${r.server}: ${r.changed} configs`).join('
+') + '
+
+' +
+    `📊 pm = ondemand + idle_timeout = 10s
+` +
+    `✅ Processes ตายอัตโนมัติหลัง idle → Load ลดลง
+` +
     `⏱️ ${new Date().toLocaleString('th-TH')}`
   );
   return results;
@@ -2365,21 +2316,17 @@ server.listen(PORT, async () => {
   setInterval(checkDomainExpiry, 12 * 60 * 60 * 1000); // Domain expiry ทุก 12 ชั่วโมง
   setInterval(checkEmailSpam, 6 * 60 * 60 * 1000); // Email check ทุก 6 ชั่วโมง
   // Monthly report - disabled
-  setInterval(checkAndCleanDisk, 6 * 60 * 60 * 1000); // Disk check ทุก 6 ชั่วโมง
-
   setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
   setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
-  // PHP-FPM Limiter รันครั้งแรกหลัง 10 นาที
-  setTimeout(async () => {
-    console.log('[Startup] จำกัด PHP-FPM max_children ทุก server...');
-    await limitAllPhpFpm();
-  }, 10 * 60 * 1000);
 
-  // Disk cleanup รันครั้งแรกหลัง 20 นาที
+  // PHP-FPM Ondemand — รันหลัง 12 นาที แก้ root cause load สูง
   setTimeout(async () => {
-    console.log('[Startup] ตรวจสอบ Disk usage ทุก server...');
-    await checkAndCleanDisk();
-  }, 20 * 60 * 1000);
+    console.log('[Startup] เปลี่ยน PHP-FPM เป็น ondemand ทุก server...');
+    await applyAllPhpFpmOndemand();
+  }, 12 * 60 * 1000);
+
+  // Re-apply ทุก 24 ชั่วโมง กัน config reset
+  setInterval(applyAllPhpFpmOndemand, 24 * 60 * 60 * 1000);
 
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
   console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
