@@ -1669,55 +1669,148 @@ function renderQuickTable() {
 }
 
 // ===== TRAFFIC PAGE =====
+// ===== GSC TIER HELPER =====
+function gscTier(clicks) {
+  if (clicks >= 100) return { label: '🔥 Hot',  color: 'var(--green)',  bg: 'var(--green-dim)',  key: 'hot'  };
+  if (clicks >= 10)  return { label: '📈 Good', color: 'var(--teal)',   bg: 'rgba(14,165,233,.12)', key: 'good' };
+  if (clicks >= 1)   return { label: '📉 Low',  color: 'var(--amber)',  bg: 'var(--amber-dim)', key: 'low'  };
+  return               { label: '👻 Ghost', color: 'var(--text3)',  bg: 'var(--bg4)',       key: 'ghost' };
+}
+
+function gscCTR(clicks, impressions) {
+  if (!impressions) return 0;
+  return Math.round(clicks / impressions * 1000) / 10;
+}
+
 function renderTrafficPage() {
   const el = document.getElementById('traffic-content');
   if (!el) return;
 
-  // แสดงทุกโดเมนที่อยู่ใน GSC แม้ไม่มี traffic
   const withGSC = allDomains.filter(d => d.gsc && d.gsc.inGSC);
-  const hasTraffic = withGSC.filter(d => d.gsc.clicks > 0);
-  const noTraffic = withGSC.filter(d => d.gsc.clicks === 0);
-
   if (!withGSC.length) {
     el.innerHTML = '<div class="gsc-banner"><h3>ยังไม่มีข้อมูล GSC</h3><p>กด Sync GSC เพื่อดูข้อมูล</p></div>';
     return;
   }
 
-  const sorted = [...withGSC].sort((a,b) => (b.gsc?.clicks||0) - (a.gsc?.clicks||0));
-  const totalClicks = sorted.reduce((s,d) => s + (d.gsc?.clicks||0), 0);
-  const totalImpressions = sorted.reduce((s,d) => s + (d.gsc?.impressions||0), 0);
+  const period = window._gscPeriod || 'd30';
+  // ใช้ข้อมูลตาม period ที่เลือก
+  const getPData = (d) => (d.gsc && d.gsc[period]) ? d.gsc[period] : d.gsc;
+  const getC = (d) => getPData(d)?.clicks || 0;
+  const getI = (d) => getPData(d)?.impressions || 0;
 
-  // filter ตาม tab
-  let filterTab = window._gscFilterTab || 'all';
-  let display = sorted;
-  if (filterTab === 'traffic') display = hasTraffic;
-  if (filterTab === 'notraffic') display = noTraffic;
+  // จัด tiers ตาม period
+  const hot   = withGSC.filter(d => getC(d) >= 100);
+  const good  = withGSC.filter(d => getC(d) >= 10 && getC(d) < 100);
+  const low   = withGSC.filter(d => getC(d) >= 1  && getC(d) < 10);
+  const ghost = withGSC.filter(d => getC(d) === 0);
+
+  // Opportunity: impressions > 100 แต่ CTR < 2%
+  const opps = [...withGSC]
+    .filter(d => getI(d) >= 100 && gscCTR(getC(d), getI(d)) < 2)
+    .sort((a,b) => getI(b) - getI(a))
+    .slice(0, 20);
+
+  const totalClicks = withGSC.reduce((s,d) => s + getC(d), 0);
+  const totalImpressions = withGSC.reduce((s,d) => s + getI(d), 0);
+  const avgCTR = totalImpressions ? Math.round(totalClicks / totalImpressions * 1000) / 10 : 0;
+
+  const tab = window._gscTab || 'tier';
+
+  // filter โดเมน ตาม tier tab
+  const tierMap = { hot, good, low, ghost, all: withGSC, opp: opps };
+  const period2 = window._gscPeriod || 'd30';
+  const getC2 = (d) => ((d.gsc && d.gsc[period2]) ? d.gsc[period2] : d.gsc)?.clicks || 0;
+  const display = [...(tierMap[tab] || withGSC)].sort((a,b) => getC2(b) - getC2(a));
+
+  const tierBtn = (key, label, count, color) =>
+    `<button class="btn btn-sm" onclick="window._gscTab='${key}';renderTrafficPage()"
+      style="${tab===key ? 'background:'+color+';color:#fff;border-color:'+color : ''}">
+      ${label} <span style="opacity:.7">(${count})</span>
+    </button>`;
 
   el.innerHTML = `
-    <div class="metrics-grid" style="margin-bottom:16px">
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-brand-google"></i> ใน GSC ทั้งหมด</div><div class="metric-val blue">${withGSC.length.toLocaleString()}</div></div>
-      <div class="metric-card highlight-green"><div class="metric-label"><i class="ti ti-mouse"></i> Total Clicks (90 วัน)</div><div class="metric-val green">${totalClicks.toLocaleString()}</div></div>
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-eye"></i> Total Impressions</div><div class="metric-val">${totalImpressions.toLocaleString()}</div></div>
-      <div class="metric-card highlight-red"><div class="metric-label"><i class="ti ti-chart-bar-off"></i> ไม่มี Traffic</div><div class="metric-val red">${noTraffic.length.toLocaleString()}</div></div>
+    <div class="metrics-grid" style="margin-bottom:14px">
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-brand-google"></i> ใน GSC</div><div class="metric-val blue">${withGSC.length}</div></div>
+      <div class="metric-card highlight-green"><div class="metric-label"><i class="ti ti-mouse"></i> Total Clicks</div><div class="metric-val green">${totalClicks.toLocaleString()}</div></div>
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-eye"></i> Impressions</div><div class="metric-val">${totalImpressions.toLocaleString()}</div></div>
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-percentage"></i> Avg CTR</div><div class="metric-val ${avgCTR>=2?'green':avgCTR>=1?'amber':'red'}">${avgCTR}%</div></div>
     </div>
-    <div style="display:flex;gap:6px;margin-bottom:12px">
-      <button class="btn ${filterTab==='all'?'btn-green':''}" onclick="window._gscFilterTab='all';renderTrafficPage()">ทั้งหมด (${withGSC.length})</button>
-      <button class="btn ${filterTab==='traffic'?'btn-green':''}" onclick="window._gscFilterTab='traffic';renderTrafficPage()">มี Traffic (${hasTraffic.length})</button>
-      <button class="btn ${filterTab==='notraffic'?'btn-green':''}" onclick="window._gscFilterTab='notraffic';renderTrafficPage()">ไม่มี Traffic (${noTraffic.length})</button>
+
+    <!-- Tier Summary Bar -->
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
+      ${[
+        { key:'hot',   label:'🔥 Hot',   count:hot.length,   sub:'100+ clicks', color:'var(--green)' },
+        { key:'good',  label:'📈 Good',  count:good.length,  sub:'10-99 clicks', color:'var(--teal)' },
+        { key:'low',   label:'📉 Low',   count:low.length,   sub:'1-9 clicks',  color:'var(--amber)' },
+        { key:'ghost', label:'👻 Ghost', count:ghost.length, sub:'0 clicks',    color:'var(--text3)' },
+      ].map(t => `
+        <div onclick="window._gscTab='${t.key}';renderTrafficPage()" 
+          style="cursor:pointer;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid ${tab===t.key?t.color:'var(--border)'};background:${tab===t.key?t.color.replace(')','-dim)').replace('var(--','var(--'):'transparent'};transition:all .15s">
+          <div style="font-size:20px;font-weight:700;color:${t.color}">${t.count}</div>
+          <div style="font-size:12px;font-weight:600;color:var(--text);margin-top:1px">${t.label}</div>
+          <div style="font-size:10px;color:var(--text3)">${t.sub}</div>
+        </div>
+      `).join('')}
     </div>
+
+    <!-- Period + Tier Tabs -->
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <span style="font-size:11px;color:var(--text3);font-weight:600">ช่วงเวลา:</span>
+      ${['d7','d30','d90'].map(p => {
+        const label = p==='d7'?'7 วัน':p==='d30'?'1 เดือน':'3 เดือน';
+        const active = period === p;
+        return '<button class="btn btn-sm" onclick="window._gscPeriod=\''+p+'\';renderTrafficPage()" style="'+(active?'background:var(--teal);color:#fff;border-color:var(--teal)':'')+'">'+label+'</button>';
+      }).join('')}
+      <span style="margin:0 4px;color:var(--border2)">|</span>
+      <span style="font-size:11px;color:var(--text3);font-weight:600">Tier:</span>
+      ${tierBtn('tier','ทั้งหมด', withGSC.length, 'var(--teal)')}
+      ${tierBtn('hot','🔥 Hot', hot.length, 'var(--green)')}
+      ${tierBtn('good','📈 Good', good.length, 'var(--teal)')}
+      ${tierBtn('low','📉 Low', low.length, 'var(--amber)')}
+      ${tierBtn('ghost','👻 Ghost', ghost.length, '#888')}
+      ${tierBtn('opp','💡 Opportunity', opps.length, 'var(--purple)')}
+    </div>
+
+    ${tab === 'opp' ? `
+    <!-- Opportunity Finder -->
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">
+        <i class="ti ti-bulb" style="color:var(--purple)"></i>
+        โดเมนที่มี Impression สูง แต่ CTR ต่ำ — แค่ปรับ Title/Meta อาจเพิ่ม Traffic ได้ทันที
+      </div>
+    </div>` : ''}
+
+    <!-- Table -->
     <div class="table-container">
       <div class="table-wrap">
         <table>
-          <thead><tr><th>โดเมน</th><th>Clicks</th><th>Impressions</th><th>Avg Position</th><th>Keywords</th><th>Top Keyword</th></tr></thead>
+          <thead><tr>
+            <th>โดเมน</th>
+            <th>Tier</th>
+            <th>Clicks</th>
+            <th>Impressions</th>
+            <th>CTR</th>
+            <th>Avg Position</th>
+            <th>Top Keyword</th>
+          </tr></thead>
           <tbody>
-            ${display.map(d => `<tr>
-              <td class="domain-name">${d.domain}</td>
-              <td style="font-family:var(--mono);color:${d.gsc.clicks>0?'var(--green)':'var(--text3)'}">${d.gsc.clicks.toLocaleString()}</td>
-              <td style="font-family:var(--mono);color:var(--text2)">${d.gsc.impressions.toLocaleString()}</td>
-              <td style="font-family:var(--mono)">${d.gsc.avgPosition ? '#'+d.gsc.avgPosition : '—'}</td>
-              <td style="font-family:var(--mono);color:var(--blue)">${d.gsc.keywordCount || 0}</td>
-              <td style="font-size:12px;color:var(--text2)">${d.gsc.topKeyword||'—'} ${d.gsc.topPosition?'<span style="color:var(--green)">#'+d.gsc.topPosition+'</span>':''}</td>
-            </tr>`).join('')}
+            ${display.map(d => {
+              const pd = (d.gsc && d.gsc[period]) ? d.gsc[period] : d.gsc;
+              const clicks = pd?.clicks || 0;
+              const impressions = pd?.impressions || 0;
+              const tier = gscTier(clicks);
+              const ctr = gscCTR(clicks, impressions);
+              const ctrColor = ctr >= 5 ? 'var(--green)' : ctr >= 2 ? 'var(--teal)' : ctr >= 1 ? 'var(--amber)' : 'var(--red)';
+              return `<tr>
+                <td class="domain-name">${d.domain}</td>
+                <td><span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${tier.bg};color:${tier.color}">${tier.label}</span></td>
+                <td style="font-family:var(--mono);color:${clicks>0?'var(--green)':'var(--text3)'};font-weight:600">${clicks.toLocaleString()}</td>
+                <td style="font-family:var(--mono);color:var(--text2)">${impressions.toLocaleString()}</td>
+                <td style="font-family:var(--mono);color:${ctrColor};font-weight:600">${ctr}%</td>
+                <td style="font-family:var(--mono)">${pd?.avgPosition ? '#'+pd.avgPosition : '—'}</td>
+                <td style="font-size:11px;color:var(--text2)">${pd?.topKeyword||'—'} ${pd?.topPosition?'<span style="color:var(--green)">#'+pd.topPosition+'</span>':''}</td>
+              </tr>`;
+            }).join('')}
           </tbody>
         </table>
       </div>
