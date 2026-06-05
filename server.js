@@ -434,6 +434,8 @@ async function checkAllDomains() {
         Object.assign(memoryDomains[idx], r);
       // Track performance
       if (r.responseTime && r.status === 'up') trackPerformance(r.domain, r.responseTime);
+        // Track SLA uptime
+        recordUptimeCheck(r.domain, r.status === 'up');
         if (r.status === 'down') { downCount++; autoFix(memoryDomains[idx], prev).catch(()=>{}); }
       }
       // หยุดพัก 200ms ระหว่าง batch เพื่อลด memory spike
@@ -1357,6 +1359,52 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // SLA Stats API
+  if (req.method === 'GET' && url === '/api/sla/stats') {
+    json(res, { success: true, stats: getAllSLAStats(), history: uptimeHistory });
+    return;
+  }
+
+  // Resource Usage API
+  if (req.method === 'POST' && url === '/api/resource-usage') {
+    (async () => {
+      const results = [];
+      for (const srv of PLESK_SERVERS) {
+        const r = await getDomainResourceUsage(srv);
+        results.push(r);
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      json(res, { success: true, results });
+    })().catch(e => json(res, { error: e.message }));
+    return;
+  }
+
+  // GSC Traffic Drop Check API
+  if (req.method === 'POST' && url === '/api/gsc/check-drop') {
+    (async () => {
+      await checkGSCTrafficDrop();
+      json(res, { success: true, message: 'ตรวจสอบ traffic drop เสร็จแล้ว' });
+    })().catch(e => json(res, { error: e.message }));
+    return;
+  }
+
+  // Blacklist Check API
+  if (req.method === 'POST' && url === '/api/blacklist/check') {
+    (async () => {
+      const results = await checkBlacklists();
+      json(res, { success: true, results });
+    })().catch(e => json(res, { error: e.message }));
+    return;
+  }
+
+  // Send Weekly Report API (manual trigger)
+  if (req.method === 'POST' && url === '/api/report/weekly') {
+    await sendWeeklyReport();
+    json(res, { success: true, message: 'ส่ง Weekly Report แล้ว' });
+    return;
+  }
+
   // Telegram Webhook
   if (req.method === 'POST' && url === '/api/telegram/webhook') {
     const body = await parseBody(req);
@@ -1913,30 +1961,47 @@ async function fixPHPUploadLimits() {
 }
 
 // ===== BLACKLIST MONITOR =====
+// Blacklist cooldown (แจ้งซ้ำทุก 6 ชั่วโมง)
+const blacklistCooldown = {};
+const BLACKLISTS = ['zen.spamhaus.org', 'bl.spamcop.net', 'dnsbl.sorbs.net', 'b.barracudacentral.org', 'dnsbl-1.uceprotect.net'];
+
 async function checkBlacklists() {
+  const dns = require('dns');
   const serverIPs = [...new Set(PLESK_SERVERS.map(s => s.host))];
+  const results = [];
+  console.log('[Blacklist] ตรวจสอบ', serverIPs.length, 'IPs...');
+
   for (const ip of serverIPs) {
-    try {
-      // Check via DNS blacklist (DNSBL)
-      const reversed = ip.split('.').reverse().join('.');
-      const blacklists = ['zen.spamhaus.org', 'bl.spamcop.net', 'dnsbl.sorbs.net'];
-      for (const bl of blacklists) {
-        await new Promise((resolve, reject) => {
-          require('dns').lookup(`${reversed}.${bl}`, (err, addr) => {
-            if (!err && addr) {
-              const srv = PLESK_SERVERS.find(s => s.host === ip);
-              sendTelegram(`🚨 <b>IP Blacklisted!</b>
-🖥️ ${srv?.name || ip} (${ip})
-📋 Blacklist: ${bl}
-💡 ต้องติดต่อ provider เพื่อ delist`);
-              console.log(`[Blacklist] ${ip} found in ${bl}`);
-            }
+    const reversed = ip.split('.').reverse().join('.');
+    const listed = [];
+    for (const bl of BLACKLISTS) {
+      try {
+        await new Promise(resolve => {
+          dns.lookup(reversed + '.' + bl, (err, addr) => {
+            if (!err && addr) listed.push(bl);
             resolve();
           });
         });
+      } catch(e) {}
+    }
+    const srv = PLESK_SERVERS.find(s => s.host === ip);
+    const key = 'bl:' + ip;
+    if (listed.length > 0) {
+      if (!blacklistCooldown[key] || Date.now() - blacklistCooldown[key] > 6*60*60*1000) {
+        blacklistCooldown[key] = Date.now();
+        sendTelegram(
+          '🚨 <b>IP Blacklisted!</b>\n' +
+          '🖥️ ' + (srv?.name || ip) + ' (' + ip + ')\n' +
+          '📋 พบใน: ' + listed.join(', ') + '\n' +
+          '💡 ต้องติดต่อ provider เพื่อ delist ด่วน'
+        );
       }
-    } catch(e) {}
+      results.push({ ip, server: srv?.name, listed });
+    } else {
+      console.log('[Blacklist] ' + ip + ': clean ✅');
+    }
   }
+  return results;
 }
 
 // ===== WEEKLY REPORT =====
@@ -1948,39 +2013,84 @@ function updateWeeklyStats(fixed, checked) {
 }
 
 async function sendWeeklyReport() {
+  const total = memoryDomains.length;
   const upDomains = memoryDomains.filter(d => d.status === 'up').length;
   const downDomains = memoryDomains.filter(d => d.status === 'down').length;
-  const uptimePct = memoryDomains.length ? Math.round(upDomains / memoryDomains.length * 100) : 0;
-  const sslExpiring = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30).length;
+  const uptimePct = total ? Math.round(upDomains / total * 100) : 0;
+  const sslExpiring = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30 && d.sslDaysLeft > 0).length;
+  const domainExpiring = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0).length;
   const uptimeHours = Math.round((Date.now() - weeklyStats.startTime) / 3600000);
-  
-  sendTelegram(
-    `📊 <b>Weekly Report — DomainIntel</b>
 
-` +
-    `🌐 โดเมนทั้งหมด: ${memoryDomains.length}
-` +
-    `✅ Up: ${upDomains} (${uptimePct}%)
-` +
-    `🔴 Down: ${downDomains}
-` +
-    `🔧 Auto-fixed: ${weeklyStats.fixed} ครั้ง
-` +
-    `🔍 เช็คทั้งหมด: ${weeklyStats.checked} ครั้ง
-` +
-    `🔒 SSL ใกล้หมด: ${sslExpiring} โดเมน
-` +
-    `⏱️ System Uptime: ${uptimeHours} ชั่วโมง
+  // Top 5 GSC traffic this week
+  const topGSC = [...memoryDomains]
+    .filter(d => d.gsc?.d7?.clicks > 0)
+    .sort((a,b) => (b.gsc.d7.clicks||0) - (a.gsc.d7.clicks||0))
+    .slice(0, 5);
 
-` +
-    `🕐 ${new Date().toLocaleString('th-TH')}`
-  );
-  
-  // Reset stats
+  // SSL expiring soon
+  const sslList = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0)
+    .sort((a,b) => a.sslDaysLeft - b.sslDaysLeft).slice(0, 5);
+
+  let msg = '📊 <b>Weekly Report — DomainIntel</b>\n';
+  msg += '🗓️ ' + new Date().toLocaleDateString('th-TH', {weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '\n\n';
+  msg += '🌐 โดเมนทั้งหมด: <b>' + total + '</b>\n';
+  msg += '✅ Up: <b>' + upDomains + '</b> (' + uptimePct + '%)\n';
+  msg += '🔴 Down: <b>' + downDomains + '</b>\n';
+  msg += '🔧 Auto-fixed: ' + weeklyStats.fixed + ' ครั้ง\n';
+  msg += '⏱️ System Uptime: ' + uptimeHours + ' ชั่วโมง\n\n';
+
+  if (sslExpiring > 0) msg += '⚠️ SSL ใกล้หมด: ' + sslExpiring + ' โดเมน\n';
+  if (domainExpiring > 0) msg += '⚠️ Domain ใกล้หมด: ' + domainExpiring + ' โดเมน\n';
+  if (sslList.length > 0) {
+    msg += '\n🔒 <b>SSL ใกล้หมด (14 วัน):</b>\n';
+    sslList.forEach(d => { msg += '  • ' + d.domain + ' (' + d.sslDaysLeft + ' วัน)\n'; });
+  }
+  if (topGSC.length > 0) {
+    msg += '\n📈 <b>Top Traffic 7 วันล่าสุด:</b>\n';
+    topGSC.forEach((d,i) => { msg += '  ' + (i+1) + '. ' + d.domain + ' — ' + d.gsc.d7.clicks + ' clicks\n'; });
+  }
+
+  sendTelegram(msg);
   weeklyStats = { fixed: 0, checked: 0, uptime: 0, startTime: Date.now() };
+  console.log('[WeeklyReport] ส่งรายงานรายสัปดาห์แล้ว');
 }
 
 
+
+// ===== GSC TRAFFIC DROP ALERT =====
+const gscDropCooldown = {}; // { domain: lastAlertTime }
+
+async function checkGSCTrafficDrop() {
+  const withGSC = memoryDomains.filter(d => d.gsc && d.gsc.d7 && d.gsc.d30);
+  let alerts = 0;
+  for (const d of withGSC) {
+    try {
+      // เปรียบเทียบ 7 วันนี้ vs 7 วันก่อน (โดยใช้ d30 - d7)
+      const recent7 = d.gsc.d7?.clicks || 0;
+      const d30clicks = d.gsc.d30?.clicks || 0;
+      const prev7 = Math.max(0, d30clicks - recent7); // clicks ใน 7-30 วันที่แล้ว
+      if (prev7 < 5) continue; // ไม่นับถ้า traffic น้อยเกินไป
+
+      const dropPct = Math.round((prev7 - recent7) / prev7 * 100);
+      if (dropPct >= 30) {
+        const key = d.domain;
+        if (!gscDropCooldown[key] || Date.now() - gscDropCooldown[key] > 7*24*60*60*1000) {
+          gscDropCooldown[key] = Date.now();
+          sendTelegram(
+            '📉 <b>Traffic Drop Alert!</b>\n' +
+            '🌐 ' + d.domain + '\n' +
+            '📊 7 วันนี้: ' + recent7 + ' clicks\n' +
+            '📊 7 วันก่อน: ' + prev7 + ' clicks\n' +
+            '⬇️ ลดลง <b>' + dropPct + '%</b>\n' +
+            '💡 ตรวจสอบ GSC — อาจโดน penalty'
+          );
+          alerts++;
+        }
+      }
+    } catch(e) {}
+  }
+  if (alerts === 0) console.log('[GSCDrop] ไม่พบ traffic drop ผิดปกติ');
+}
 // ===== DDOS DETECTION =====
 const requestCounts = {}; // { ip: { count, firstSeen } }
 const blockedIPs = new Set();
@@ -2077,47 +2187,114 @@ async function checkDatabaseBackups() {
 }
 
 // ===== DOMAIN EXPIRY MONITOR =====
+// Domain expiry alert cooldown (ป้องกัน spam)
+const domainExpiryCooldown = {}; // { 'domain+threshold': lastAlertTime }
+
 async function checkDomainExpiry() {
   console.log('[DomainExpiry] ตรวจสอบวันหมดอายุโดเมน...');
-  
-  // เช็คโดเมนที่ใกล้หมดอายุ (30, 7, 1 วัน)
-  const thresholds = [30, 7, 1];
+  // แจ้งเตือนที่ 60/30/14/7/1 วัน
+  const thresholds = [60, 30, 14, 7, 1];
   const now = new Date();
-  
+  const COOLDOWN = 20 * 60 * 60 * 1000; // cooldown 20 ชั่วโมง (แจ้งซ้ำได้วันละครั้ง)
+  const expiringList = [];
+
   for (const domain of memoryDomains) {
     if (!domain.expiryDate) continue;
-    
     const expiry = new Date(domain.expiryDate);
     const daysLeft = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
-    
-    // Update daysLeft
     const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
     if (idx !== -1) memoryDomains[idx].daysLeft = daysLeft;
-    
-    for (const threshold of thresholds) {
-      if (daysLeft === threshold) {
-        const urgency = threshold === 1 ? '🚨' : threshold === 7 ? '🔴' : '⚠️';
-        sendTelegram(
-          `${urgency} <b>Domain หมดอายุใน ${daysLeft} วัน!</b>
-` +
-          `🌐 <code>${domain.domain}</code>
-` +
-          `📅 หมดอายุ: ${domain.expiryDate}
-` +
-          `🖥️ Server: ${domain.pleskServer || '—'}
-` +
-          `💡 กรุณาต่ออายุโดเมนด่วน!`
-        );
+
+    for (const t of thresholds) {
+      if (daysLeft <= t && daysLeft > (t === 1 ? 0 : thresholds[thresholds.indexOf(t)+1] || 0)) {
+        const key = domain.domain + ':' + t;
+        if (!domainExpiryCooldown[key] || Date.now() - domainExpiryCooldown[key] > COOLDOWN) {
+          domainExpiryCooldown[key] = Date.now();
+          const icon = daysLeft <= 1 ? '🚨' : daysLeft <= 7 ? '🔴' : daysLeft <= 14 ? '🟠' : '⚠️';
+          sendTelegram(
+            icon + ' <b>Domain หมดอายุใน ' + daysLeft + ' วัน!</b>\n' +
+            '🌐 <code>' + domain.domain + '</code>\n' +
+            '📅 หมดอายุ: ' + domain.expiryDate + '\n' +
+            '🖥️ Server: ' + (domain.pleskServer || '—') + '\n' +
+            (daysLeft <= 7 ? '🚨 <b>ต่ออายุด่วนมาก!</b>' : '💡 กรุณาต่ออายุโดเมน')
+          );
+          expiringList.push({ domain: domain.domain, daysLeft, expiryDate: domain.expiryDate });
+        }
+        break;
       }
     }
-    
-    // Mark as expiring soon
-    if (daysLeft <= 30 && daysLeft > 0) {
-      if (idx !== -1) memoryDomains[idx].status = memoryDomains[idx].status === 'up' ? 'up' : memoryDomains[idx].status;
-    }
   }
+
+  // สรุปรายการใกล้หมดอายุ (เฉพาะ <= 30 วัน) ลง log
+  const expiring30 = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0);
+  if (expiring30.length) console.log('[DomainExpiry] ใกล้หมดอายุ:', expiring30.map(d => d.domain + '(' + d.daysLeft + 'd)').join(', '));
 }
 
+
+
+// ===== RESOURCE USAGE PER DOMAIN =====
+async function getDomainResourceUsage(srv) {
+  try {
+    const cmd = [
+      // Top domains by disk usage
+      'echo "=DISK=" && du -sh /var/www/vhosts/*/httpdocs 2>/dev/null | sort -rh | head -10',
+      // PHP-FPM processes per domain
+      'echo "=PHP=" && ps aux | grep php-fpm | grep -v grep | awk "{print $11}" | sort | uniq -c | sort -rn | head -10',
+      // Apache request count per domain
+      'echo "=APACHE=" && cat /var/www/vhosts/*/logs/access_log 2>/dev/null | awk "{print $1}" | sort | uniq -c | sort -rn | head -5 2>/dev/null || echo "no access log"'
+    ].join('; ');
+    const cmdId = queueCommand(srv.host, cmd);
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const res = agentResults[cmdId]; delete agentResults[cmdId];
+        return { server: srv.name, output: (res.output||'').replace(/~/g,' '), ok: res.exitCode === 0 };
+      }
+    }
+    return { server: srv.name, output: 'timeout', ok: false };
+  } catch(e) { return { server: srv.name, output: e.message, ok: false }; }
+}
+// ===== UPTIME SLA TRACKER =====
+// เก็บ uptime history รายวัน คำนวณ % SLA รายเดือน
+const uptimeHistory = {}; // { 'domain': [{ date, checks, up, pct }] }
+const dailyChecks = {};   // { 'domain': { checks, up, date } } สำหรับวันนี้
+
+function recordUptimeCheck(domain, isUp) {
+  const today = new Date().toISOString().split('T')[0];
+  if (!dailyChecks[domain]) dailyChecks[domain] = { checks: 0, up: 0, date: today };
+  if (dailyChecks[domain].date !== today) {
+    // บันทึกวันเมื่อวาน
+    const prev = dailyChecks[domain];
+    if (!uptimeHistory[domain]) uptimeHistory[domain] = [];
+    uptimeHistory[domain].push({ date: prev.date, checks: prev.checks, up: prev.up, pct: prev.checks > 0 ? Math.round(prev.up/prev.checks*1000)/10 : 0 });
+    // เก็บแค่ 90 วัน
+    if (uptimeHistory[domain].length > 90) uptimeHistory[domain].shift();
+    dailyChecks[domain] = { checks: 0, up: 0, date: today };
+  }
+  dailyChecks[domain].checks++;
+  if (isUp) dailyChecks[domain].up++;
+}
+
+function getSLAStats(domain, days) {
+  const history = uptimeHistory[domain] || [];
+  const recent = history.slice(-days);
+  if (!recent.length) return { uptime: null, checks: 0, days: 0 };
+  const totalChecks = recent.reduce((s,d) => s+d.checks, 0);
+  const totalUp = recent.reduce((s,d) => s+d.up, 0);
+  return {
+    uptime: totalChecks > 0 ? Math.round(totalUp/totalChecks*1000)/10 : 0,
+    checks: totalChecks, days: recent.length
+  };
+}
+
+function getAllSLAStats() {
+  return memoryDomains.map(d => ({
+    domain: d.domain,
+    d7:  getSLAStats(d.domain, 7),
+    d30: getSLAStats(d.domain, 30),
+    status: d.status
+  })).filter(d => d.d30.checks > 0);
+}
 // ===== PERFORMANCE MONITOR =====
 const performanceHistory = {}; // { domain: [responseTimes] }
 
@@ -2268,6 +2445,8 @@ server.listen(PORT, async () => {
   setInterval(sendWeeklyReport, 7 * 24 * 60 * 60 * 1000); // Weekly report
   setInterval(checkDatabaseBackups, 24 * 60 * 60 * 1000); // Backup check ทุกวัน
   setInterval(checkDomainExpiry, 12 * 60 * 60 * 1000); // Domain expiry ทุก 12 ชั่วโมง
+  setInterval(checkGSCTrafficDrop, 24 * 60 * 60 * 1000); // GSC drop check ทุกวัน
+  setTimeout(checkGSCTrafficDrop, 30 * 60 * 1000); // รันครั้งแรกหลัง 30 นาที
   setInterval(checkEmailSpam, 6 * 60 * 60 * 1000); // Email check ทุก 6 ชั่วโมง
   // Monthly report - disabled
   setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
