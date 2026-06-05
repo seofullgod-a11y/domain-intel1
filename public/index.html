@@ -3990,10 +3990,4 @@ function renderTrafficTrend() {
     });
 }
 
-// ===== SHOW PAGE HANDLERS =====
-const _origShowPage = typeof showPage === 'function' ? showPage : null;
-function showPage(name) {
-  if (_origShowPage) _origShowPage(name);
-  if (name === 'sla') setTimeout(loadSLAPage, 100);
-}
 </script>
