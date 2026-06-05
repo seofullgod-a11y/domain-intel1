@@ -1405,6 +1405,33 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  if (req.method === 'POST' && url === '/api/phpfpm-ondemand') {
+    json(res, { success: true, message: 'กำลังเปลี่ยน PHP-FPM เป็น ondemand...' });
+    applyAllPhpFpmOndemand().catch(console.error);
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/disk-cleanup') {
+    json(res, { success: true, message: 'กำลัง cleanup disk...' });
+    runManualDiskCleanup().catch(console.error);
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/limit-phpfpm') {
+    json(res, { success: true, message: 'กำลังจำกัด PHP-FPM...' });
+    limitAllPhpFpm().catch(console.error);
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/install-apache-watchdog') {
+    json(res, { success: true, message: 'กำลังติดตั้ง Apache Watchdog...' });
+    installAllApacheWatchdogs().catch(console.error);
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/setup-cloudflare-whitelist') {
+    json(res, { success: true, message: 'กำลังตั้งค่า Cloudflare Whitelist...' });
+    setupAllCloudflareWhitelists().catch(console.error);
+    return;
+  }
+
   // Telegram Webhook
   if (req.method === 'POST' && url === '/api/telegram/webhook') {
     const body = await parseBody(req);
@@ -2419,6 +2446,237 @@ ${serverSummary}
   console.log('[Monthly] ส่ง Monthly Report แล้ว');
 }
 
+
+// ===== PHP-FPM ONDEMAND FIXER =====
+const PHPFPM_ONDEMAND_SCRIPT = [
+  'CHANGED=0',
+  'for CONF in $(find /opt/plesk/php/*/etc/php-fpm.d/ -name "*.conf" 2>/dev/null | grep -v plesk.conf | grep -v www.conf); do',
+  '  sed -i "s/^pm = .*/pm = ondemand/" "$CONF" 2>/dev/null && CHANGED=$((CHANGED+1));',
+  '  grep -q "^pm.max_children" "$CONF" && sed -i "s/^pm.max_children.*/pm.max_children = 3/" "$CONF" || echo "pm.max_children = 3" >> "$CONF";',
+  '  grep -q "^pm.process_idle_timeout" "$CONF" || echo "pm.process_idle_timeout = 10s" >> "$CONF";',
+  'done',
+  'GLOBAL=/etc/sw-engine/pool.d/plesk.conf',
+  '[ -f "$GLOBAL" ] && sed -i "s/^pm = .*/pm = ondemand/" "$GLOBAL"',
+  '[ -f "$GLOBAL" ] && grep -q "^pm.process_idle_timeout" "$GLOBAL" || echo "pm.process_idle_timeout = 10s" >> "$GLOBAL" 2>/dev/null',
+  'systemctl list-units --state=active --no-legend | grep plesk-php | awk \'{print $1}\' | xargs -I_ systemctl restart _ 2>/dev/null',
+  'systemctl restart sw-engine 2>/dev/null',
+  'echo "ONDEMAND_DONE CHANGED:$CHANGED"'
+].join('; ');
+
+async function applyPhpFpmOndemand(srv) {
+  try {
+    console.log('[OndemandFix] ' + srv.name + ': เปลี่ยน PHP-FPM เป็น ondemand...');
+    const cmdId = queueCommand(srv.host, PHPFPM_ONDEMAND_SCRIPT);
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        const output = (result.output || '').replace(/~/g, ' ');
+        const changed = parseInt((output.match(/CHANGED:(\d+)/) || [])[1] || 0);
+        const ok = output.includes('ONDEMAND_DONE');
+        console.log('[OndemandFix] ' + srv.name + ': ' + (ok?'✅':'❌') + ' ' + changed + ' configs');
+        return { ok, changed };
+      }
+    }
+    return { ok: false, changed: 0 };
+  } catch(e) { return { ok: false, changed: 0 }; }
+}
+
+async function applyAllPhpFpmOndemand() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const r = await applyPhpFpmOndemand(srv);
+    results.push({ server: srv.name, ...r });
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  const msg = results.map(r => (r.ok?'✅':'❌') + ' ' + r.server + ': ' + r.changed + ' configs').join('\n');
+  sendTelegram('⚙️ <b>PHP-FPM Ondemand Done!</b>\n' + msg + '\n\n✅ pm=ondemand + idle=10s → Load ลดลง');
+  return results;
+}
+
+// ===== DISK AUTO-CLEANUP =====
+const DISK_CLEANUP_THRESHOLD = 80;
+const DISK_CRITICAL_THRESHOLD = 90;
+
+const DISK_CLEANUP_SCRIPT = 'find /var/www/vhosts/*/logs/ -name "*.log" -mtime +3 -size +10M -exec truncate -s 0 {} \; 2>/dev/null; ' +
+  'find /var/www/vhosts/*/logs/ -name "*.log.*" -mtime +7 -delete 2>/dev/null; ' +
+  'find /tmp/ -name "sess_*" -mtime +1 -delete 2>/dev/null; ' +
+  'find /var/lib/php/sessions/ -mtime +1 -delete 2>/dev/null; ' +
+  'find /tmp/ -maxdepth 2 -mtime +7 -type f -delete 2>/dev/null; ' +
+  'rm -rf /var/cache/plesk_installer/* 2>/dev/null; ' +
+  'find /var/www/vhosts/*/httpdocs/wp-content/cache/ -type f -mtime +1 -delete 2>/dev/null; ' +
+  'yum clean all -q 2>/dev/null || apt-get clean -q 2>/dev/null; ' +
+  'DP=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo "CLEANUP_DONE DISK_AFTER:$DP"';
+
+async function diskCleanup(srv, diskPct) {
+  try {
+    const cmdId = queueCommand(srv.host, DISK_CLEANUP_SCRIPT);
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        const output = (result.output || '').replace(/~/g, ' ');
+        const diskAfter = parseInt((output.match(/DISK_AFTER:(\d+)/) || [])[1] || diskPct);
+        console.log('[DiskCleanup] ' + srv.name + ': ' + diskPct + '% → ' + diskAfter + '%');
+        sendTelegram('🧹 <b>Disk Cleanup!</b>\n🖥️ ' + srv.name + '\n📊 ' + diskPct + '% → ' + diskAfter + '%\n✅ ข้อมูลโดเมนปลอดภัย');
+        return { ok: true, diskAfter };
+      }
+    }
+    return { ok: false };
+  } catch(e) { return { ok: false }; }
+}
+
+async function checkAndCleanDisk() {
+  for (const srv of PLESK_SERVERS) {
+    try {
+      const cmdId = queueCommand(srv.host, 'DP=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo "DISK:$DP"');
+      await new Promise(r => setTimeout(r, 35000));
+      const result = agentResults[cmdId]; if (!result) continue;
+      delete agentResults[cmdId];
+      const diskPct = parseInt((result.output||'').match(/DISK:(\d+)/)?.[1] || 0);
+      if (diskPct >= DISK_CRITICAL_THRESHOLD) {
+        sendTelegram('🚨 <b>Disk Critical!</b>\n🖥️ ' + srv.name + ': <b>' + diskPct + '%</b>\n🧹 Auto-Cleanup...');
+        await diskCleanup(srv, diskPct);
+      } else if (diskPct >= DISK_CLEANUP_THRESHOLD) {
+        sendTelegram('⚠️ <b>Disk Warning!</b>\n🖥️ ' + srv.name + ': <b>' + diskPct + '%</b>\n🧹 Auto-Cleanup...');
+        await diskCleanup(srv, diskPct);
+      }
+    } catch(e) {}
+  }
+}
+
+async function runManualDiskCleanup() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const r = await diskCleanup(srv, 0);
+    results.push({ server: srv.name, ok: r.ok });
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  return results;
+}
+
+// ===== PHP-FPM PER-DOMAIN LIMITER =====
+const PHPFPM_LIMIT_SCRIPT = [
+  'CHANGED=0',
+  'for CONF in $(find /opt/plesk/php/*/etc/php-fpm.d/ -name "*.conf" 2>/dev/null | grep -v plesk.conf | grep -v www.conf); do',
+  '  CURRENT=$(grep -m1 "^pm.max_children" "$CONF" 2>/dev/null | awk \'{print $3}\'); ',
+  '  if [ -z "$CURRENT" ] || [ "$CURRENT" -gt 3 ] 2>/dev/null; then',
+  '    sed -i "s/^pm = .*/pm = dynamic/" "$CONF" 2>/dev/null;',
+  '    grep -q "^pm.max_children" "$CONF" && sed -i "s/^pm.max_children.*/pm.max_children = 3/" "$CONF" || echo "pm.max_children = 3" >> "$CONF";',
+  '    grep -q "^pm.start_servers" "$CONF" || echo "pm.start_servers = 1" >> "$CONF";',
+  '    grep -q "^pm.min_spare_servers" "$CONF" || echo "pm.min_spare_servers = 1" >> "$CONF";',
+  '    grep -q "^pm.max_spare_servers" "$CONF" || echo "pm.max_spare_servers = 2" >> "$CONF";',
+  '    CHANGED=$((CHANGED+1));',
+  '  fi',
+  'done',
+  'systemctl list-units --state=active --no-legend | grep plesk-php | awk \'{print $1}\' | xargs -I_ systemctl restart _ 2>/dev/null',
+  'echo "PHPFPM_DONE CHANGED:$CHANGED"'
+].join(' ');
+
+async function limitPhpFpm(srv) {
+  try {
+    const cmdId = queueCommand(srv.host, PHPFPM_LIMIT_SCRIPT);
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        const output = (result.output||'').replace(/~/g,' ');
+        const changed = parseInt((output.match(/CHANGED:(\d+)/)||[])[1]||0);
+        const ok = output.includes('PHPFPM_DONE');
+        return { ok, changed };
+      }
+    }
+    return { ok: false, changed: 0 };
+  } catch(e) { return { ok: false, changed: 0 }; }
+}
+
+async function limitAllPhpFpm() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const { ok, changed } = await limitPhpFpm(srv);
+    results.push({ server: srv.name, ok, changed });
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  sendTelegram('⚙️ <b>PHP-FPM Limiter เสร็จ!</b>\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server+': '+r.changed+' domains').join('\n'));
+  return results;
+}
+
+// ===== APACHE WATCHDOG INSTALLER =====
+const APACHE_WATCHDOG_SCRIPT = [
+  '#!/bin/bash',
+  'if ! systemctl is-active --quiet httpd; then',
+  '  systemctl restart httpd',
+  '  echo "[$(date)] Apache restarted" >> /var/log/apache-watchdog.log',
+  'fi'
+].join('\n');
+
+async function installApacheWatchdog(srv) {
+  try {
+    const cmd = [
+      'cat > /usr/local/bin/apache-watchdog.sh << WDEOF',
+      '#!/bin/bash',
+      'if ! systemctl is-active --quiet httpd; then',
+      '  systemctl restart httpd',
+      '  echo "[$(date)] Apache restarted" >> /var/log/apache-watchdog.log',
+      'fi',
+      'WDEOF',
+      'chmod +x /usr/local/bin/apache-watchdog.sh',
+      'echo "* * * * * root /usr/local/bin/apache-watchdog.sh" > /etc/cron.d/apache-watchdog',
+      'chmod 644 /etc/cron.d/apache-watchdog',
+      'echo "WATCHDOG_OK"'
+    ].join('; ');
+    const cmdId = queueCommand(srv.host, cmd);
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        return (result.output || '').includes('WATCHDOG_OK');
+      }
+    }
+    return false;
+  } catch(e) { return false; }
+}
+
+async function installAllApacheWatchdogs() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const ok = await installApacheWatchdog(srv);
+    results.push({ server: srv.name, ok });
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  sendTelegram('🛡️ <b>Apache Watchdog ติดตั้งแล้ว!</b>\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server).join('\n'));
+  return results;
+}
+
+// ===== CLOUDFLARE IP WHITELIST =====
+const CF_IPS = ['173.245.48.0/20','103.21.244.0/22','103.22.200.0/22','103.31.4.0/22','141.101.64.0/18','108.162.192.0/18','190.93.240.0/20','188.114.96.0/20','197.234.240.0/22','198.41.128.0/17','162.158.0.0/15','104.16.0.0/13','104.24.0.0/14','172.64.0.0/13','131.0.72.0/22'];
+
+async function setupCloudflareWhitelist(srv) {
+  try {
+    const cmd = CF_IPS.map(ip => 'iptables -C INPUT -s ' + ip + ' -j ACCEPT 2>/dev/null || iptables -I INPUT -s ' + ip + ' -j ACCEPT').join('; ') + '; iptables-save > /etc/sysconfig/iptables; echo "CF_DONE"';
+    const cmdId = queueCommand(srv.host, cmd);
+    for (let i = 0; i < 90; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        return result.output?.includes('CF_DONE') || result.exitCode === 0;
+      }
+    }
+    return false;
+  } catch(e) { return false; }
+}
+
+async function setupAllCloudflareWhitelists() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const ok = await setupCloudflareWhitelist(srv);
+    results.push({ server: srv.name, ok });
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  sendTelegram('🛡️ <b>Cloudflare Whitelist Done!</b>\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server).join('\n') + '\n✅ ป้องกัน Error 521');
+  return results;
+}
+
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
   console.log(`║   DomainIntel + Plesk + Google Sheets    ║`);
@@ -2452,6 +2710,14 @@ server.listen(PORT, async () => {
   setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
   setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
   console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
+  // Auto-start systems
+  setInterval(checkAndCleanDisk, 6 * 60 * 60 * 1000); // Disk check ทุก 6 ชั่วโมง
+  setTimeout(async () => { await applyAllPhpFpmOndemand(); }, 12 * 60 * 1000); // PHP-FPM ondemand หลัง 12 นาที
+  setInterval(applyAllPhpFpmOndemand, 24 * 60 * 60 * 1000); // Re-apply ทุก 24 ชั่วโมง
+  setTimeout(async () => { await installAllApacheWatchdogs(); }, 5 * 60 * 1000); // Watchdog หลัง 5 นาที
+  setTimeout(async () => { await setupAllCloudflareWhitelists(); }, 8 * 60 * 1000); // CF Whitelist หลัง 8 นาที
+  setInterval(setupAllCloudflareWhitelists, 24 * 60 * 60 * 1000);
+
   console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
 
   // Auto Sync GSC ทุก 24 ชั่วโมง (ตี 2)
