@@ -458,6 +458,12 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         <i class="ti ti-server"></i> Server Manager
         <span class="badge" id="nav-server-alerts" style="background:var(--red);color:#fff;display:none"></span>
       </div>
+      <div class="nav-item" onclick="showPage('sla')">
+        <i class="ti ti-chart-line"></i> Uptime SLA
+      </div>
+      <div class="nav-item" onclick="showPage('resources')">
+        <i class="ti ti-cpu"></i> Resource Usage
+      </div>
       <div class="nav-item" onclick="showPage('botwatch')">
         <i class="ti ti-shield-check"></i> Bot Watch
         <span class="nav-badge" id="nav-botwatch" style="display:none"></span>
@@ -1023,6 +1029,51 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 </div>
 
 
+
+
+    <!-- UPTIME SLA PAGE -->
+    <div id="page-sla" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-chart-line" style="color:var(--teal)"></i> Uptime SLA Tracker</div>
+          <div class="topbar-sub">ประวัติ uptime รายวัน — คำนวณ SLA % รายเดือน</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="loadSLAPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px">
+        <div class="metrics-grid" style="margin-bottom:16px" id="sla-summary"></div>
+        <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="btn" onclick="window._slaFilter='all';renderSLATable()" id="sla-btn-all">ทั้งหมด</button>
+          <button class="btn" onclick="window._slaFilter='under99';renderSLATable()">SLA &lt; 99%</button>
+          <button class="btn" onclick="window._slaFilter='under95';renderSLATable()">SLA &lt; 95%</button>
+        </div>
+        <div class="table-container" id="sla-table-wrap">
+          <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- RESOURCE USAGE PAGE -->
+    <div id="page-resources" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-cpu" style="color:var(--amber)"></i> Resource Usage per Domain</div>
+          <div class="topbar-sub">Disk, PHP-FPM processes แต่ละ server</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-green" onclick="loadResourceUsage()"><i class="ti ti-refresh"></i> Load Resource Data</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px" id="resources-content">
+        <div style="text-align:center;padding:60px 20px;color:var(--text3)">
+          <i class="ti ti-cpu" style="font-size:40px;display:block;margin-bottom:12px"></i>
+          กด "Load Resource Data" เพื่อดึงข้อมูลจาก Server<br>
+          <small style="font-size:11px">ใช้เวลาประมาณ 1-2 นาที</small>
+        </div>
+      </div>
+    </div>
 
 <!-- MODALS -->
 <div id="add-modal" class="modal-overlay" style="display:none">
@@ -2454,6 +2505,12 @@ function showPage(name) {
   if (name === 'overview') {
     loadOverview();
   }
+  if (name === 'sla') {
+    setTimeout(loadSLAPage, 100);
+  }
+  if (name === 'resources') {
+    // resources page just shows the button
+  }
   if (name === 'server-manager') {
     if (!window._pleskServers || window._pleskServers.length === 0) {
       loadData().then(() => refreshServerHealth());
@@ -3820,5 +3877,123 @@ function renderOvPending() {
       <span style="color:var(--text)">${t.text}</span>
     </div>
   `).join('').replace(/border-bottom[^}]+}$/, '');
+}
+</script>
+<script>
+// ===== UPTIME SLA PAGE =====
+let slaData = null;
+
+async function loadSLAPage() {
+  try {
+    const res = await fetch(`${API}/api/sla/stats`);
+    const data = await res.json();
+    slaData = data.stats || [];
+    renderSLASummary();
+    renderSLATable();
+  } catch(e) {
+    document.getElementById('sla-table-wrap').innerHTML = '<div style="padding:20px;color:var(--red)">โหลดข้อมูลไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+function renderSLASummary() {
+  if (!slaData) return;
+  const el = document.getElementById('sla-summary');
+  if (!el) return;
+  const avg7  = slaData.length ? Math.round(slaData.reduce((s,d)=>s+(d.d7.uptime||100),0)/slaData.length*10)/10 : 100;
+  const avg30 = slaData.length ? Math.round(slaData.reduce((s,d)=>s+(d.d30.uptime||100),0)/slaData.length*10)/10 : 100;
+  const under99 = slaData.filter(d => (d.d30.uptime||100) < 99).length;
+  const under95 = slaData.filter(d => (d.d30.uptime||100) < 95).length;
+  el.innerHTML = `
+    <div class="metric-card"><div class="metric-label"><i class="ti ti-clock"></i> Avg Uptime 7 วัน</div><div class="metric-val ${avg7>=99?'green':avg7>=95?'amber':'red'}">${avg7}%</div></div>
+    <div class="metric-card"><div class="metric-label"><i class="ti ti-clock"></i> Avg Uptime 30 วัน</div><div class="metric-val ${avg30>=99?'green':avg30>=95?'amber':'red'}">${avg30}%</div></div>
+    <div class="metric-card highlight-amber"><div class="metric-label"><i class="ti ti-alert-triangle"></i> SLA &lt; 99%</div><div class="metric-val amber">${under99}</div></div>
+    <div class="metric-card highlight-red"><div class="metric-label"><i class="ti ti-alert-circle"></i> SLA &lt; 95%</div><div class="metric-val red">${under95}</div></div>
+  `;
+}
+
+function renderSLATable() {
+  const el = document.getElementById('sla-table-wrap');
+  if (!el || !slaData) return;
+  const filter = window._slaFilter || 'all';
+  let display = [...slaData];
+  if (filter === 'under99') display = display.filter(d => (d.d30.uptime||100) < 99);
+  if (filter === 'under95') display = display.filter(d => (d.d30.uptime||100) < 95);
+  display.sort((a,b) => (a.d30.uptime||100) - (b.d30.uptime||100));
+
+  if (!display.length) {
+    el.innerHTML = '<div style="padding:40px;text-align:center;color:var(--text3)">ยังไม่มีข้อมูล SLA — ระบบจะเก็บข้อมูลหลังจาก monitor ทำงานสักพัก</div>';
+    return;
+  }
+
+  const slaBar = (pct) => {
+    const color = pct>=99?'var(--green)':pct>=95?'var(--amber)':'var(--red)';
+    return `<div style="display:flex;align-items:center;gap:8px">
+      <div style="flex:1;height:6px;background:var(--bg4);border-radius:3px;overflow:hidden">
+        <div style="width:${Math.min(100,pct)}%;height:100%;background:${color};border-radius:3px"></div>
+      </div>
+      <span style="font-size:11px;font-weight:600;color:${color};min-width:40px">${pct}%</span>
+    </div>`;
+  };
+
+  el.innerHTML = `<div class="table-wrap"><table><thead><tr>
+    <th>โดเมน</th><th>Status</th><th>SLA 7 วัน</th><th>SLA 30 วัน</th><th>Checks (30d)</th>
+  </tr></thead><tbody>
+    ${display.map(d => `<tr>
+      <td class="domain-name">${d.domain}</td>
+      <td>${d.status === 'up' ? '<span style="color:var(--green)">✅ Up</span>' : '<span style="color:var(--red)">🔴 Down</span>'}</td>
+      <td>${d.d7.uptime !== null ? slaBar(d.d7.uptime) : '<span style="color:var(--text3)">—</span>'}</td>
+      <td>${d.d30.uptime !== null ? slaBar(d.d30.uptime) : '<span style="color:var(--text3)">—</span>'}</td>
+      <td style="color:var(--text2);font-size:11px">${d.d30.checks || 0} ครั้ง</td>
+    </tr>`).join('')}
+  </tbody></table></div>`;
+}
+
+// ===== RESOURCE USAGE PAGE =====
+async function loadResourceUsage() {
+  const el = document.getElementById('resources-content');
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังดึงข้อมูลจาก Server (1-2 นาที)...</div>';
+  try {
+    const res = await fetch(`${API}/api/resource-usage`, { method: 'POST' });
+    const data = await res.json();
+    if (!data.success) { el.innerHTML = '<div style="padding:20px;color:var(--red)">Error: ' + (data.error||'unknown') + '</div>'; return; }
+    el.innerHTML = data.results.map(r => `
+      <div class="table-container" style="margin-bottom:16px">
+        <div style="padding:12px 16px;background:var(--bg3);border-bottom:1px solid var(--border);font-weight:600;display:flex;align-items:center;gap:8px">
+          <i class="ti ti-server" style="color:var(--teal)"></i> ${r.server}
+          ${r.ok ? '' : '<span style="color:var(--red);font-size:11px">⚠️ ดึงข้อมูลไม่ได้</span>'}
+        </div>
+        <pre style="padding:14px 16px;font-size:11px;font-family:var(--mono);color:var(--text2);white-space:pre-wrap;overflow-x:auto">${r.output||'ไม่มีข้อมูล'}</pre>
+      </div>
+    `).join('');
+  } catch(e) { el.innerHTML = '<div style="padding:20px;color:var(--red)">Error: ' + e.message + '</div>'; }
+}
+
+// ===== TRAFFIC TREND COMPARISON =====
+function renderTrafficTrend() {
+  const domainsWithGSC = allDomains.filter(d => d.gsc && d.gsc.d7 && d.gsc.d30 && d.gsc.d90);
+  if (!domainsWithGSC.length) return '';
+
+  return domainsWithGSC
+    .filter(d => d.gsc.d30.clicks > 0)
+    .sort((a,b) => b.gsc.d30.clicks - a.gsc.d30.clicks)
+    .slice(0, 20)
+    .map(d => {
+      const d7 = d.gsc.d7.clicks || 0;
+      const d30 = d.gsc.d30.clicks || 0;
+      const d90 = d.gsc.d90.clicks || 0;
+      // เทียบ 7 วันนี้ vs 7 วันก่อน
+      const prev7 = Math.max(0, d30 - d7);
+      const trend = prev7 > 0 ? Math.round((d7 - prev7) / prev7 * 100) : 0;
+      const trendColor = trend > 10 ? 'var(--green)' : trend < -10 ? 'var(--red)' : 'var(--text2)';
+      const trendIcon = trend > 10 ? '↑' : trend < -10 ? '↓' : '→';
+      return { domain: d.domain, d7, d30, d90, trend, trendColor, trendIcon };
+    });
+}
+
+// ===== SHOW PAGE HANDLERS =====
+const _origShowPage = typeof showPage === 'function' ? showPage : null;
+function showPage(name) {
+  if (_origShowPage) _origShowPage(name);
+  if (name === 'sla') setTimeout(loadSLAPage, 100);
 }
 </script>
