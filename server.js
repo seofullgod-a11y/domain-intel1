@@ -1367,15 +1367,23 @@ async function handleRequest(req, res) {
   }
 
   // Resource Usage API
-  if (req.method === 'POST' && url === '/api/resource-usage') {
+  // Resource usage ทีละ server (ป้องกัน Railway timeout)
+  if (req.method === 'POST' && url.startsWith('/api/resource-usage')) {
+    const srvName = url.includes('/api/resource-usage/') 
+      ? decodeURIComponent(url.split('/api/resource-usage/')[1]) 
+      : null;
     (async () => {
-      const results = [];
-      for (const srv of PLESK_SERVERS) {
+      if (srvName) {
+        // ดึงทีละ server
+        const srv = PLESK_SERVERS.find(s => s.name === srvName || s.host === srvName);
+        if (!srv) return json(res, { error: 'ไม่พบ server: ' + srvName });
         const r = await getDomainResourceUsage(srv);
-        results.push(r);
-        await new Promise(r => setTimeout(r, 2000));
+        json(res, { success: true, results: [r] });
+      } else {
+        // ดึงแค่ server แรก (backward compat)
+        const r = await getDomainResourceUsage(PLESK_SERVERS[0]);
+        json(res, { success: true, results: [r] });
       }
-      json(res, { success: true, results });
     })().catch(e => json(res, { error: e.message }));
     return;
   }
