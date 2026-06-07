@@ -4038,21 +4038,35 @@ async function loadResourceUsage() {
 function parseResourceOutput(output) {
   const lines = (output||'').split('\n').map(l=>l.trim()).filter(Boolean);
   const disk = [], php = [];
+  let sys = { load: '—', ram: '—', disk: '—' };
   let section = '';
   for (const line of lines) {
     if (line === '=DISK=') { section='disk'; continue; }
-    if (line === '=PHP=') { section='php'; continue; }
+    if (line === '=PHP=')  { section='php'; continue; }
+    if (line === '=SYS=')  { section='sys'; continue; }
     if (line === '=APACHE=') { section='apache'; continue; }
     if (section === 'disk' && line) {
-      const m = line.match(/^([\d.]+[KMGT]?)\s+.*?\/([^\/]+)\/httpdocs/);
-      if (m) disk.push({ size: m[1], domain: m[2] });
+      // format: "1.2G  /var/www/vhosts/domain.com/httpdocs"
+      const m = line.match(/^([\d.]+[KMGT]?)\s+.*?\/vhosts\/([^\/]+)/);
+      if (m) disk.push({ size: m[1], domain: m[2].replace('/httpdocs','') });
     }
     if (section === 'php' && line) {
       const m = line.match(/^\s*(\d+)\s+(.+)/);
-      if (m) php.push({ count: parseInt(m[1]), name: m[2].split('/').pop() });
+      if (m) {
+        const name = m[2].split('/').pop().replace(/^php-fpm:/,'').trim() || m[2];
+        php.push({ count: parseInt(m[1]), name });
+      }
+    }
+    if (section === 'sys' && line) {
+      const lm = line.match(/^Load:([\d.]+)/);
+      const rm = line.match(/^RAM:(\d+)\/(\d+)/);
+      const dm = line.match(/^Disk:(\S+)/);
+      if (lm) sys.load = lm[1];
+      if (rm) { sys.ramUsed = parseInt(rm[1]); sys.ramTotal = parseInt(rm[2]); sys.ram = rm[1] + '/' + rm[2] + 'MB (' + Math.round(rm[1]/rm[2]*100) + '%)'; }
+      if (dm) sys.disk = dm[1];
     }
   }
-  return { disk, php };
+  return { disk, php, sys };
 }
 
 function renderResourceData(results) {
@@ -4082,8 +4096,17 @@ function renderResourceData(results) {
     if (!r.ok) {
       panel.innerHTML = `<div style="padding:20px;color:var(--red)">⚠️ ดึงข้อมูล ${r.server} ไม่ได้</div>`;
     } else {
-      const { disk, php } = parseResourceOutput(r.output);
-      panel.innerHTML = `
+      const { disk, php, sys } = parseResourceOutput(r.output);
+    panel.innerHTML = `
+        <!-- System Overview -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-activity"></i> Load Average</div>
+            <div class="metric-val ${sys.load>15?'red':sys.load>5?'amber':'green'}" style="font-size:20px">${sys.load}</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-memory"></i> RAM Usage</div>
+            <div class="metric-val" style="font-size:16px">${sys.ram}</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-database"></i> Disk Usage</div>
+            <div class="metric-val ${sys.disk&&parseInt(sys.disk)>80?'red':sys.disk&&parseInt(sys.disk)>60?'amber':'green'}" style="font-size:20px">${sys.disk}</div></div>
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
           <div>
             <div class="table-container">
