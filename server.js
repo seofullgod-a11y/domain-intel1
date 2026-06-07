@@ -2263,22 +2263,24 @@ async function checkDomainExpiry() {
 async function getDomainResourceUsage(srv) {
   try {
     const cmd = [
-      // Top domains by disk usage
-      'echo "=DISK=" && du -sh /var/www/vhosts/*/httpdocs 2>/dev/null | sort -rh | head -10',
-      // PHP-FPM processes per domain
-      'echo "=PHP=" && ps aux | grep php-fpm | grep -v grep | awk "{print $11}" | sort | uniq -c | sort -rn | head -10',
-      // Apache request count per domain
-      'echo "=APACHE=" && cat /var/www/vhosts/*/logs/access_log 2>/dev/null | awk "{print $1}" | sort | uniq -c | sort -rn | head -5 2>/dev/null || echo "no access log"'
+      // Disk: ใช้ timeout 45s + du แบบ 1-level เท่านั้น (เร็วกว่า recursive มาก)
+      'echo "=DISK=" && timeout 45 du -sh --max-depth=0 /var/www/vhosts/*/httpdocs 2>/dev/null | sort -rh | head -15 || timeout 45 du -sh /var/www/vhosts/* 2>/dev/null | sort -rh | head -15',
+      // PHP-FPM processes
+      'echo "=PHP=" && ps aux | grep -E "php-fpm|php[0-9]" | grep -v grep | awk "{print $NF}" | sort | uniq -c | sort -rn | head -15',
+      // RAM และ Load ภาพรวม
+      'echo "=SYS=" && echo "Load:$(cat /proc/loadavg | cut -d" " -f1)" && echo "RAM:$(free -m | grep Mem | tr -s " " | cut -d" " -f3)/$(free -m | grep Mem | tr -s " " | cut -d" " -f2)MB" && echo "Disk:$(df -h / | tail -1 | tr -s " " | cut -d" " -f5)"'
     ].join('; ');
+
     const cmdId = queueCommand(srv.host, cmd);
-    for (let i = 0; i < 60; i++) {
+    // รอนานขึ้น 120 วินาที เพราะ du ช้า
+    for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 1000));
       if (agentResults[cmdId]) {
         const res = agentResults[cmdId]; delete agentResults[cmdId];
         return { server: srv.name, output: (res.output||'').replace(/~/g,' '), ok: res.exitCode === 0 };
       }
     }
-    return { server: srv.name, output: 'timeout', ok: false };
+    return { server: srv.name, output: 'timeout — du ใช้เวลานานเกินไป ลองกดใหม่อีกครั้ง', ok: false };
   } catch(e) { return { server: srv.name, output: e.message, ok: false }; }
 }
 // ===== UPTIME SLA TRACKER =====
