@@ -1305,6 +1305,7 @@ async function loadData() {
     
     if (domainsData.pleskServerConfigs) {
       window._pleskServers = domainsData.pleskServerConfigs;
+      window._pleskServerConfigs = domainsData.pleskServerConfigs;
     }
     
     updateSidebar(stats);
@@ -4022,10 +4023,22 @@ async function loadResourceUsage() {
   const el = document.getElementById('resources-content');
   const lbl = document.getElementById('res-last-updated');
 
-  // ดึงรายชื่อ servers จาก allDomains/stats
-  const servers = (window._pleskServers || [
-    'Server 1','Server 2','Server 3','Server 4','Server 5'
-  ]).slice(0, 5);
+  // ดึงรายชื่อ servers จาก pleskServerConfigs ที่โหลดไว้แล้ว
+  let servers = [];
+  if (window._pleskServerConfigs && window._pleskServerConfigs.length) {
+    servers = window._pleskServerConfigs.map(s => s.name || s);
+  } else {
+    // fallback: ดึงจาก API
+    try {
+      const cfgRes = await fetch(`${API}/api/domains`);
+      const cfgData = await cfgRes.json();
+      if (cfgData.pleskServerConfigs) {
+        window._pleskServerConfigs = cfgData.pleskServerConfigs;
+        servers = cfgData.pleskServerConfigs.map(s => s.name);
+      }
+    } catch(e) {}
+    if (!servers.length) servers = ['Server 1','Server 2','Server 3','Server 4','Server 5'];
+  }
 
   // แสดง skeleton tabs ก่อน
   const results = servers.map(s => ({ server: s, ok: false, output: '', loading: true }));
