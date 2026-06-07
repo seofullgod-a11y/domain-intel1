@@ -4021,18 +4021,34 @@ function renderSLATable() {
 async function loadResourceUsage() {
   const el = document.getElementById('resources-content');
   const lbl = document.getElementById('res-last-updated');
-  el.innerHTML = `<div style="text-align:center;padding:60px;color:var(--text3)">
-    <i class="ti ti-refresh ti-spin" style="font-size:32px;display:block;margin-bottom:12px"></i>
-    กำลังดึงข้อมูลจากทุก Server...<br>
-    <small>ใช้เวลาประมาณ 1-2 นาที</small>
-  </div>`;
-  try {
-    const res = await fetch(`${API}/api/resource-usage`, { method: 'POST' });
-    const data = await res.json();
-    if (!data.success) { el.innerHTML = `<div style="padding:20px;color:var(--red)">❌ Error: ${data.error||'unknown'}</div>`; return; }
+
+  // ดึงรายชื่อ servers จาก allDomains/stats
+  const servers = (window._pleskServers || [
+    'Server 1','Server 2','Server 3','Server 4','Server 5'
+  ]).slice(0, 5);
+
+  // แสดง skeleton tabs ก่อน
+  const results = servers.map(s => ({ server: s, ok: false, output: '', loading: true }));
+  renderResourceData(results);
+
+  // ดึงทีละ server แบบ async (ไม่ block UI)
+  servers.forEach(async (srvName, i) => {
+    try {
+      const encoded = encodeURIComponent(srvName);
+      const res = await fetch(`${API}/api/resource-usage/${encoded}`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success && data.results && data.results[0]) {
+        results[i] = data.results[0];
+      } else {
+        results[i] = { server: srvName, ok: false, output: data.error || 'ไม่มีข้อมูล' };
+      }
+    } catch(e) {
+      results[i] = { server: srvName, ok: false, output: e.message };
+    }
+    // re-render เมื่อได้ข้อมูลแต่ละตัว
+    renderResourceData([...results]);
     if (lbl) lbl.textContent = 'อัพเดต ' + new Date().toLocaleTimeString('th-TH');
-    renderResourceData(data.results);
-  } catch(e) { el.innerHTML = `<div style="padding:20px;color:var(--red)">❌ ${e.message}</div>`; }
+  });
 }
 
 function parseResourceOutput(output) {
@@ -4093,8 +4109,12 @@ function renderResourceData(results) {
   results.forEach((r,i) => {
     const panel = document.createElement('div');
     panel.style.display = i===0?'block':'none';
-    if (!r.ok) {
-      panel.innerHTML = `<div style="padding:20px;color:var(--red)">⚠️ ดึงข้อมูล ${r.server} ไม่ได้</div>`;
+    if (r.loading) {
+      panel.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3)">
+        <i class="ti ti-refresh ti-spin" style="font-size:24px;display:block;margin-bottom:8px"></i>
+        กำลังดึงข้อมูล ${r.server}...</div>`;
+    } else if (!r.ok) {
+      panel.innerHTML = `<div style="padding:20px;color:var(--red)">⚠️ ดึงข้อมูล ${r.server} ไม่ได้<br><small style="color:var(--text3)">${r.output||''}</small></div>`;
     } else {
       const { disk, php, sys } = parseResourceOutput(r.output);
     panel.innerHTML = `
