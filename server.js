@@ -2271,23 +2271,32 @@ async function checkDomainExpiry() {
 async function getDomainResourceUsage(srv) {
   try {
     const cmd = [
-      // Disk: ใช้ find + stat แทน du (เร็วกว่ามาก)
-      'echo "=DISK=" && for D in /var/www/vhosts/*/; do DOMAIN=$(basename $D); SIZE=$(du -sh "$D" --max-depth=0 2>/dev/null | cut -f1); echo "$SIZE $DOMAIN"; done 2>/dev/null | sort -rh | head -15',
-      // PHP-FPM processes
-      'echo "=PHP=" && ps aux | grep -E "php-fpm|php[0-9]" | grep -v grep | awk "{print $NF}" | sort | uniq -c | sort -rn | head -15',
-      // System info
-      'echo "=SYS=" && echo "Load:$(cat /proc/loadavg | cut -d" " -f1)" && echo "RAM:$(free -m | grep Mem | tr -s " " | cut -d" " -f3)/$(free -m | grep Mem | tr -s " " | cut -d" " -f2)MB" && echo "Disk:$(df -h / | tail -1 | tr -s " " | cut -d" " -f5)"'
+      // System overview (เร็วมาก)
+      'echo "=SYS="',
+      'echo "Load:$(cat /proc/loadavg | cut -d" " -f1-3)"',
+      'echo "RAM:$(free -m | grep Mem | tr -s " " | cut -d" " -f3)/$(free -m | grep Mem | tr -s " " | cut -d" " -f2)MB"',
+      'echo "Disk:$(df -h / | tail -1 | tr -s " " | cut -d" " -f3)/$(df -h / | tail -1 | tr -s " " | cut -d" " -f2) ($(df -h / | tail -1 | tr -s " " | cut -d" " -f5))"',
+      'echo "Domains:$(ls /var/www/vhosts/ 2>/dev/null | wc -l)"',
+      // PHP-FPM processes (เร็วมาก)
+      'echo "=PHP="',
+      'ps aux | grep -E "php-fpm|php[0-9]" | grep -v grep | awk "{print $NF}" | sort | uniq -c | sort -rn | head -20',
+      // Top processes by CPU (เร็วมาก)
+      'echo "=TOP="',
+      'ps aux --sort=-%cpu | awk "NR>1 && NR<=11 {print $3\\"% \\"$11}" | head -10',
+      // Apache connections per domain (เร็ว)
+      'echo "=CONN="',
+      'ss -tn state established 2>/dev/null | wc -l || echo "0"'
     ].join('; ');
 
     const cmdId = queueCommand(srv.host, cmd);
-    for (let i = 0; i < 90; i++) {
+    for (let i = 0; i < 45; i++) {
       await new Promise(r => setTimeout(r, 1000));
       if (agentResults[cmdId]) {
         const res = agentResults[cmdId]; delete agentResults[cmdId];
         return { server: srv.name, output: (res.output||'').replace(/~/g,' '), ok: true };
       }
     }
-    return { server: srv.name, output: 'timeout — กรุณาลองใหม่', ok: false };
+    return { server: srv.name, output: 'timeout', ok: false };
   } catch(e) { return { server: srv.name, output: e.message, ok: false }; }
 }
 // ===== UPTIME SLA TRACKER =====
