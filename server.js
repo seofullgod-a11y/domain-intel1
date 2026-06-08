@@ -2293,7 +2293,7 @@ async function getDomainResourceUsage(srv) {
       await new Promise(r => setTimeout(r, 1000));
       if (agentResults[cmdId]) {
         const res = agentResults[cmdId]; delete agentResults[cmdId];
-        return { server: srv.name, output: (res.output||'').replace(/~/g,' '), ok: true };
+        return { server: srv.name, output: (res.output||'').replace(/~/g,'\n'), ok: true };
       }
     }
     return { server: srv.name, output: 'timeout', ok: false };
