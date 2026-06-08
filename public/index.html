@@ -4101,36 +4101,40 @@ async function loadResourceUsage() {
 
 function parseResourceOutput(output) {
   const lines = (output||'').split('\n').map(l=>l.trim()).filter(Boolean);
-  const disk = [], php = [];
-  let sys = { load: '—', ram: '—', disk: '—' };
+  const php = [], top = [];
+  let sys = { load: '—', ram: '—', disk: '—', domains: '—', conn: '—' };
   let section = '';
+
   for (const line of lines) {
-    if (line === '=DISK=') { section='disk'; continue; }
-    if (line === '=PHP=')  { section='php'; continue; }
     if (line === '=SYS=')  { section='sys'; continue; }
-    if (line === '=APACHE=') { section='apache'; continue; }
-    if (section === 'disk' && line) {
-      // format: "1.2G  /var/www/vhosts/domain.com/httpdocs"
-      const m = line.match(/^([\d.]+[KMGT]?)\s+.*?\/vhosts\/([^\/]+)/);
-      if (m) disk.push({ size: m[1], domain: m[2].replace('/httpdocs','') });
-    }
-    if (section === 'php' && line) {
-      const m = line.match(/^\s*(\d+)\s+(.+)/);
-      if (m) {
-        const name = m[2].split('/').pop().replace(/^php-fpm:/,'').trim() || m[2];
-        php.push({ count: parseInt(m[1]), name });
-      }
-    }
-    if (section === 'sys' && line) {
-      const lm = line.match(/^Load:([\d.]+)/);
+    if (line === '=PHP=')  { section='php'; continue; }
+    if (line === '=TOP=')  { section='top'; continue; }
+    if (line === '=CONN=') { section='conn'; continue; }
+    if (line === '=DISK=') { section='disk'; continue; }
+
+    if (section === 'sys') {
+      const lm = line.match(/^Load:(.+)/);
       const rm = line.match(/^RAM:(\d+)\/(\d+)/);
-      const dm = line.match(/^Disk:(\S+)/);
-      if (lm) sys.load = lm[1];
-      if (rm) { sys.ramUsed = parseInt(rm[1]); sys.ramTotal = parseInt(rm[2]); sys.ram = rm[1] + '/' + rm[2] + 'MB (' + Math.round(rm[1]/rm[2]*100) + '%)'; }
-      if (dm) sys.disk = dm[1];
+      const dm = line.match(/^Disk:(.+)/);
+      const domm = line.match(/^Domains:(\d+)/);
+      if (lm) sys.load = lm[1].trim();
+      if (rm) { sys.ramUsed=parseInt(rm[1]); sys.ramTotal=parseInt(rm[2]); sys.ram=rm[1]+'/'+rm[2]+'MB ('+Math.round(rm[1]/rm[2]*100)+'%)'; sys.ramPct=Math.round(rm[1]/rm[2]*100); }
+      if (dm) sys.disk = dm[1].trim();
+      if (domm) sys.domains = domm[1];
+    }
+    if (section === 'php') {
+      const m = line.match(/^\s*(\d+)\s+(.+)/);
+      if (m) { const name=m[2].split('/').pop().replace(/^php-fpm:/,'').trim()||m[2]; php.push({count:parseInt(m[1]),name}); }
+    }
+    if (section === 'top') {
+      const m = line.match(/^([\d.]+)%\s+(.+)/);
+      if (m) top.push({ cpu: parseFloat(m[1]), name: m[2].split('/').pop() });
+    }
+    if (section === 'conn') {
+      sys.conn = line.trim();
     }
   }
-  return { disk, php, sys };
+  return { php, top, sys, disk: [] };
 }
 
 function renderResourceData(results) {
@@ -4166,72 +4170,69 @@ function renderResourceData(results) {
     } else {
       const { disk, php, sys } = parseResourceOutput(r.output);
     panel.innerHTML = `
-        <!-- System Overview -->
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-activity"></i> Load Average</div>
-            <div class="metric-val ${sys.load>15?'red':sys.load>5?'amber':'green'}" style="font-size:20px">${sys.load}</div></div>
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-memory"></i> RAM Usage</div>
-            <div class="metric-val" style="font-size:16px">${sys.ram}</div></div>
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-database"></i> Disk Usage</div>
-            <div class="metric-val ${sys.disk&&parseInt(sys.disk)>80?'red':sys.disk&&parseInt(sys.disk)>60?'amber':'green'}" style="font-size:20px">${sys.disk}</div></div>
+        <!-- System Stats Cards -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
+          <div class="metric-card">
+            <div class="metric-label"><i class="ti ti-activity"></i> Load Average</div>
+            <div class="metric-val" style="font-size:18px;color:${parseFloat(sys.load)>30?'var(--red)':parseFloat(sys.load)>15?'var(--amber)':'var(--green)'}">${sys.load}</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label"><i class="ti ti-cpu"></i> RAM</div>
+            <div class="metric-val" style="font-size:14px;color:${(sys.ramPct||0)>90?'var(--red)':(sys.ramPct||0)>70?'var(--amber)':'var(--green)'}">${sys.ram}</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label"><i class="ti ti-database"></i> Disk</div>
+            <div class="metric-val" style="font-size:18px;color:${sys.disk&&sys.disk.includes('8')&&parseInt(sys.disk)>80?'var(--red)':'var(--green)'}">${sys.disk}</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label"><i class="ti ti-world"></i> โดเมน</div>
+            <div class="metric-val blue" style="font-size:18px">${sys.domains}</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label"><i class="ti ti-network"></i> Connections</div>
+            <div class="metric-val" style="font-size:18px">${sys.conn}</div>
+          </div>
         </div>
+
+        <!-- PHP-FPM + Top CPU -->
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div>
-            <div class="table-container">
-              <div style="padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">
-                <i class="ti ti-database" style="color:var(--teal)"></i> Disk Usage ต่อโดเมน (Top 10)
-              </div>
-              <div class="table-wrap"><table>
-                <thead><tr><th>โดเมน</th><th>Disk</th><th>Usage</th></tr></thead>
-                <tbody>
-                  ${disk.length ? disk.slice(0,10).map((d,idx) => {
-                    const maxSize = disk[0]?.size || '1G';
-                    const barW = Math.max(5, 100 - idx*9);
-                    const color = idx===0?'var(--red)':idx<3?'var(--amber)':'var(--teal)';
-                    return `<tr>
-                      <td class="domain-name" style="font-size:11px">${d.domain}</td>
-                      <td style="font-family:var(--mono);font-size:11px;font-weight:600;color:${color}">${d.size}</td>
-                      <td style="min-width:80px">
-                        <div style="height:4px;background:var(--bg4);border-radius:2px;overflow:hidden">
-                          <div style="width:${barW}%;height:100%;background:${color};border-radius:2px"></div>
-                        </div>
-                      </td>
-                    </tr>`;
-                  }).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text3);padding:20px">ไม่มีข้อมูล</td></tr>'}
-                </tbody>
-              </table></div>
+          <div class="table-container">
+            <div style="padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">
+              <i class="ti ti-adjustments" style="color:var(--purple)"></i> PHP-FPM Processes (${php.reduce((s,p)=>s+p.count,0)} total)
             </div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Domain/Pool</th><th>Processes</th><th></th></tr></thead>
+              <tbody>
+                ${php.length ? php.slice(0,15).map(p => {
+                  const maxP = php[0]?.count||1;
+                  const bw = Math.round(p.count/maxP*100);
+                  const col = p.count>10?'var(--red)':p.count>5?'var(--amber)':'var(--green)';
+                  return `<tr><td style="font-size:11px;font-family:var(--mono)">${p.name}</td>
+                    <td><b style="color:${col}">${p.count}</b></td>
+                    <td style="min-width:70px"><div style="height:4px;background:var(--bg4);border-radius:2px;overflow:hidden"><div style="width:${bw}%;height:100%;background:${col};border-radius:2px"></div></div></td>
+                  </tr>`;
+                }).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text3);padding:16px">ไม่มี PHP-FPM processes</td></tr>'}
+              </tbody>
+            </table></div>
           </div>
-          <div>
-            <div class="table-container">
-              <div style="padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">
-                <i class="ti ti-adjustments" style="color:var(--purple)"></i> PHP-FPM Processes ต่อโดเมน
-              </div>
-              <div class="table-wrap"><table>
-                <thead><tr><th>โดเมน</th><th>Processes</th><th></th></tr></thead>
-                <tbody>
-                  ${php.length ? php.slice(0,10).map((p,idx) => {
-                    const maxProc = php[0]?.count || 1;
-                    const barW = Math.round(p.count/maxProc*100);
-                    const color = p.count>10?'var(--red)':p.count>5?'var(--amber)':'var(--green)';
-                    return `<tr>
-                      <td style="font-size:11px;font-family:var(--mono)">${p.name}</td>
-                      <td><span style="font-weight:600;color:${color}">${p.count}</span></td>
-                      <td style="min-width:80px">
-                        <div style="height:4px;background:var(--bg4);border-radius:2px;overflow:hidden">
-                          <div style="width:${barW}%;height:100%;background:${color};border-radius:2px"></div>
-                        </div>
-                      </td>
-                    </tr>`;
-                  }).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text3);padding:20px">ไม่มีข้อมูล</td></tr>'}
-                </tbody>
-              </table></div>
+          <div class="table-container">
+            <div style="padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">
+              <i class="ti ti-flame" style="color:var(--red)"></i> Top CPU Processes
             </div>
+            <div class="table-wrap"><table>
+              <thead><tr><th>Process</th><th>CPU%</th><th></th></tr></thead>
+              <tbody>
+                ${top.length ? top.slice(0,10).map(p => {
+                  const col = p.cpu>50?'var(--red)':p.cpu>20?'var(--amber)':'var(--text2)';
+                  return `<tr><td style="font-size:11px;font-family:var(--mono)">${p.name}</td>
+                    <td><b style="color:${col}">${p.cpu}%</b></td>
+                    <td style="min-width:70px"><div style="height:4px;background:var(--bg4);border-radius:2px;overflow:hidden"><div style="width:${Math.min(100,p.cpu*2)}%;height:100%;background:${col};border-radius:2px"></div></div></td>
+                  </tr>`;
+                }).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text3);padding:16px">ไม่มีข้อมูล</td></tr>'}
+              </tbody>
+            </table></div>
           </div>
         </div>
-        ${disk.length===0&&php.length===0?`<div style="margin-top:14px;padding:14px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);font-size:12px;color:var(--text2)">
-          <b>Raw Output:</b><br><pre style="font-size:10px;margin-top:8px;color:var(--text3);white-space:pre-wrap">${r.output||'ไม่มีข้อมูล'}</pre>
-        </div>`:''}
       `;
     }
     panelsDiv.appendChild(panel);
