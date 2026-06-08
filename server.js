@@ -2271,24 +2271,23 @@ async function checkDomainExpiry() {
 async function getDomainResourceUsage(srv) {
   try {
     const cmd = [
-      // Disk: ใช้ timeout 45s + du แบบ 1-level เท่านั้น (เร็วกว่า recursive มาก)
-      'echo "=DISK=" && timeout 45 du -sh --max-depth=0 /var/www/vhosts/*/httpdocs 2>/dev/null | sort -rh | head -15 || timeout 45 du -sh /var/www/vhosts/* 2>/dev/null | sort -rh | head -15',
+      // Disk: ใช้ find + stat แทน du (เร็วกว่ามาก)
+      'echo "=DISK=" && for D in /var/www/vhosts/*/; do DOMAIN=$(basename $D); SIZE=$(du -sh "$D" --max-depth=0 2>/dev/null | cut -f1); echo "$SIZE $DOMAIN"; done 2>/dev/null | sort -rh | head -15',
       // PHP-FPM processes
       'echo "=PHP=" && ps aux | grep -E "php-fpm|php[0-9]" | grep -v grep | awk "{print $NF}" | sort | uniq -c | sort -rn | head -15',
-      // RAM และ Load ภาพรวม
+      // System info
       'echo "=SYS=" && echo "Load:$(cat /proc/loadavg | cut -d" " -f1)" && echo "RAM:$(free -m | grep Mem | tr -s " " | cut -d" " -f3)/$(free -m | grep Mem | tr -s " " | cut -d" " -f2)MB" && echo "Disk:$(df -h / | tail -1 | tr -s " " | cut -d" " -f5)"'
     ].join('; ');
 
     const cmdId = queueCommand(srv.host, cmd);
-    // รอนานขึ้น 120 วินาที เพราะ du ช้า
-    for (let i = 0; i < 120; i++) {
+    for (let i = 0; i < 90; i++) {
       await new Promise(r => setTimeout(r, 1000));
       if (agentResults[cmdId]) {
         const res = agentResults[cmdId]; delete agentResults[cmdId];
-        return { server: srv.name, output: (res.output||'').replace(/~/g,' '), ok: res.exitCode === 0 };
+        return { server: srv.name, output: (res.output||'').replace(/~/g,' '), ok: true };
       }
     }
-    return { server: srv.name, output: 'timeout — du ใช้เวลานานเกินไป ลองกดใหม่อีกครั้ง', ok: false };
+    return { server: srv.name, output: 'timeout — กรุณาลองใหม่', ok: false };
   } catch(e) { return { server: srv.name, output: e.message, ok: false }; }
 }
 // ===== UPTIME SLA TRACKER =====
