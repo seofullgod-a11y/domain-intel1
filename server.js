@@ -469,7 +469,7 @@ async function autoFix(domainObj, prevStatus) {
       const idx = memoryDomains.findIndex(d => d.domain === domain);
       if (idx !== -1) { memoryDomains[idx].pleskActive = true; memoryDomains[idx].pleskStatus = 0; }
       console.log(`[AutoFix] Unsuspend ${domain} OK`);
-      sendTelegram(`🔧 <b>Auto-Fix: Unsuspend Plesk สำเร็จ!</b>
+      smartAlert('info', `🔧 Auto-Fix: Unsuspend Plesk สำเร็จ</b>
 🌐 โดเมน: <code>${domain}</code>
 ✅ เปิดใช้งานแล้ว
 🕐 ${new Date().toLocaleString('th-TH')}`);
@@ -490,7 +490,7 @@ async function autoFix(domainObj, prevStatus) {
     const zoneId = await pauseCloudflareZone(domain);
     if (zoneId) {
       console.log(`[AutoFix] Pause CF ${domain} OK`);
-      sendTelegram(`☁️ <b>Auto-Fix: Pause Cloudflare สำเร็จ!</b>
+      smartAlert('info', `☁️ Auto-Fix: Pause Cloudflare สำเร็จ</b>
 🌐 โดเมน: <code>${domain}</code>
 ⚡ Error: CF ${code}
 ✅ Traffic ไป Origin โดยตรงแล้ว
@@ -514,7 +514,7 @@ async function autoFix(domainObj, prevStatus) {
     }
   }
 
-  if (isNewDown && !fixed) sendTelegram(`🚨 <b>โดเมนล่ม!</b>
+  if (isNewDown && !fixed) smartAlert('critical', `🚨 โดเมนล่ม
 🌐 โดเมน: <code>${domain}</code>
 ❌ สาเหตุ: ${domainObj.error || 'HTTP ' + code}
 ⏱️ Response: ${domainObj.responseTime}ms
@@ -940,7 +940,7 @@ async function restartService(srv, serviceName) {
     // Plesk API: POST /server/services/{name}/restart
     const result = await pleskRequest('POST', `/server/services/${serviceName}/restart`, null, srv);
     if (result?.status === 200) {
-      sendTelegram(`🔄 Restart ${serviceName} บน ${srv.name} สำเร็จ`);
+      smartAlert('info', `🔄 Restart ${serviceName} บน ${srv.name} สำเร็จ`);
       return { success: true };
     }
     return { success: false, error: result?.data };
@@ -961,7 +961,7 @@ async function checkServerHealth() {
       const stopped = svcList.filter(s => s.status !== 'running' && s.status !== 'active');
       for (const svc of stopped) {
         console.log(`[Health] ${srv.name}: ${svc.name} หยุดทำงาน! กำลัง restart...`);
-        sendTelegram(`⚠️ <b>${srv.name}</b>: service <code>${svc.name}</code> หยุดทำงาน\nกำลัง restart อัตโนมัติ...`);
+        smartAlert('warning', `⚠️ ${srv.name}: service ${svc.name} หยุดทำงาน\nกำลัง restart อัตโนมัติ...`);
         await restartService(srv, svc.name);
       }
     } catch(e) {
@@ -1158,7 +1158,7 @@ async function handleRequest(req, res) {
       if (imported > 0) {
         await saveToSheets(memoryDomains);
         console.log('[GSC] Import', imported, 'domains from GSC');
-        sendTelegram('📥 <b>GSC Import เสร็จ!</b>\n✅ เพิ่ม ' + imported + ' โดเมนจาก GSC\nรวมทั้งหมด: ' + memoryDomains.length + ' โดเมน');
+        smartAlert('info', '📥 GSC Import เสร็จ\n✅ เพิ่ม ' + imported + ' โดเมนจาก GSC\nรวมทั้งหมด: ' + memoryDomains.length + ' โดเมน');
       }
 
       json(res, {
@@ -1224,7 +1224,7 @@ async function handleRequest(req, res) {
       }
       await saveToSheets(memoryDomains);
       console.log('[GSC] sync-all done:', synced, 'in GSC');
-      sendTelegram('✅ <b>GSC Sync เสร็จ!</b>\n📊 ' + synced + ' โดเมนใน GSC');
+      smartAlert('info', '✅ GSC Sync เสร็จ\n📊 ' + synced + ' โดเมนใน GSC');
     })().catch(e => console.error('[GSC] sync-all error:', e.message));
     json(res, { success: true, message: 'Sync GSC กำลังทำงาน...' });
     return;
@@ -1275,7 +1275,7 @@ async function handleRequest(req, res) {
     // แจ้ง Telegram สรุป
     const fixed = results.filter(r => r.success && r.message !== 'ไม่มีการแก้ไข').length;
     if (fixed > 0) {
-      sendTelegram(`🔧 <b>Bulk Auto-Fix สำเร็จ!</b>
+      smartAlert('info', `🔧 Bulk Auto-Fix สำเร็จ</b>
 ✅ แก้ไขได้: ${fixed} โดเมน
 📋 ทั้งหมด: ${domains.length} โดเมน
 🕐 ${new Date().toLocaleString('th-TH')}`);
@@ -1298,7 +1298,7 @@ async function handleRequest(req, res) {
         memoryDomains[idx].pleskActive = true;
         memoryDomains[idx].pleskStatus = 0;
         actions.push('Unsuspend Plesk สำเร็จ');
-        sendTelegram(`🔧 <b>Auto-Fix สำเร็จ!</b>
+        smartAlert('info', `🔧 Auto-Fix สำเร็จ</b>
 🌐 โดเมน: <code>${domain}</code>
 ⚡ การดำเนินการ: Unsuspend ผ่าน Plesk
 ✅ สถานะ: เปิดใช้งานแล้ว
@@ -1313,7 +1313,7 @@ async function handleRequest(req, res) {
       const zoneId = await pauseCloudflareZone(domain);
       if (zoneId) {
         actions.push('Pause Cloudflare สำเร็จ');
-        sendTelegram(`☁️ <b>Auto-Fix Cloudflare!</b>
+        smartAlert('warning', `☁️ Auto-Fix Cloudflare</b>
 🌐 โดเมน: <code>${domain}</code>
 ⚡ การดำเนินการ: Pause Cloudflare (Error ${domainObj.statusCode})
 ✅ Traffic ไป Origin โดยตรงแล้ว
@@ -1323,7 +1323,7 @@ async function handleRequest(req, res) {
           const r = await checkDomain(domain);
           if (r.status === 'up') {
             await unpauseCloudflareZone(domain, zoneId);
-            sendTelegram(`✅ <b>โดเมนกลับมาแล้ว!</b>
+            smartAlert('info', `✅ โดเมนกลับมาแล้ว
 🌐 โดเมน: <code>${domain}</code>
 ☁️ Unpause Cloudflare แล้ว
 🕐 ${new Date().toLocaleString('th-TH')}`);
@@ -1583,10 +1583,10 @@ async function handleRequest(req, res) {
           "systemctl restart sw-engine 2>&1; echo 'Done'"
         );
         results.push({ server: srv.name, success: true, output: result.output });
-        sendTelegram(`✅ Fix PHP-FPM <b>${srv.name}</b> สำเร็จ`);
+        smartAlert('info', '✅ Fix PHP-FPM ' + srv.name + ' สำเร็จ');
       } catch(e) {
         results.push({ server: srv.name, success: false, error: e.message });
-        sendTelegram(`❌ Fix PHP-FPM <b>${srv.name}</b> ล้มเหลว: ${e.message}`);
+        smartAlert('warning', `❌ Fix PHP-FPM ${srv.name} ล้มเหลว: ${e.message}`);
       }
     }
     json(res, { results });
@@ -1682,7 +1682,7 @@ async function proactiveMonitor() {
         const disk = parseInt((output.match(/DISK:(\d+)/) || [])[1] || 0);
         
         if (load > 15) {
-          sendTelegram(`⚠️ <b>Proactive Alert!</b>
+          smartAlert('warning', `⚠️ Proactive Alert
 🖥️ ${srv.name}: Load Average สูง <b>${load}</b>
 กำลัง Fix อัตโนมัติ...`);
           queueCommand(srv.host, 
@@ -1691,7 +1691,7 @@ async function proactiveMonitor() {
           );
         }
         if (disk > 80) {
-          sendTelegram(`⚠️ <b>Disk Warning!</b>
+          smartAlert('warning', `⚠️ Disk Warning
 🖥️ ${srv.name}: Disk ใช้ไป <b>${disk}%</b>
 กรุณาตรวจสอบ!`);
         }
@@ -2024,8 +2024,8 @@ async function checkBlacklists() {
     if (listed.length > 0) {
       if (!blacklistCooldown[key] || Date.now() - blacklistCooldown[key] > 6*60*60*1000) {
         blacklistCooldown[key] = Date.now();
-        sendTelegram(
-          '🚨 <b>IP Blacklisted!</b>\n' +
+        smartAlert('critical',
+          '🚨 IP Blacklisted!\n' +
           '🖥️ ' + (srv?.name || ip) + ' (' + ip + ')\n' +
           '📋 พบใน: ' + listed.join(', ') + '\n' +
           '💡 ต้องติดต่อ provider เพื่อ delist ด่วน'
@@ -2111,8 +2111,8 @@ async function checkGSCTrafficDrop() {
         const key = d.domain;
         if (!gscDropCooldown[key] || Date.now() - gscDropCooldown[key] > 7*24*60*60*1000) {
           gscDropCooldown[key] = Date.now();
-          sendTelegram(
-            '📉 <b>Traffic Drop Alert!</b>\n' +
+          smartAlert('warning',
+            '📉 Traffic Drop Alert\n' +
             '🌐 ' + d.domain + '\n' +
             '📊 7 วันนี้: ' + recent7 + ' clicks\n' +
             '📊 7 วันก่อน: ' + prev7 + ' clicks\n' +
@@ -2144,7 +2144,7 @@ function trackRequest(ip) {
   if (requestCounts[ip].count > 500 && !blockedIPs.has(ip)) {
     blockedIPs.add(ip);
     console.log(`[DDoS] บล็อก IP: ${ip} (${requestCounts[ip].count} req/min)`);
-    sendTelegram(`🚨 <b>DDoS Detection!</b>
+    smartAlert('critical', `🚨 DDoS Detection
 🌐 IP: <code>${ip}</code>
 📊 ${requestCounts[ip].count} requests/นาที
 🛡️ บล็อกอัตโนมัติแล้ว`);
@@ -2508,7 +2508,7 @@ async function applyAllPhpFpmOndemand() {
     await new Promise(r => setTimeout(r, 5000));
   }
   const msg = results.map(r => (r.ok?'✅':'❌') + ' ' + r.server + ': ' + r.changed + ' configs').join('\n');
-  sendTelegram('⚙️ <b>PHP-FPM Ondemand Done!</b>\n' + msg + '\n\n✅ pm=ondemand + idle=10s → Load ลดลง');
+  smartAlert('info', '⚙️ PHP-FPM Ondemand Done\n' + msg + '\n\n✅ pm=ondemand + idle=10s → Load ลดลง');
   return results;
 }
 
@@ -2536,7 +2536,7 @@ async function diskCleanup(srv, diskPct) {
         const output = (result.output || '').replace(/~/g, ' ');
         const diskAfter = parseInt((output.match(/DISK_AFTER:(\d+)/) || [])[1] || diskPct);
         console.log('[DiskCleanup] ' + srv.name + ': ' + diskPct + '% → ' + diskAfter + '%');
-        sendTelegram('🧹 <b>Disk Cleanup!</b>\n🖥️ ' + srv.name + '\n📊 ' + diskPct + '% → ' + diskAfter + '%\n✅ ข้อมูลโดเมนปลอดภัย');
+        smartAlert('info', '🧹 Disk Cleanup สำเร็จ\n🖥️ ' + srv.name + '\n📊 ' + diskPct + '% → ' + diskAfter + '%\n✅ ข้อมูลโดเมนปลอดภัย');
         return { ok: true, diskAfter };
       }
     }
@@ -2553,10 +2553,10 @@ async function checkAndCleanDisk() {
       delete agentResults[cmdId];
       const diskPct = parseInt((result.output||'').match(/DISK:(\d+)/)?.[1] || 0);
       if (diskPct >= DISK_CRITICAL_THRESHOLD) {
-        sendTelegram('🚨 <b>Disk Critical!</b>\n🖥️ ' + srv.name + ': <b>' + diskPct + '%</b>\n🧹 Auto-Cleanup...');
+        smartAlert('critical', '🚨 Disk Critical!\n🖥️ ' + srv.name + ': <b>' + diskPct + '%</b>\n🧹 Auto-Cleanup...');
         await diskCleanup(srv, diskPct);
       } else if (diskPct >= DISK_CLEANUP_THRESHOLD) {
-        sendTelegram('⚠️ <b>Disk Warning!</b>\n🖥️ ' + srv.name + ': <b>' + diskPct + '%</b>\n🧹 Auto-Cleanup...');
+        smartAlert('warning', '⚠️ Disk Warning\n🖥️ ' + srv.name + ': <b>' + diskPct + '%</b>\n🧹 Auto-Cleanup...');
         await diskCleanup(srv, diskPct);
       }
     } catch(e) {}
@@ -2615,7 +2615,7 @@ async function limitAllPhpFpm() {
     results.push({ server: srv.name, ok, changed });
     await new Promise(r => setTimeout(r, 3000));
   }
-  sendTelegram('⚙️ <b>PHP-FPM Limiter เสร็จ!</b>\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server+': '+r.changed+' domains').join('\n'));
+  smartAlert('info', '⚙️ PHP-FPM Limiter เสร็จ\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server+': '+r.changed+' domains').join('\n'));
   return results;
 }
 
@@ -2662,7 +2662,7 @@ async function installAllApacheWatchdogs() {
     results.push({ server: srv.name, ok });
     await new Promise(r => setTimeout(r, 2000));
   }
-  sendTelegram('🛡️ <b>Apache Watchdog ติดตั้งแล้ว!</b>\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server).join('\n'));
+  smartAlert('info', '🛡️ Apache Watchdog ติดตั้งแล้ว\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server).join('\n'));
   return results;
 }
 
@@ -2691,8 +2691,80 @@ async function setupAllCloudflareWhitelists() {
     results.push({ server: srv.name, ok });
     await new Promise(r => setTimeout(r, 3000));
   }
-  sendTelegram('🛡️ <b>Cloudflare Whitelist Done!</b>\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server).join('\n') + '\n✅ ป้องกัน Error 521');
+  smartAlert('info', '🛡️ Cloudflare Whitelist Done\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server).join('\n') + '\n✅ ป้องกัน Error 521');
   return results;
+}
+
+
+// ===== SMART ALERT SYSTEM =====
+// 🚨 Critical → ส่งทันที (cooldown 1 ชั่วโมง)
+// ⚠️ Warning  → รวม digest ทุก 30 นาที
+// ℹ️ Info     → รวม daily summary เท่านั้น
+
+const alertCooldowns = {};   // { key: lastSentTime }
+const warningDigest  = [];   // รอส่งใน digest
+const infoDigest     = [];   // รอส่งใน daily
+const CRITICAL_COOLDOWN = 60 * 60 * 1000;    // 1 ชั่วโมง
+const WARNING_COOLDOWN  = 30 * 60 * 1000;    // 30 นาที
+
+function smartAlert(level, message, key) {
+  const now = Date.now();
+  const cooldownKey = key || message.slice(0, 50);
+
+  if (level === 'critical') {
+    // ส่งทันที ถ้าไม่อยู่ใน cooldown
+    if (!alertCooldowns[cooldownKey] || now - alertCooldowns[cooldownKey] > CRITICAL_COOLDOWN) {
+      alertCooldowns[cooldownKey] = now;
+      sendTelegram('🚨 <b>CRITICAL</b>\n' + message);
+      console.log('[Alert] CRITICAL:', message.slice(0, 60));
+    }
+  } else if (level === 'warning') {
+    // เพิ่มเข้า digest ถ้าไม่ซ้ำ
+    if (!alertCooldowns['w:'+cooldownKey] || now - alertCooldowns['w:'+cooldownKey] > WARNING_COOLDOWN) {
+      alertCooldowns['w:'+cooldownKey] = now;
+      warningDigest.push({ time: new Date().toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'}), msg: message });
+      console.log('[Alert] Warning queued:', message.slice(0, 60));
+    }
+  } else {
+    // info → เก็บใน daily เท่านั้น
+    infoDigest.push({ time: new Date().toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'}), msg: message });
+    console.log('[Alert] Info (silent):', message.slice(0, 60));
+  }
+}
+
+// ส่ง Warning Digest ทุก 30 นาที
+function sendWarningDigest() {
+  if (!warningDigest.length) return;
+  const items = warningDigest.splice(0, warningDigest.length);
+  const grouped = {};
+  items.forEach(i => {
+    const key = i.msg.split('\n')[0];
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(i.time);
+  });
+  let msg = '⚠️ <b>Warning Digest</b> (30 นาทีล่าสุด)\n\n';
+  Object.entries(grouped).forEach(([k, times]) => {
+    msg += '• ' + k + (times.length > 1 ? ' (' + times.length + ' ครั้ง)' : '') + '\n';
+  });
+  msg += '\n🕐 ' + new Date().toLocaleTimeString('th-TH');
+  sendTelegram(msg);
+  console.log('[Digest] ส่ง warning digest', items.length, 'รายการ');
+}
+
+// ส่ง Daily Summary ตอนเที่ยงคืน
+function sendDailySummary() {
+  const infoItems = infoDigest.splice(0, infoDigest.length);
+  const warnings = []; // เก็บ warning ที่ผ่านมาวันนี้
+  const up = memoryDomains.filter(d => d.status === 'up').length;
+  const down = memoryDomains.filter(d => d.status === 'down').length;
+
+  let msg = '📊 <b>Daily Summary</b>\n';
+  msg += '📅 ' + new Date().toLocaleDateString('th-TH') + '\n\n';
+  msg += '🌐 โดเมน Up: <b>' + up + '</b> | Down: <b>' + down + '</b>\n';
+  msg += '🔧 Auto-heal: ' + (weeklyStats?.fixed || 0) + ' ครั้ง\n';
+  if (infoItems.length) msg += 'ℹ️ Events: ' + infoItems.length + ' รายการ (ดูใน DomainIntel)\n';
+  msg += '\n✅ ระบบทำงานปกติ';
+  sendTelegram(msg);
 }
 
 server.listen(PORT, async () => {
@@ -2736,6 +2808,18 @@ server.listen(PORT, async () => {
   setTimeout(async () => { await setupAllCloudflareWhitelists(); }, 8 * 60 * 1000); // CF Whitelist หลัง 8 นาที
   setInterval(setupAllCloudflareWhitelists, 24 * 60 * 60 * 1000);
 
+  setInterval(sendWarningDigest, 30 * 60 * 1000); // Warning digest ทุก 30 นาที
+
+  // Daily summary ตอนเที่ยงคืน
+  const scheduleDailySummary = () => {
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    midnight.setDate(midnight.getDate() + 1);
+    setTimeout(() => { sendDailySummary(); scheduleDailySummary(); }, midnight - now);
+  };
+  scheduleDailySummary();
+
   console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
 
   // Auto Sync GSC ทุก 24 ชั่วโมง (ตี 2)
@@ -2757,7 +2841,7 @@ server.listen(PORT, async () => {
       }
       await saveToSheets(memoryDomains);
       console.log('[GSC] Auto sync เสร็จ:', synced, 'domains');
-      sendTelegram('🔄 <b>GSC Auto Sync เสร็จ!</b>\n📊 ' + synced + ' โดเมน\n⏱️ ' + new Date().toLocaleString('th-TH'));
+      smartAlert('info', '🔄 GSC Auto Sync เสร็จ\n📊 ' + synced + ' โดเมน\n⏱️ ' + new Date().toLocaleString('th-TH'));
       scheduleGSCSync(); // ตั้งรอบถัดไป
     }, ms);
   };
