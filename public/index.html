@@ -1058,11 +1058,17 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
         <!-- Filters + Table -->
         <div>
-          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
+            <button class="btn btn-sm" onclick="window._slaFilter='good';renderSLATable()" id="sla-f-good" style="background:var(--teal);color:#fff;border-color:var(--teal)">✅ Up &amp; ดี</button>
             <button class="btn btn-sm" onclick="window._slaFilter='all';renderSLATable()" id="sla-f-all">ทั้งหมด</button>
-            <button class="btn btn-sm" onclick="window._slaFilter='under99';renderSLATable()" id="sla-f-99">SLA &lt; 99%</button>
-            <button class="btn btn-sm" onclick="window._slaFilter='under95';renderSLATable()" id="sla-f-95">SLA &lt; 95%</button>
-            <button class="btn btn-sm" onclick="window._slaFilter='down';renderSLATable()" id="sla-f-down">Down ตอนนี้</button>
+            <button class="btn btn-sm" onclick="window._slaFilter='under99';renderSLATable()" id="sla-f-under99">⚠️ SLA &lt; 99%</button>
+            <button class="btn btn-sm" onclick="window._slaFilter='under95';renderSLATable()" id="sla-f-under95">🔴 SLA &lt; 95%</button>
+            <button class="btn btn-sm" onclick="window._slaFilter='down';renderSLATable()" id="sla-f-down">🔴 Down ตอนนี้</button>
+            <div style="margin-left:auto">
+              <input id="sla-search" type="text" placeholder="🔍 ค้นหาโดเมน..." 
+                style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;width:200px;outline:none"
+                oninput="renderSLATable()">
+            </div>
           </div>
           <div class="table-container" id="sla-table-wrap">
             <div style="text-align:center;padding:40px;color:var(--text3)">
@@ -3975,17 +3981,36 @@ function renderSLATable() {
     return;
   }
 
-  const filter = window._slaFilter || 'all';
+  const filter = window._slaFilter || 'good';
+  const search = (document.getElementById('sla-search')?.value||'').toLowerCase();
+
   let display = [...slaData];
+  if (filter === 'good')    display = display.filter(d => d.status==='up' && (d.d30.uptime??100) >= 95);
   if (filter === 'under99') display = display.filter(d => (d.d30.uptime??100) < 99);
   if (filter === 'under95') display = display.filter(d => (d.d30.uptime??100) < 95);
   if (filter === 'down')    display = display.filter(d => d.status === 'down');
-  display.sort((a,b) => (a.d30.uptime??100) - (b.d30.uptime??100));
+  if (filter === 'all')     display = [...slaData];
+  if (search) display = display.filter(d => d.domain.toLowerCase().includes(search));
 
-  // active filter buttons
-  ['all','99','95','down'].forEach(k => {
+  // sort: Up ก่อน, เรียง SLA สูงสุด
+  display.sort((a,b) => {
+    if (a.status !== b.status) return a.status==='up' ? -1 : 1;
+    return (b.d30.uptime??100) - (a.d30.uptime??100);
+  });
+
+  // update filter buttons
+  ['good','all','under99','under95','down'].forEach(k => {
     const btn = document.getElementById('sla-f-' + k);
-    if (btn) btn.style.cssText = 'background:' + (filter===(k==='all'?'all':k==='down'?'down':'under'+k)?'var(--teal)':'') + ';color:' + (filter===(k==='all'?'all':k==='down'?'down':'under'+k)?'#fff':'') + ';border-color:' + (filter===(k==='all'?'all':k==='down'?'down':'under'+k)?'var(--teal)':'var(--border2)');
+    if (!btn) return;
+    if (filter === k) {
+      btn.style.background = 'var(--teal)';
+      btn.style.color = '#fff';
+      btn.style.borderColor = 'var(--teal)';
+    } else {
+      btn.style.background = '';
+      btn.style.color = '';
+      btn.style.borderColor = '';
+    }
   });
 
   if (!display.length) {
@@ -3993,26 +4018,32 @@ function renderSLATable() {
     return;
   }
 
+  const slaBadge = (pct) => {
+    if (pct === null || pct === undefined) return '<span style="color:var(--text3);font-size:11px">—</span>';
+    const color = pct>=99?'var(--green)':pct>=95?'var(--teal)':pct>=50?'var(--amber)':'var(--red)';
+    const icon = pct>=99?'🟢':pct>=95?'🔵':pct>=50?'🟡':'🔴';
+    return `<span style="font-weight:700;color:${color};font-size:13px">${icon} ${pct}%</span>`;
+  };
+
   el.innerHTML = `<div class="table-wrap"><table><thead><tr>
-    <th>โดเมน</th>
+    <th style="width:35%">โดเมน</th>
     <th>Status</th>
     <th>SLA 7 วัน</th>
     <th>SLA 30 วัน</th>
-    <th>เช็คแล้ว (30 วัน)</th>
-    <th>คุณภาพ</th>
+    <th>เช็คล่าสุด</th>
   </tr></thead><tbody>
     ${display.map(d => {
-      const s7 = d.d7.uptime;
       const s30 = d.d30.uptime;
-      const grade = (s30??100) >= 99.9 ? 'Excellent' : (s30??100) >= 99 ? 'Good' : (s30??100) >= 95 ? 'Fair' : 'Poor';
-      const gradeColor = grade==='Excellent'?'var(--green)':grade==='Good'?'var(--teal)':grade==='Fair'?'var(--amber)':'var(--red)';
-      return `<tr>
-        <td class="domain-name">${d.domain}</td>
-        <td>${d.status==='up'?'<span style="color:var(--green)">✅ Up</span>':'<span style="color:var(--red)">🔴 Down</span>'}</td>
-        <td style="min-width:140px">${slaBar(s7)}</td>
-        <td style="min-width:140px">${slaBar(s30)}</td>
-        <td style="font-size:11px;color:var(--text2)">${d.d30.checks||0} ครั้ง</td>
-        <td><span style="font-size:11px;font-weight:600;color:${gradeColor}">${grade}</span></td>
+      const s7 = d.d7.uptime;
+      const rowBg = d.status==='down' ? 'background:rgba(239,68,68,0.04)' : '';
+      return `<tr style="${rowBg}">
+        <td class="domain-name" style="font-size:12px">${d.domain}</td>
+        <td>${d.status==='up'
+          ? '<span style="color:var(--green);font-weight:600">✅ Up</span>'
+          : '<span style="color:var(--red);font-weight:600">🔴 Down</span>'}</td>
+        <td>${slaBadge(s7)}</td>
+        <td>${slaBadge(s30)}</td>
+        <td style="font-size:11px;color:var(--text3)">${d.d30.checks||0} ครั้ง</td>
       </tr>`;
     }).join('')}
   </tbody></table></div>`;
@@ -4023,22 +4054,26 @@ async function loadResourceUsage() {
   const el = document.getElementById('resources-content');
   const lbl = document.getElementById('res-last-updated');
 
-  // ดึงรายชื่อ servers จาก pleskServerConfigs ที่โหลดไว้แล้ว
+  // ดึงรายชื่อ servers — extract เป็น string เสมอ
+  const extractName = (s) => {
+    if (typeof s === 'string') return s;
+    if (s && typeof s === 'object') return s.name || s.host || JSON.stringify(s);
+    return String(s);
+  };
+
   let servers = [];
   if (window._pleskServerConfigs && window._pleskServerConfigs.length) {
-    servers = window._pleskServerConfigs.map(s => s.name || s);
-  } else {
-    // fallback: ดึงจาก API
-    try {
-      const cfgRes = await fetch(`${API}/api/domains`);
-      const cfgData = await cfgRes.json();
-      if (cfgData.pleskServerConfigs) {
-        window._pleskServerConfigs = cfgData.pleskServerConfigs;
-        servers = cfgData.pleskServerConfigs.map(s => s.name);
-      }
-    } catch(e) {}
-    if (!servers.length) servers = ['Server 1','Server 2','Server 3','Server 4','Server 5'];
+    servers = window._pleskServerConfigs.map(extractName).filter(Boolean);
   }
+  if (!servers.length) {
+    // ดึงจาก unique server names ใน allDomains
+    const fromDomains = [...new Set((allDomains||[]).map(d => d.pleskServer).filter(Boolean))];
+    if (fromDomains.length) servers = fromDomains;
+  }
+  if (!servers.length) {
+    servers = ['Server 1','Server 2','Server 3','Server 4','Server 5'];
+  }
+  console.log('[ResourceUsage] servers:', servers);
 
   // แสดง skeleton tabs ก่อน
   const results = servers.map(s => ({ server: s, ok: false, output: '', loading: true }));
