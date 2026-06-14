@@ -1360,6 +1360,49 @@ async function handleRequest(req, res) {
   }
 
 
+
+  // Health Scores API
+  if (req.method === 'GET' && url === '/api/health-scores') {
+    json(res, { success: true, scores: getAllHealthScores(), overallAvg: (() => {
+      const s = getAllHealthScores();
+      return s.length ? Math.round(s.reduce((a,b) => a+b.score, 0) / s.length) : 0;
+    })() });
+    return;
+  }
+
+  // Event Log API
+  if (req.method === 'GET' && url.startsWith('/api/events')) {
+    const u = new URL('http://x' + url);
+    const type = u.searchParams.get('type');
+    const limit = parseInt(u.searchParams.get('limit') || '100');
+    let events = eventLog;
+    if (type && type !== 'all') events = events.filter(e => e.type === type);
+    json(res, { success: true, events: events.slice(0, limit), total: eventLog.length });
+    return;
+  }
+
+  // Response Time History API
+  if (req.method === 'GET' && url.startsWith('/api/perf/')) {
+    const domain = decodeURIComponent(url.split('/api/perf/')[1]);
+    const hourly = perfHourly[domain] || {};
+    const data = Object.entries(hourly).sort().map(([hour, v]) => ({
+      hour, avg: Math.round(v.sum / v.count)
+    }));
+    json(res, { success: true, domain, data });
+    return;
+  }
+
+  // Slow domains API (read-only)
+  if (req.method === 'GET' && url === '/api/perf-slow') {
+    const slow = memoryDomains
+      .filter(d => d.responseTime > 2000 && d.status === 'up')
+      .sort((a,b) => b.responseTime - a.responseTime)
+      .slice(0, 30)
+      .map(d => ({ domain: d.domain, responseTime: d.responseTime, server: d.pleskServer, status: d.status }));
+    json(res, { success: true, slow });
+    return;
+  }
+
   // SLA Stats API
   if (req.method === 'GET' && url === '/api/sla/stats') {
     json(res, { success: true, stats: getAllSLAStats(), history: uptimeHistory });
@@ -2343,14 +2386,22 @@ function getAllSLAStats() {
 // ===== PERFORMANCE MONITOR =====
 const performanceHistory = {}; // { domain: [responseTimes] }
 
+const perfHourly = {}; // เก็บค่าเฉลี่ยรายชั่วโมง สำหรับ chart
+
 function trackPerformance(domain, responseTime) {
   if (!performanceHistory[domain]) performanceHistory[domain] = [];
   performanceHistory[domain].push({ time: responseTime, at: Date.now() });
-  
-  // Keep last 10 readings
-  if (performanceHistory[domain].length > 10) {
-    performanceHistory[domain].shift();
-  }
+  if (performanceHistory[domain].length > 10) performanceHistory[domain].shift();
+
+  // เก็บ hourly average (สำหรับ trend chart - 48 ชั่วโมงล่าสุด)
+  const hourKey = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
+  if (!perfHourly[domain]) perfHourly[domain] = {};
+  if (!perfHourly[domain][hourKey]) perfHourly[domain][hourKey] = { sum: 0, count: 0 };
+  perfHourly[domain][hourKey].sum += responseTime;
+  perfHourly[domain][hourKey].count++;
+  // เก็บแค่ 48 ชั่วโมง
+  const keys = Object.keys(perfHourly[domain]).sort();
+  while (keys.length > 48) { delete perfHourly[domain][keys.shift()]; }
   
   // Alert if consistently slow (avg > 5000ms over last 3 checks)
   const recent = performanceHistory[domain].slice(-3);
@@ -2364,17 +2415,8 @@ function trackPerformance(domain, responseTime) {
       const lastAlert = performanceHistory[domain].lastAlert || 0;
       if (Date.now() - lastAlert > 60 * 60 * 1000) {
         performanceHistory[domain].lastAlert = Date.now();
-        sendTelegram(
-          `🐌 <b>Performance Warning!</b>
-` +
-          `🌐 <code>${domain}</code>
-` +
-          `⏱️ Response time เฉลี่ย: ${Math.round(avg)}ms
-` +
-          `🖥️ Server: ${srv}
-` +
-          `💡 ควรตรวจสอบ server load`
-        );
+        smartAlert('warning', '🐌 Performance Warning\n🌐 ' + domain + '\n⏱️ Response เฉลี่ย: ' + Math.round(avg) + 'ms\n🖥️ Server: ' + srv, 'perf:' + domain);
+        logEvent('slow', domain + ' ช้าผิดปกติ ' + Math.round(avg) + 'ms', { domain, avgMs: Math.round(avg), server: srv });
       }
     }
   }
@@ -2710,6 +2752,8 @@ const WARNING_COOLDOWN  = 30 * 60 * 1000;    // 30 นาที
 function smartAlert(level, message, key) {
   const now = Date.now();
   const cooldownKey = key || message.slice(0, 50);
+  // เก็บทุก alert เป็น event (สำหรับ timeline)
+  try { logEvent(level, message.split('\n')[0], { level, key: cooldownKey }); } catch(e) {}
 
   if (level === 'critical') {
     // ส่งทันที ถ้าไม่อยู่ใน cooldown
@@ -2765,6 +2809,71 @@ function sendDailySummary() {
   if (infoItems.length) msg += 'ℹ️ Events: ' + infoItems.length + ' รายการ (ดูใน DomainIntel)\n';
   msg += '\n✅ ระบบทำงานปกติ';
   sendTelegram(msg);
+}
+
+
+// ===== EVENT LOG / AUDIT TRAIL =====
+const eventLog = []; // เก็บ events ล่าสุด (in-memory, ไม่กระทบโฮส)
+const MAX_EVENTS = 500;
+
+function logEvent(type, message, meta) {
+  const event = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    type, // 'down', 'up', 'fix', 'ssl', 'sync', 'alert', 'expiry', 'blacklist'
+    message,
+    meta: meta || {},
+    at: new Date().toISOString()
+  };
+  eventLog.unshift(event);
+  if (eventLog.length > MAX_EVENTS) eventLog.pop();
+  return event;
+}
+
+// ===== HEALTH SCORE (คำนวณจากข้อมูลที่มี - read only) =====
+function calcServerHealthScore(serverName) {
+  // หาโดเมนใน server นี้
+  const domains = memoryDomains.filter(d => d.pleskServer === serverName);
+  if (!domains.length) return null;
+
+  const up = domains.filter(d => d.status === 'up').length;
+  const down = domains.filter(d => d.status === 'down').length;
+  const total = domains.length;
+
+  // uptime score (40%)
+  const uptimeScore = total ? (up / total) * 40 : 0;
+
+  // SSL health (20%)
+  const sslOk = domains.filter(d => d.sslDaysLeft === null || d.sslDaysLeft > 14).length;
+  const sslScore = total ? (sslOk / total) * 20 : 20;
+
+  // response time (20%) - เร็ว = คะแนนสูง
+  const withRt = domains.filter(d => d.responseTime > 0);
+  const avgRt = withRt.length ? withRt.reduce((s,d) => s+d.responseTime, 0) / withRt.length : 1000;
+  const rtScore = avgRt < 1000 ? 20 : avgRt < 3000 ? 15 : avgRt < 5000 ? 10 : 5;
+
+  // domain expiry (20%)
+  const expOk = domains.filter(d => d.daysLeft === null || d.daysLeft > 30).length;
+  const expScore = total ? (expOk / total) * 20 : 20;
+
+  const score = Math.round(uptimeScore + sslScore + rtScore + expScore);
+  return {
+    server: serverName,
+    score,
+    grade: score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F',
+    total, up, down,
+    avgResponseTime: Math.round(avgRt),
+    breakdown: {
+      uptime: Math.round(uptimeScore),
+      ssl: Math.round(sslScore),
+      responseTime: rtScore,
+      expiry: Math.round(expScore)
+    }
+  };
+}
+
+function getAllHealthScores() {
+  const servers = [...new Set(memoryDomains.map(d => d.pleskServer).filter(Boolean))];
+  return servers.map(s => calcServerHealthScore(s)).filter(Boolean).sort((a,b) => b.score - a.score);
 }
 
 server.listen(PORT, async () => {
