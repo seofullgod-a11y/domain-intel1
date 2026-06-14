@@ -10,35 +10,39 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
 <style>
 :root {
-  /* ===== DARK MODE (default) ===== */
-  --bg:      #0b1120;
-  --bg2:     #111827;
-  --bg3:     #1a2436;
-  --bg4:     #243048;
-  --border:  rgba(255,255,255,0.07);
-  --border2: rgba(255,255,255,0.13);
-  --text:    #e2e8f0;
-  --text2:   #94a3b8;
-  --text3:   #4a5568;
-  --teal:    #0ea5e9;
-  --teal-dim:rgba(14,165,233,0.12);
-  --green:   #10b981;
-  --green-dim:rgba(16,185,129,0.12);
-  --red:     #ef4444;
-  --red-dim: rgba(239,68,68,0.12);
-  --amber:   #f59e0b;
-  --amber-dim:rgba(245,158,11,0.12);
-  --blue:    #60a5fa;
-  --blue-dim:rgba(96,165,250,0.12);
-  --purple:  #a78bfa;
-  --purple-dim:rgba(167,139,250,0.1);
-  --radius:  8px;
-  --radius-sm: 5px;
+  /* ===== DARK MODE (default) — Black + Emerald/Gold + Glow ===== */
+  --bg:      #0a0a0b;
+  --bg2:     #131316;
+  --bg3:     #1c1c21;
+  --bg4:     #28282f;
+  --border:  rgba(255,255,255,0.06);
+  --border2: rgba(255,255,255,0.12);
+  --text:    #ededf0;
+  --text2:   #9b9ba5;
+  --text3:   #5a5a66;
+  --teal:    #34d399;
+  --teal-dim:rgba(52,211,153,0.12);
+  --green:   #34d399;
+  --green-dim:rgba(52,211,153,0.12);
+  --gold:    #fbbf24;
+  --gold-dim:rgba(251,191,36,0.12);
+  --red:     #f87171;
+  --red-dim: rgba(248,113,113,0.12);
+  --amber:   #fbbf24;
+  --amber-dim:rgba(251,191,36,0.12);
+  --blue:    #38bdf8;
+  --blue-dim:rgba(56,189,248,0.12);
+  --purple:  #c084fc;
+  --purple-dim:rgba(192,132,252,0.12);
+  --radius:  10px;
+  --radius-sm: 6px;
   --sidebar-w: 220px;
   --font: 'IBM Plex Sans Thai', sans-serif;
   --mono: 'IBM Plex Mono', monospace;
-  --shadow: 0 1px 3px rgba(0,0,0,0.4), 0 1px 2px rgba(0,0,0,0.3);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.5);
+  --shadow: 0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 20px rgba(0,0,0,0.6);
+  --glow-green: 0 0 20px rgba(52,211,153,0.15);
+  --glow-gold: 0 0 20px rgba(251,191,36,0.15);
 }
 
 /* ===== LIGHT MODE ===== */
@@ -91,7 +95,7 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 .nav-section { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); padding: 12px 16px 4px; font-weight: 600; }
 .nav-item { display: flex; align-items: center; gap: 9px; padding: 7px 16px; border-radius: 0; border-left: 2px solid transparent; cursor: pointer; color: var(--text2); font-size: 12px; font-family: var(--font); transition: all 0.12s; margin-bottom: 1px; }
 .nav-item:hover { background: var(--bg3); color: var(--text); }
-.nav-item.active { background: rgba(14,165,233,0.1); color: var(--teal); border-left-color: var(--teal); font-weight: 500; }
+.nav-item.active { background: rgba(52,211,153,0.1); color: var(--teal); border-left-color: var(--teal); font-weight: 500; box-shadow: inset 0 0 20px rgba(52,211,153,0.05); }
 .nav-item i { width: 15px; text-align: center; font-size: 14px; flex-shrink: 0; opacity: 0.8; }
 .nav-item.active i { opacity: 1; }
 .nav-badge { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; background: var(--red-dim); color: var(--red); }
@@ -136,14 +140,15 @@ body { font-family: var(--font); background: var(--bg); color: var(--text); font
 
 /* ===== METRIC CARDS ===== */
 .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; margin-bottom: 18px; }
-.metric-card { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; position: relative; overflow: hidden; transition: all 0.15s; box-shadow: var(--shadow); }
+.metric-card { background: linear-gradient(145deg, var(--bg2), var(--bg)); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; position: relative; overflow: hidden; transition: all 0.2s; box-shadow: var(--shadow); }
+.metric-card:hover { border-color: var(--border2); box-shadow: var(--shadow-md), var(--glow-green); transform: translateY(-1px); }
 .metric-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--teal); opacity: 0; transition: opacity 0.15s; }
-.metric-card.highlight-green { border-color: rgba(16,185,129,0.2); }
-.metric-card.highlight-green::after { background: var(--green); opacity: 0.6; }
-.metric-card.highlight-red { border-color: rgba(239,68,68,0.2); }
-.metric-card.highlight-red::after { background: var(--red); opacity: 0.6; }
-.metric-card.highlight-amber { border-color: rgba(245,158,11,0.2); }
-.metric-card.highlight-amber::after { background: var(--amber); opacity: 0.6; }
+.metric-card.highlight-green { border-color: rgba(52,211,153,0.25); box-shadow: var(--shadow), 0 0 24px rgba(52,211,153,0.08); }
+.metric-card.highlight-green::after { background: var(--green); opacity: 0.7; box-shadow: 0 0 12px var(--green); }
+.metric-card.highlight-red { border-color: rgba(248,113,113,0.25); box-shadow: var(--shadow), 0 0 24px rgba(248,113,113,0.08); }
+.metric-card.highlight-red::after { background: var(--red); opacity: 0.7; box-shadow: 0 0 12px var(--red); }
+.metric-card.highlight-amber { border-color: rgba(251,191,36,0.25); box-shadow: var(--shadow), 0 0 24px rgba(251,191,36,0.08); }
+.metric-card.highlight-amber::after { background: var(--amber); opacity: 0.7; box-shadow: 0 0 12px var(--amber); }
 .metric-card.highlight-blue { border-color: rgba(96,165,250,0.2); }
 .metric-card.highlight-blue::after { background: var(--blue); opacity: 0.6; }
 .metric-card.clickable { cursor: pointer; }
@@ -469,6 +474,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
       <div class="nav-item" onclick="showPage('events')">
         <i class="ti ti-history"></i> Event Timeline
+      </div>
+      <div class="nav-item" onclick="showPage('tasks')">
+        <i class="ti ti-layout-kanban"></i> To-Do Board
       </div>
       <div class="nav-item" onclick="showPage('botwatch')">
         <i class="ti ti-shield-check"></i> Bot Watch
@@ -1150,6 +1158,24 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
     </div>
 
+    <!-- TODO KANBAN PAGE -->
+    <div id="page-tasks" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-layout-kanban" style="color:var(--gold)"></i> To-Do Board</div>
+          <div class="topbar-sub">จัดการงานระบบ — ลากการ์ดข้ามคอลัมน์ได้</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn btn-green" onclick="openTaskModal()"><i class="ti ti-plus"></i> เพิ่มงาน</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px">
+        <div id="kanban-board" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start">
+          <div style="text-align:center;padding:40px;color:var(--text3);grid-column:1/-1"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -1159,6 +1185,66 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
 
 <!-- MODALS -->
+<div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center" onclick="if(event.target===this)closeTaskModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:480px;max-width:90vw;box-shadow:var(--shadow-md),var(--glow-green);overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <span id="task-modal-title" style="font-size:15px;font-weight:600;color:var(--text)">เพิ่มงานใหม่</span>
+      <button onclick="closeTaskModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px">✕</button>
+    </div>
+    <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
+      <input type="hidden" id="task-id">
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">ชื่องาน *</label>
+        <input id="task-title" type="text" placeholder="เช่น แก้ SSL noah345.bio"
+          style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
+      </div>
+      <div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">รายละเอียด</label>
+        <textarea id="task-desc" rows="3" placeholder="รายละเอียดเพิ่มเติม..."
+          style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none;resize:vertical;font-family:var(--font)"></textarea>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">สถานะ</label>
+          <select id="task-status" style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
+            <option value="todo">📋 To Do</option>
+            <option value="doing">🔨 กำลังทำ</option>
+            <option value="review">🔍 ตรวจสอบ</option>
+            <option value="done">✅ เสร็จ</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">ความสำคัญ</label>
+          <select id="task-priority" style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
+            <option value="high">🔴 สูง</option>
+            <option value="normal">🟡 ปกติ</option>
+            <option value="low">⚪ ต่ำ</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">โดเมน (ถ้ามี)</label>
+          <input id="task-domain" type="text" placeholder="example.com"
+            style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
+        </div>
+        <div>
+          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">Server (ถ้ามี)</label>
+          <input id="task-server" type="text" placeholder="Server 1"
+            style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
+        </div>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <button id="task-delete-btn" class="btn" onclick="deleteTask()" style="display:none;color:var(--red);border-color:rgba(248,113,113,0.3)"><i class="ti ti-trash"></i> ลบ</button>
+      <div style="display:flex;gap:8px;margin-left:auto">
+        <button class="btn" onclick="closeTaskModal()">ยกเลิก</button>
+        <button class="btn btn-green" onclick="saveTask()"><i class="ti ti-check"></i> บันทึก</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="add-modal" class="modal-overlay" style="display:none">
   <div class="modal">
     <div class="modal-title"><i class="ti ti-circle-plus" style="color:var(--green)"></i> เพิ่มโดเมนใหม่</div>
@@ -2597,6 +2683,9 @@ function showPage(name) {
   }
   if (name === 'events') {
     setTimeout(loadEventsPage, 100);
+  }
+  if (name === 'tasks') {
+    setTimeout(loadTasksPage, 100);
   }
   if (name === 'resources') {
     // resources page just shows the button
@@ -4437,5 +4526,136 @@ function renderEvents() {
       </div>`;
     }).join('')}
   </div>`;
+}
+</script>
+<script>
+// ===== TODO KANBAN BOARD =====
+let tasksData = [];
+const KANBAN_COLS = [
+  { key: 'todo',     label: 'To Do',     icon: '📋', color: 'var(--text2)' },
+  { key: 'doing',    label: 'กำลังทำ',    icon: '🔨', color: 'var(--blue)' },
+  { key: 'review',   label: 'ตรวจสอบ',    icon: '🔍', color: 'var(--gold)' },
+  { key: 'done',     label: 'เสร็จ',      icon: '✅', color: 'var(--green)' }
+];
+
+async function loadTasksPage() {
+  try {
+    const res = await fetch(`${API}/api/tasks`);
+    const data = await res.json();
+    tasksData = data.tasks || [];
+    renderKanban();
+  } catch(e) {
+    document.getElementById('kanban-board').innerHTML = '<div style="padding:20px;color:var(--red);grid-column:1/-1">โหลดไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+function renderKanban() {
+  const board = document.getElementById('kanban-board');
+  if (!board) return;
+
+  const prioColor = p => p==='high'?'var(--red)':p==='low'?'var(--text3)':'var(--gold)';
+  const prioLabel = p => p==='high'?'🔴 สูง':p==='low'?'⚪ ต่ำ':'🟡 ปกติ';
+
+  board.innerHTML = KANBAN_COLS.map(col => {
+    const items = tasksData.filter(t => t.status === col.key);
+    return `<div class="kanban-col" data-status="${col.key}"
+      ondragover="event.preventDefault();this.style.background='var(--bg3)'"
+      ondragleave="this.style.background='var(--bg2)'"
+      ondrop="dropTask(event,'${col.key}')"
+      style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;min-height:200px;transition:background .15s">
+      <div style="padding:12px 14px;border-bottom:2px solid ${col.color};display:flex;align-items:center;justify-content:space-between;background:linear-gradient(145deg,var(--bg3),var(--bg2))">
+        <span style="font-size:13px;font-weight:600;color:var(--text)">${col.icon} ${col.label}</span>
+        <span style="font-size:11px;font-weight:600;color:${col.color};background:var(--bg);padding:2px 8px;border-radius:10px">${items.length}</span>
+      </div>
+      <div style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:100px">
+        ${items.length ? items.map(t => `
+          <div class="kanban-card" draggable="true" ondragstart="dragTask(event,'${t.id}')"
+            onclick="editTask('${t.id}')"
+            style="background:linear-gradient(145deg,var(--bg3),var(--bg2));border:1px solid var(--border);border-left:3px solid ${prioColor(t.priority)};border-radius:var(--radius-sm);padding:10px 12px;cursor:grab;transition:all .15s;box-shadow:var(--shadow)"
+            onmouseover="this.style.boxShadow='var(--shadow-md),var(--glow-green)';this.style.transform='translateY(-1px)'"
+            onmouseout="this.style.boxShadow='var(--shadow)';this.style.transform='none'">
+            <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px">${t.title}</div>
+            ${t.description ? `<div style="font-size:11px;color:var(--text2);margin-bottom:6px;line-height:1.4">${t.description}</div>` : ''}
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+              <span style="font-size:10px;color:${prioColor(t.priority)}">${prioLabel(t.priority)}</span>
+              ${t.domain ? `<span style="font-size:10px;color:var(--teal);font-family:var(--mono)">🌐 ${t.domain}</span>` : ''}
+              ${t.server ? `<span style="font-size:10px;color:var(--blue)">🖥️ ${t.server}</span>` : ''}
+            </div>
+          </div>
+        `).join('') : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">— ว่าง —</div>'}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+let draggedTaskId = null;
+function dragTask(e, id) { draggedTaskId = id; e.dataTransfer.effectAllowed = 'move'; }
+async function dropTask(e, newStatus) {
+  e.preventDefault();
+  e.currentTarget.style.background = 'var(--bg2)';
+  if (!draggedTaskId) return;
+  const task = tasksData.find(t => t.id === draggedTaskId);
+  if (!task || task.status === newStatus) { draggedTaskId = null; return; }
+  task.status = newStatus;
+  renderKanban();
+  try {
+    await fetch(`${API}/api/tasks/${draggedTaskId}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ status: newStatus })
+    });
+  } catch(e) { toast('บันทึกไม่ได้', 'error'); }
+  draggedTaskId = null;
+}
+
+function openTaskModal(taskId) {
+  const task = taskId ? tasksData.find(t => t.id === taskId) : null;
+  const modal = document.getElementById('task-modal');
+  if (!modal) return;
+  document.getElementById('task-modal-title').textContent = task ? 'แก้ไขงาน' : 'เพิ่มงานใหม่';
+  document.getElementById('task-id').value = task?.id || '';
+  document.getElementById('task-title').value = task?.title || '';
+  document.getElementById('task-desc').value = task?.description || '';
+  document.getElementById('task-priority').value = task?.priority || 'normal';
+  document.getElementById('task-status').value = task?.status || 'todo';
+  document.getElementById('task-domain').value = task?.domain || '';
+  document.getElementById('task-server').value = task?.server || '';
+  document.getElementById('task-delete-btn').style.display = task ? 'inline-flex' : 'none';
+  modal.style.display = 'flex';
+}
+function editTask(id) { openTaskModal(id); }
+function closeTaskModal() { document.getElementById('task-modal').style.display = 'none'; }
+
+async function saveTask() {
+  const id = document.getElementById('task-id').value;
+  const payload = {
+    title: document.getElementById('task-title').value.trim(),
+    description: document.getElementById('task-desc').value.trim(),
+    priority: document.getElementById('task-priority').value,
+    status: document.getElementById('task-status').value,
+    domain: document.getElementById('task-domain').value.trim(),
+    server: document.getElementById('task-server').value.trim()
+  };
+  if (!payload.title) { toast('กรุณาใส่ชื่องาน', 'error'); return; }
+  try {
+    if (id) {
+      await fetch(`${API}/api/tasks/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    } else {
+      await fetch(`${API}/api/tasks`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
+    }
+    closeTaskModal();
+    loadTasksPage();
+    toast('บันทึกแล้ว', 'success');
+  } catch(e) { toast('บันทึกไม่ได้', 'error'); }
+}
+
+async function deleteTask() {
+  const id = document.getElementById('task-id').value;
+  if (!id || !confirm('ลบงานนี้?')) return;
+  try {
+    await fetch(`${API}/api/tasks/${id}`, { method:'DELETE' });
+    closeTaskModal();
+    loadTasksPage();
+    toast('ลบแล้ว', 'success');
+  } catch(e) { toast('ลบไม่ได้', 'error'); }
 }
 </script>
