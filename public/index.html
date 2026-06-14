@@ -464,6 +464,12 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="showPage('resources')">
         <i class="ti ti-cpu"></i> Resource Usage
       </div>
+      <div class="nav-item" onclick="showPage('health')">
+        <i class="ti ti-heartbeat"></i> Health Score
+      </div>
+      <div class="nav-item" onclick="showPage('events')">
+        <i class="ti ti-history"></i> Event Timeline
+      </div>
       <div class="nav-item" onclick="showPage('botwatch')">
         <i class="ti ti-shield-check"></i> Bot Watch
         <span class="nav-badge" id="nav-botwatch" style="display:none"></span>
@@ -1099,6 +1105,47 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div style="font-size:14px;font-weight:600;margin-bottom:8px">Resource Usage per Domain</div>
           <div style="font-size:12px;margin-bottom:4px">ดูว่าโดเมนไหนกิน <b>Disk</b> และ <b>PHP-FPM processes</b> มากสุด</div>
           <div style="font-size:11px;color:var(--text3)">กด "ดึงข้อมูลจาก Server" เพื่อเริ่ม — ใช้เวลา 1-2 นาที</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- HEALTH SCORE PAGE -->
+    <div id="page-health" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-heartbeat" style="color:var(--green)"></i> Server Health Score</div>
+          <div class="topbar-sub">คะแนนสุขภาพรวมแต่ละ server (0-100)</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="loadHealthPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px" id="health-content">
+        <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
+      </div>
+    </div>
+
+    <!-- EVENT TIMELINE PAGE -->
+    <div id="page-events" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-history" style="color:var(--purple)"></i> Event Timeline</div>
+          <div class="topbar-sub">ประวัติเหตุการณ์ทั้งหมด — down, fix, ssl, alert, sync</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="loadEventsPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px">
+        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap" id="event-filters">
+          <button class="btn btn-sm" onclick="window._evFilter='all';renderEvents()" id="ev-f-all" style="background:var(--teal);color:#fff;border-color:var(--teal)">ทั้งหมด</button>
+          <button class="btn btn-sm" onclick="window._evFilter='critical';renderEvents()" id="ev-f-critical">🚨 Critical</button>
+          <button class="btn btn-sm" onclick="window._evFilter='warning';renderEvents()" id="ev-f-warning">⚠️ Warning</button>
+          <button class="btn btn-sm" onclick="window._evFilter='down';renderEvents()" id="ev-f-down">🔴 Down</button>
+          <button class="btn btn-sm" onclick="window._evFilter='slow';renderEvents()" id="ev-f-slow">🐌 Slow</button>
+        </div>
+        <div id="events-content">
+          <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
         </div>
       </div>
     </div>
@@ -2544,6 +2591,12 @@ function showPage(name) {
   }
   if (name === 'sla') {
     setTimeout(loadSLAPage, 100);
+  }
+  if (name === 'health') {
+    setTimeout(loadHealthPage, 100);
+  }
+  if (name === 'events') {
+    setTimeout(loadEventsPage, 100);
   }
   if (name === 'resources') {
     // resources page just shows the button
@@ -4262,4 +4315,127 @@ function renderTrafficTrend() {
     });
 }
 
+</script>
+<script>
+// ===== HEALTH SCORE PAGE =====
+async function loadHealthPage() {
+  const el = document.getElementById('health-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>';
+  try {
+    const res = await fetch(`${API}/api/health-scores`);
+    const data = await res.json();
+    if (!data.success || !data.scores.length) {
+      el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล — รอ system check ทำงานสักครู่</div>';
+      return;
+    }
+    const gradeColor = g => g==='A'?'var(--green)':g==='B'?'var(--teal)':g==='C'?'var(--amber)':'var(--red)';
+    const scoreColor = s => s>=90?'var(--green)':s>=80?'var(--teal)':s>=70?'var(--amber)':'var(--red)';
+
+    el.innerHTML = `
+      <div class="metric-card" style="margin-bottom:16px;text-align:center;padding:20px">
+        <div class="metric-label">คะแนนสุขภาพรวมทุก Server</div>
+        <div style="font-size:42px;font-weight:700;color:${scoreColor(data.overallAvg)}">${data.overallAvg}<span style="font-size:20px;color:var(--text3)">/100</span></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
+        ${data.scores.map(s => `
+          <div class="table-container" style="padding:0">
+            <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)">
+              <div style="display:flex;align-items:center;gap:10px">
+                <div style="width:48px;height:48px;border-radius:50%;background:${scoreColor(s.score)};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff">${s.grade}</div>
+                <div>
+                  <div style="font-weight:600;font-size:14px"><i class="ti ti-server" style="color:var(--teal)"></i> ${s.server}</div>
+                  <div style="font-size:11px;color:var(--text3)">${s.up} up / ${s.down} down · ${s.total} โดเมน</div>
+                </div>
+              </div>
+              <div style="text-align:right">
+                <div style="font-size:28px;font-weight:700;color:${scoreColor(s.score)}">${s.score}</div>
+                <div style="font-size:10px;color:var(--text3)">/ 100</div>
+              </div>
+            </div>
+            <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+              ${[
+                ['Uptime', s.breakdown.uptime, 40],
+                ['SSL', s.breakdown.ssl, 20],
+                ['Response Time', s.breakdown.responseTime, 20],
+                ['Domain Expiry', s.breakdown.expiry, 20]
+              ].map(([label, val, max]) => `
+                <div style="display:flex;align-items:center;gap:10px">
+                  <span style="font-size:11px;color:var(--text2);width:100px">${label}</span>
+                  <div style="flex:1;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden">
+                    <div style="width:${Math.round(val/max*100)}%;height:100%;background:${val/max>=0.9?'var(--green)':val/max>=0.7?'var(--amber)':'var(--red)'};border-radius:3px"></div>
+                  </div>
+                  <span style="font-size:11px;font-weight:600;color:var(--text2);width:42px;text-align:right">${val}/${max}</span>
+                </div>
+              `).join('')}
+              <div style="font-size:11px;color:var(--text3);margin-top:4px">⏱️ Avg response: ${s.avgResponseTime}ms</div>
+            </div>
+          </div>
+        `).join('')}
+      </div>`;
+  } catch(e) {
+    el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+// ===== EVENT TIMELINE PAGE =====
+let eventsData = [];
+async function loadEventsPage() {
+  const el = document.getElementById('events-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>';
+  try {
+    const res = await fetch(`${API}/api/events?limit=200`);
+    const data = await res.json();
+    eventsData = data.events || [];
+    renderEvents();
+  } catch(e) {
+    el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+function renderEvents() {
+  const el = document.getElementById('events-content');
+  if (!el) return;
+  const filter = window._evFilter || 'all';
+
+  // update buttons
+  ['all','critical','warning','down','slow'].forEach(k => {
+    const btn = document.getElementById('ev-f-' + k);
+    if (!btn) return;
+    if (filter === k) { btn.style.background='var(--teal)'; btn.style.color='#fff'; btn.style.borderColor='var(--teal)'; }
+    else { btn.style.background=''; btn.style.color=''; btn.style.borderColor=''; }
+  });
+
+  let display = eventsData;
+  if (filter !== 'all') display = eventsData.filter(e => e.type === filter);
+
+  if (!display.length) {
+    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มี event ในหมวดนี้</div>';
+    return;
+  }
+
+  const typeIcon = t => ({
+    critical:'🚨', warning:'⚠️', info:'ℹ️', down:'🔴', up:'✅',
+    fix:'🔧', ssl:'🔒', sync:'🔄', slow:'🐌', expiry:'📅', blacklist:'🚫'
+  }[t] || '•');
+  const typeColor = t => ({
+    critical:'var(--red)', warning:'var(--amber)', down:'var(--red)',
+    up:'var(--green)', fix:'var(--teal)', slow:'var(--amber)'
+  }[t] || 'var(--text3)');
+
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:2px">
+    ${display.map(e => {
+      const d = new Date(e.at);
+      const timeStr = d.toLocaleString('th-TH', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+      return `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;border-left:3px solid ${typeColor(e.type)};background:var(--bg2);border-radius:0 var(--radius-sm) var(--radius-sm) 0">
+        <span style="font-size:16px">${typeIcon(e.type)}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;color:var(--text);word-break:break-word">${e.message}</div>
+          <div style="font-size:11px;color:var(--text3);margin-top:2px">${timeStr}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
 </script>
