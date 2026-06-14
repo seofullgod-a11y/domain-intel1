@@ -191,6 +191,8 @@ async function initSheets() {
   if (!SHEET_ID) { console.log('[Sheets] ไม่มี SHEET_ID'); return; }
   console.log('[Sheets] โหลดข้อมูลจาก Google Sheets...');
   memoryDomains = await loadFromSheets();
+  loadTasks();
+  console.log('[Tasks] โหลด', memoryTasks.length, 'tasks');
   console.log(`[Sheets] โหลด ${memoryDomains.length} โดเมน`);
 }
 
@@ -1360,6 +1362,60 @@ async function handleRequest(req, res) {
   }
 
 
+
+
+  // ===== TASKS API =====
+  if (req.method === 'GET' && url === '/api/tasks') {
+    json(res, { success: true, tasks: memoryTasks });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/tasks') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const t = JSON.parse(body);
+        const task = {
+          id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+          title: t.title || 'งานใหม่',
+          description: t.description || '',
+          status: t.status || 'todo',
+          priority: t.priority || 'normal',
+          domain: t.domain || '',
+          server: t.server || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        memoryTasks.unshift(task);
+        saveTasks();
+        json(res, { success: true, task });
+      } catch(e) { json(res, { error: e.message }); }
+    });
+    return;
+  }
+  if (req.method === 'PUT' && url.startsWith('/api/tasks/')) {
+    const id = url.split('/api/tasks/')[1];
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const updates = JSON.parse(body);
+        const idx = memoryTasks.findIndex(t => t.id === id);
+        if (idx === -1) return json(res, { error: 'not found' });
+        Object.assign(memoryTasks[idx], updates, { updatedAt: new Date().toISOString() });
+        saveTasks();
+        json(res, { success: true, task: memoryTasks[idx] });
+      } catch(e) { json(res, { error: e.message }); }
+    });
+    return;
+  }
+  if (req.method === 'DELETE' && url.startsWith('/api/tasks/')) {
+    const id = url.split('/api/tasks/')[1];
+    memoryTasks = memoryTasks.filter(t => t.id !== id);
+    saveTasks();
+    json(res, { success: true });
+    return;
+  }
 
   // Health Scores API
   if (req.method === 'GET' && url === '/api/health-scores') {
@@ -2874,6 +2930,20 @@ function calcServerHealthScore(serverName) {
 function getAllHealthScores() {
   const servers = [...new Set(memoryDomains.map(d => d.pleskServer).filter(Boolean))];
   return servers.map(s => calcServerHealthScore(s)).filter(Boolean).sort((a,b) => b.score - a.score);
+}
+
+
+// ===== TODO / KANBAN TASKS =====
+const TASKS_FILE = '/tmp/domainintel-tasks.json';
+let memoryTasks = [];
+
+function loadTasks() {
+  try { memoryTasks = JSON.parse(fs.readFileSync(TASKS_FILE, 'utf8')); }
+  catch { memoryTasks = []; }
+  return memoryTasks;
+}
+function saveTasks() {
+  try { fs.writeFileSync(TASKS_FILE, JSON.stringify(memoryTasks, null, 2)); } catch(e) {}
 }
 
 server.listen(PORT, async () => {
