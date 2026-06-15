@@ -1203,7 +1203,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         <div style="display:flex;gap:8px;align-items:center">
           <input id="bulk-gsc-search" type="text" placeholder="🔍 ค้นหาโดเมน..." oninput="renderBulkGSCList()"
             style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
-          <button class="btn btn-sm" onclick="selectAllBulkGSC()">เลือกทั้งหมด</button>
+          <button class="btn btn-sm" onclick="selectAllBulkGSC()">เลือกทั้งหมด (<span id="bulk-gsc-total">0</span>)</button>
           <button class="btn btn-sm" onclick="clearAllBulkGSC()">ล้าง</button>
         </div>
       </div>
@@ -4734,18 +4734,22 @@ function closeBulkGSCModal() {
 function renderBulkGSCList() {
   const wrap = document.getElementById('bulk-gsc-list');
   const search = (document.getElementById('bulk-gsc-search')?.value||'').toLowerCase();
-  // เฉพาะโดเมนที่ยังไม่อยู่ใน GSC
-  let domains = (allDomains||[]).filter(d => !d.inGSC);
+  // เฉพาะโดเมนที่ยังไม่อยู่ใน GSC (gsc.inGSC คือ field ที่ถูกต้อง)
+  let domains = (allDomains||[]).filter(d => !(d.gsc && d.gsc.inGSC));
   if (search) domains = domains.filter(d => d.domain.toLowerCase().includes(search));
 
   document.getElementById('bulk-gsc-count').textContent = bulkGSCSelected.size;
+
+  // แสดงจำนวนทั้งหมดที่กรองได้
+  const totalEl = document.getElementById('bulk-gsc-total');
+  if (totalEl) totalEl.textContent = domains.length;
 
   if (!domains.length) {
     wrap.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">ทุกโดเมนอยู่ใน GSC แล้ว หรือไม่พบโดเมน</div>';
     return;
   }
 
-  wrap.innerHTML = domains.slice(0, 200).map(d => `
+  wrap.innerHTML = domains.slice(0, 1500).map(d => `
     <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s" 
       onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
       <input type="checkbox" ${bulkGSCSelected.has(d.domain)?'checked':''} onchange="toggleBulkGSC('${d.domain}')" style="cursor:pointer">
@@ -4763,9 +4767,9 @@ function toggleBulkGSC(domain) {
 
 function selectAllBulkGSC() {
   const search = (document.getElementById('bulk-gsc-search')?.value||'').toLowerCase();
-  let domains = (allDomains||[]).filter(d => !d.inGSC);
+  let domains = (allDomains||[]).filter(d => !(d.gsc && d.gsc.inGSC));
   if (search) domains = domains.filter(d => d.domain.toLowerCase().includes(search));
-  domains.slice(0,200).forEach(d => bulkGSCSelected.add(d.domain));
+  domains.slice(0,1500).forEach(d => bulkGSCSelected.add(d.domain));
   renderBulkGSCList();
 }
 function clearAllBulkGSC() {
