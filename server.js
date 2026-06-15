@@ -1391,6 +1391,38 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // Verify โดเมนที่ค้าง (TXT เขียนแล้ว รอ propagate)
+  if (req.method === 'POST' && url === '/api/gsc/verify-pending') {
+    let body = '';
+    req.on('data', ch => body += ch);
+    req.on('end', async () => {
+      try {
+        const token = await refreshGSCToken();
+        if (!token) return json(res, { error: 'GSC token ใช้ไม่ได้' });
+        // หาโดเมนที่ pendingVerify จาก progress
+        const pending = (bulkGSCProgress.results || []).filter(r => r.pendingVerify && !r.ok);
+        if (!pending.length) return json(res, { error: 'ไม่มีโดเมนที่ค้าง verify' });
+
+        let verified = 0, stillPending = 0;
+        for (const r of pending) {
+          const vr = await gscVerifyDomain(token, r.domain);
+          if (vr.ok) {
+            r.ok = true; r.pendingVerify = false;
+            r.error = ''; verified++;
+            bulkGSCProgress.success++; bulkGSCProgress.failed--;
+            logEvent('gsc', 'เพิ่ม ' + r.domain + ' เข้า GSC สำเร็จ (retry)', { domain: r.domain });
+          } else {
+            stillPending++;
+          }
+          await new Promise(rs => setTimeout(rs, 1000));
+        }
+        json(res, { success: true, verified, stillPending, total: pending.length });
+      } catch(e) { json(res, { error: e.message }); }
+    });
+    return;
+  }
+
   // ===== TASKS API =====
   if (req.method === 'GET' && url === '/api/tasks') {
     json(res, { success: true, tasks: memoryTasks });
@@ -3013,9 +3045,13 @@ async function gscGetVerificationToken(token, domain) {
       res.on('end', () => {
         try {
           const r = JSON.parse(d);
-          // token จะอยู่ในรูป "google-site-verification=xxxxx"
-          resolve({ ok: !!r.token, token: r.token, raw: r });
-        } catch(e) { resolve({ ok: false, error: d.slice(0,100) }); }
+          if (r.token) { resolve({ ok: true, token: r.token, raw: r }); }
+          else {
+            // แสดง error จริงจาก Google (เช่น scope ไม่พอ, API ไม่ enable)
+            const errMsg = (r.error && r.error.message) ? r.error.message : JSON.stringify(r).slice(0,150);
+            resolve({ ok: false, error: errMsg, status: res.statusCode });
+          }
+        } catch(e) { resolve({ ok: false, error: 'HTTP ' + res.statusCode + ': ' + d.slice(0,100) }); }
       });
     });
     req.on('error', e => resolve({ ok: false, error: e.message }));
@@ -3193,9 +3229,14 @@ async function bulkAddToGSC(domains) {
           continue;
         }
 
-        // Step 4: รอ DNS propagate แล้ว verify (รอ 5 วิ)
-        await new Promise(r => setTimeout(r, 5000));
-        const verifyRes = await gscVerifyDomain(token, domain);
+        // Step 4: รอ DNS propagate แล้ว verify (retry หลายครั้ง)
+        // DNS propagation ใช้เวลา ลอง verify 3 ครั้ง ห่างกัน 15 วิ
+        let verifyRes = { ok: false };
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await new Promise(r => setTimeout(r, attempt === 0 ? 8000 : 15000));
+          verifyRes = await gscVerifyDomain(token, domain);
+          if (verifyRes.ok) break;
+        }
         result.steps.push({ step: 'verify', ok: verifyRes.ok, error: verifyRes.error });
 
         if (verifyRes.ok) {
@@ -3203,8 +3244,10 @@ async function bulkAddToGSC(domains) {
           bulkGSCProgress.success++;
           logEvent('gsc', 'เพิ่ม ' + domain + ' เข้า GSC สำเร็จ', { domain });
         } else {
-          result.error = 'verify ไม่ผ่าน (DNS อาจยังไม่ propagate): ' + (verifyRes.error||'');
-          result.note = 'TXT เขียนแล้ว ลอง verify ใหม่ภายหลังได้';
+          // TXT เขียนแล้วแต่ DNS ยังไม่ propagate — แยกเป็นสถานะ pending
+          result.pendingVerify = true;
+          result.error = 'TXT เขียนแล้ว · รอ DNS propagate (5-10 นาที) แล้วกด "Verify ที่ค้าง"';
+          bulkGSCProgress.pendingVerify = (bulkGSCProgress.pendingVerify || 0) + 1;
           bulkGSCProgress.failed++;
         }
       } catch(e) {
