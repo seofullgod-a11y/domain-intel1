@@ -1364,6 +1364,33 @@ async function handleRequest(req, res) {
 
 
 
+
+  // ===== BULK GSC API =====
+  if (req.method === 'POST' && url === '/api/gsc/bulk-add') {
+    let body = '';
+    req.on('data', ch => body += ch);
+    req.on('end', async () => {
+      try {
+        const { domains } = JSON.parse(body || '{}');
+        if (!domains || !domains.length) return json(res, { error: 'ไม่มีโดเมน' });
+        const result = await bulkAddToGSC(domains);
+        json(res, result);
+      } catch(e) { json(res, { error: e.message }); }
+    });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/gsc/bulk-progress') {
+    json(res, { success: true, progress: bulkGSCProgress });
+    return;
+  }
+  // ตรวจ DNS provider ของโดเมน (preview ก่อน bulk)
+  if (req.method === 'GET' && url.startsWith('/api/gsc/check-dns/')) {
+    const domain = decodeURIComponent(url.split('/api/gsc/check-dns/')[1]);
+    const info = await detectDNSProvider(domain);
+    json(res, { success: true, domain, ...info });
+    return;
+  }
+
   // ===== TASKS API =====
   if (req.method === 'GET' && url === '/api/tasks') {
     json(res, { success: true, tasks: memoryTasks });
@@ -2945,6 +2972,259 @@ function loadTasks() {
 function saveTasks() {
   try { fs.writeFileSync(TASKS_FILE, JSON.stringify(memoryTasks, null, 2)); } catch(e) {}
 }
+
+
+// ===== BULK GSC ADD SYSTEM =====
+// เพิ่มโดเมนเข้า GSC แบบ bulk ผ่าน DNS TXT verification
+// รองรับ: Cloudflare API + Plesk DNS (via agent) + manual fallback
+
+const dnsPromises = require('dns').promises;
+
+// 1. เพิ่ม site เข้า GSC (sites.add) — ต้องทำก่อนขอ verification token
+async function gscAddSite(token, siteUrl) {
+  return new Promise(resolve => {
+    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(siteUrl);
+    const req = https.request({
+      hostname: 'www.googleapis.com', path: apiPath, method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Length': 0 }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => resolve({ ok: res.statusCode === 200 || res.statusCode === 204, status: res.statusCode, body: d }));
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.end();
+  });
+}
+
+// 2. ขอ verification token (DNS TXT method) ผ่าน Site Verification API
+async function gscGetVerificationToken(token, domain) {
+  return new Promise(resolve => {
+    const body = JSON.stringify({
+      verificationMethod: 'DNS_TXT',
+      site: { type: 'INET_DOMAIN', identifier: domain }
+    });
+    const req = https.request({
+      hostname: 'www.googleapis.com',
+      path: '/siteVerification/v1/token',
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(d);
+          // token จะอยู่ในรูป "google-site-verification=xxxxx"
+          resolve({ ok: !!r.token, token: r.token, raw: r });
+        } catch(e) { resolve({ ok: false, error: d.slice(0,100) }); }
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.write(body); req.end();
+  });
+}
+
+// 3. เรียก GSC ให้ verify (หลังเขียน TXT แล้ว)
+async function gscVerifyDomain(token, domain) {
+  return new Promise(resolve => {
+    const body = JSON.stringify({
+      site: { type: 'INET_DOMAIN', identifier: domain }
+    });
+    const req = https.request({
+      hostname: 'www.googleapis.com',
+      path: '/siteVerification/v1/webResource?verificationMethod=DNS_TXT',
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        const ok = res.statusCode === 200;
+        let err = '';
+        if (!ok) { try { err = (JSON.parse(d).error||{}).message || d.slice(0,100); } catch { err = d.slice(0,100); } }
+        resolve({ ok, status: res.statusCode, error: err });
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.write(body); req.end();
+  });
+}
+
+// 4. ตรวจว่าโดเมนใช้ nameserver ที่ไหน (เพื่อเลือก method)
+async function detectDNSProvider(domain) {
+  try {
+    const ns = await dnsPromises.resolveNs(domain);
+    const nsStr = ns.join(',').toLowerCase();
+    if (nsStr.includes('cloudflare')) return { provider: 'cloudflare', ns };
+    // เช็คว่าเป็น Plesk server เราไหม (NS ชี้มาที่ IP server)
+    return { provider: 'other', ns };
+  } catch(e) {
+    return { provider: 'unknown', ns: [], error: e.message };
+  }
+}
+
+// 5. เขียน TXT record ผ่าน Cloudflare API
+async function cfWriteTXT(domain, txtValue) {
+  const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (!cfToken) return { ok: false, error: 'no CF token' };
+
+  // หา zone id ก่อน
+  const zoneId = await new Promise(resolve => {
+    const req = https.request({
+      hostname: 'api.cloudflare.com',
+      path: '/client/v4/zones?name=' + encodeURIComponent(domain),
+      headers: { 'Authorization': 'Bearer ' + cfToken, 'Content-Type': 'application/json' }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        try { const r = JSON.parse(d); resolve(r.result && r.result[0] ? r.result[0].id : null); }
+        catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.end();
+  });
+
+  if (!zoneId) return { ok: false, error: 'zone not found in this CF account' };
+
+  // เขียน TXT record
+  return new Promise(resolve => {
+    const body = JSON.stringify({ type: 'TXT', name: domain, content: txtValue, ttl: 3600 });
+    const req = https.request({
+      hostname: 'api.cloudflare.com',
+      path: '/client/v4/zones/' + zoneId + '/dns_records',
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + cfToken, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        try { const r = JSON.parse(d); resolve({ ok: r.success, error: r.success ? '' : JSON.stringify(r.errors).slice(0,100) }); }
+        catch { resolve({ ok: false, error: d.slice(0,100) }); }
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.write(body); req.end();
+  });
+}
+
+// 6. เขียน TXT ผ่าน Plesk DNS (via agent) — สำหรับโดเมนที่ NS ชี้ Plesk
+async function pleskWriteTXT(domain, txtValue, serverHost) {
+  if (!serverHost) return { ok: false, error: 'no server host' };
+  // ใช้ plesk bin dns เพิ่ม TXT record
+  const cmd = 'plesk bin dns --add ' + domain + ' -txt "' + txtValue + '" -domain ' + domain + ' 2>&1 | head -3; echo "DNS_DONE"';
+  const cmdId = queueCommand(serverHost, cmd);
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (agentResults[cmdId]) {
+      const res = agentResults[cmdId]; delete agentResults[cmdId];
+      const out = (res.output||'').replace(/~/g,'\n');
+      return { ok: out.includes('DNS_DONE') && !out.toLowerCase().includes('error'), output: out.slice(0,150) };
+    }
+  }
+  return { ok: false, error: 'timeout' };
+}
+
+// ===== MAIN: Bulk Add โดเมนเข้า GSC =====
+const bulkGSCProgress = { running: false, total: 0, done: 0, success: 0, failed: 0, results: [], current: '' };
+
+async function bulkAddToGSC(domains) {
+  if (bulkGSCProgress.running) return { error: 'กำลังทำงานอยู่' };
+
+  const token = await refreshGSCToken();
+  if (!token) return { error: 'GSC token ใช้ไม่ได้ — เช็ค refresh token' };
+
+  bulkGSCProgress.running = true;
+  bulkGSCProgress.total = domains.length;
+  bulkGSCProgress.done = 0;
+  bulkGSCProgress.success = 0;
+  bulkGSCProgress.failed = 0;
+  bulkGSCProgress.results = [];
+
+  (async () => {
+    for (const d of domains) {
+      const domain = (typeof d === 'string' ? d : d.domain).toLowerCase().replace(/^https?:\/\//,'').replace(/\/$/,'');
+      bulkGSCProgress.current = domain;
+      const result = { domain, steps: [], ok: false };
+
+      try {
+        // Step 1: เพิ่ม sc-domain property เข้า GSC
+        const siteUrl = 'sc-domain:' + domain;
+        const addRes = await gscAddSite(token, siteUrl);
+        result.steps.push({ step: 'add', ok: addRes.ok });
+
+        // Step 2: ขอ verification token
+        const vtok = await gscGetVerificationToken(token, domain);
+        if (!vtok.ok) {
+          result.error = 'ขอ token ไม่ได้: ' + (vtok.error||'');
+          result.steps.push({ step: 'token', ok: false });
+          bulkGSCProgress.results.push(result); bulkGSCProgress.failed++; bulkGSCProgress.done++;
+          continue;
+        }
+        result.steps.push({ step: 'token', ok: true });
+        const txtValue = vtok.token; // "google-site-verification=xxxx"
+
+        // Step 3: detect DNS provider + เขียน TXT
+        const dnsInfo = await detectDNSProvider(domain);
+        result.provider = dnsInfo.provider;
+        let written = { ok: false };
+
+        if (dnsInfo.provider === 'cloudflare') {
+          written = await cfWriteTXT(domain, txtValue);
+          result.steps.push({ step: 'txt-cloudflare', ok: written.ok, error: written.error });
+        } else {
+          // ลองหา Plesk server ของโดเมนนี้
+          const domObj = memoryDomains.find(x => x.domain === domain);
+          const srv = domObj ? PLESK_SERVERS.find(s => s.name === domObj.pleskServer) : null;
+          if (srv) {
+            written = await pleskWriteTXT(domain, txtValue, srv.host);
+            result.steps.push({ step: 'txt-plesk', ok: written.ok, error: written.error });
+          } else {
+            // fallback: แสดง TXT ให้ก็อปเอง
+            result.manualTXT = txtValue;
+            result.steps.push({ step: 'txt-manual', ok: false });
+            result.error = 'ต้องเพิ่ม TXT เอง: ' + txtValue;
+            bulkGSCProgress.results.push(result); bulkGSCProgress.failed++; bulkGSCProgress.done++;
+            continue;
+          }
+        }
+
+        if (!written.ok) {
+          result.error = 'เขียน TXT ไม่ได้: ' + (written.error||'');
+          result.manualTXT = txtValue;
+          bulkGSCProgress.results.push(result); bulkGSCProgress.failed++; bulkGSCProgress.done++;
+          continue;
+        }
+
+        // Step 4: รอ DNS propagate แล้ว verify (รอ 5 วิ)
+        await new Promise(r => setTimeout(r, 5000));
+        const verifyRes = await gscVerifyDomain(token, domain);
+        result.steps.push({ step: 'verify', ok: verifyRes.ok, error: verifyRes.error });
+
+        if (verifyRes.ok) {
+          result.ok = true;
+          bulkGSCProgress.success++;
+          logEvent('gsc', 'เพิ่ม ' + domain + ' เข้า GSC สำเร็จ', { domain });
+        } else {
+          result.error = 'verify ไม่ผ่าน (DNS อาจยังไม่ propagate): ' + (verifyRes.error||'');
+          result.note = 'TXT เขียนแล้ว ลอง verify ใหม่ภายหลังได้';
+          bulkGSCProgress.failed++;
+        }
+      } catch(e) {
+        result.error = e.message;
+        bulkGSCProgress.failed++;
+      }
+
+      bulkGSCProgress.results.push(result);
+      bulkGSCProgress.done++;
+      // delay กัน rate limit
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    bulkGSCProgress.running = false;
+    bulkGSCProgress.current = '';
+    smartAlert('info', '📋 Bulk GSC เสร็จ: สำเร็จ ' + bulkGSCProgress.success + ' / ล้มเหลว ' + bulkGSCProgress.failed);
+  })().catch(e => { bulkGSCProgress.running = false; console.log('[BulkGSC] error:', e.message); });
+
+  return { ok: true, message: 'เริ่มเพิ่ม ' + domains.length + ' โดเมน' };
+}
+
 
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
