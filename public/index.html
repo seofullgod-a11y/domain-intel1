@@ -633,7 +633,8 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="topbar">
         <div><div class="topbar-title">Traffic & Google Search Console</div><div class="topbar-sub">ข้อมูล 30 วันล่าสุด</div></div>
         <div class="topbar-right">
-          <button class="btn" onclick="importGSCDomains()" style="background:rgba(14,165,233,0.12);color:var(--teal);border-color:rgba(14,165,233,0.3)"><i class="ti ti-download"></i> Import จาก GSC</button>
+          <button class="btn" onclick="openBulkGSCModal()" style="background:var(--gold-dim);color:var(--gold);border-color:rgba(251,191,36,0.3)"><i class="ti ti-plus"></i> Bulk เพิ่มเข้า GSC</button>
+          <button class="btn" onclick="importGSCDomains()" style="background:rgba(52,211,153,0.12);color:var(--teal);border-color:rgba(52,211,153,0.3)"><i class="ti ti-download"></i> Import จาก GSC</button>
           <button class="btn btn-green" onclick="syncGSCAll()"><i class="ti ti-brand-google"></i> Sync GSC ทั้งหมด</button>
         </div>
       </div>
@@ -1185,6 +1186,57 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
 
 <!-- MODALS -->
+<div id="bulk-gsc-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center" onclick="if(event.target===this)closeBulkGSCModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:600px;max-width:92vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:var(--shadow-md),var(--glow-gold);overflow:hidden">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+      <span style="font-size:15px;font-weight:600;color:var(--text)"><i class="ti ti-brand-google" style="color:var(--gold)"></i> Bulk เพิ่มโดเมนเข้า GSC</span>
+      <button onclick="closeBulkGSCModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px">✕</button>
+    </div>
+
+    <!-- รายการเลือกโดเมน -->
+    <div id="bulk-gsc-list-wrap" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
+      <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
+        <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">
+          ระบบจะ <b>ขอ token จาก GSC → เขียน DNS TXT (Cloudflare/Plesk อัตโนมัติ) → verify</b><br>
+          โดเมนที่ DNS อยู่ที่อื่นจะแสดง TXT ให้ก็อปไปวางเอง
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input id="bulk-gsc-search" type="text" placeholder="🔍 ค้นหาโดเมน..." oninput="renderBulkGSCList()"
+            style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
+          <button class="btn btn-sm" onclick="selectAllBulkGSC()">เลือกทั้งหมด</button>
+          <button class="btn btn-sm" onclick="clearAllBulkGSC()">ล้าง</button>
+        </div>
+      </div>
+      <div id="bulk-gsc-list" style="flex:1;overflow-y:auto;min-height:200px;max-height:340px"></div>
+      <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:var(--text2)">เลือกแล้ว <b id="bulk-gsc-count" style="color:var(--gold)">0</b> โดเมน</span>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="closeBulkGSCModal()">ยกเลิก</button>
+          <button class="btn btn-green" onclick="startBulkGSC()"><i class="ti ti-rocket"></i> เริ่มเพิ่ม</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Progress -->
+    <div id="bulk-gsc-progress" style="display:none;flex-direction:column;flex:1;overflow:hidden;padding:20px">
+      <div style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <span style="font-size:13px;font-weight:600" id="bulk-progress-text">0/0</span>
+          <span style="font-size:12px" id="bulk-progress-stats"></span>
+        </div>
+        <div style="height:8px;background:var(--bg4);border-radius:4px;overflow:hidden">
+          <div id="bulk-progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,var(--teal),var(--green));border-radius:4px;transition:width .3s"></div>
+        </div>
+        <div id="bulk-progress-current" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
+      </div>
+      <div id="bulk-progress-results" style="flex:1;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);min-height:200px;max-height:340px"></div>
+      <div style="padding-top:14px;display:flex;justify-content:flex-end">
+        <button class="btn" onclick="closeBulkGSCModal()">ปิด</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center" onclick="if(event.target===this)closeTaskModal()">
   <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:480px;max-width:90vw;box-shadow:var(--shadow-md),var(--glow-green);overflow:hidden">
     <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
@@ -4657,5 +4709,124 @@ async function deleteTask() {
     loadTasksPage();
     toast('ลบแล้ว', 'success');
   } catch(e) { toast('ลบไม่ได้', 'error'); }
+}
+</script>
+<script>
+// ===== BULK GSC ADD =====
+let bulkGSCSelected = new Set();
+let bulkGSCPolling = null;
+
+function openBulkGSCModal() {
+  const modal = document.getElementById('bulk-gsc-modal');
+  if (!modal) return;
+  bulkGSCSelected = new Set();
+  renderBulkGSCList();
+  document.getElementById('bulk-gsc-progress').style.display = 'none';
+  document.getElementById('bulk-gsc-list-wrap').style.display = 'block';
+  modal.style.display = 'flex';
+}
+function closeBulkGSCModal() {
+  document.getElementById('bulk-gsc-modal').style.display = 'none';
+  if (bulkGSCPolling) { clearInterval(bulkGSCPolling); bulkGSCPolling = null; }
+}
+
+function renderBulkGSCList() {
+  const wrap = document.getElementById('bulk-gsc-list');
+  const search = (document.getElementById('bulk-gsc-search')?.value||'').toLowerCase();
+  // เฉพาะโดเมนที่ยังไม่อยู่ใน GSC
+  let domains = (allDomains||[]).filter(d => !d.inGSC);
+  if (search) domains = domains.filter(d => d.domain.toLowerCase().includes(search));
+
+  document.getElementById('bulk-gsc-count').textContent = bulkGSCSelected.size;
+
+  if (!domains.length) {
+    wrap.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">ทุกโดเมนอยู่ใน GSC แล้ว หรือไม่พบโดเมน</div>';
+    return;
+  }
+
+  wrap.innerHTML = domains.slice(0, 200).map(d => `
+    <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s" 
+      onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+      <input type="checkbox" ${bulkGSCSelected.has(d.domain)?'checked':''} onchange="toggleBulkGSC('${d.domain}')" style="cursor:pointer">
+      <span style="flex:1;font-size:13px;font-family:var(--mono)">${d.domain}</span>
+      <span style="font-size:11px;color:var(--text3)">${d.pleskServer||''}</span>
+    </label>
+  `).join('');
+}
+
+function toggleBulkGSC(domain) {
+  if (bulkGSCSelected.has(domain)) bulkGSCSelected.delete(domain);
+  else bulkGSCSelected.add(domain);
+  document.getElementById('bulk-gsc-count').textContent = bulkGSCSelected.size;
+}
+
+function selectAllBulkGSC() {
+  const search = (document.getElementById('bulk-gsc-search')?.value||'').toLowerCase();
+  let domains = (allDomains||[]).filter(d => !d.inGSC);
+  if (search) domains = domains.filter(d => d.domain.toLowerCase().includes(search));
+  domains.slice(0,200).forEach(d => bulkGSCSelected.add(d.domain));
+  renderBulkGSCList();
+}
+function clearAllBulkGSC() {
+  bulkGSCSelected.clear();
+  renderBulkGSCList();
+}
+
+async function startBulkGSC() {
+  if (!bulkGSCSelected.size) { toast('เลือกโดเมนก่อน', 'error'); return; }
+  if (!confirm(`เพิ่ม ${bulkGSCSelected.size} โดเมนเข้า GSC?\nระบบจะเขียน DNS TXT และ verify อัตโนมัติ`)) return;
+
+  const domains = [...bulkGSCSelected];
+  try {
+    const res = await fetch(`${API}/api/gsc/bulk-add`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ domains })
+    });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'error'); return; }
+
+    // สลับไปแสดง progress
+    document.getElementById('bulk-gsc-list-wrap').style.display = 'none';
+    document.getElementById('bulk-gsc-progress').style.display = 'block';
+    bulkGSCPolling = setInterval(pollBulkGSC, 1500);
+  } catch(e) { toast('เริ่มไม่ได้: ' + e.message, 'error'); }
+}
+
+async function pollBulkGSC() {
+  try {
+    const res = await fetch(`${API}/api/gsc/bulk-progress`);
+    const data = await res.json();
+    const p = data.progress;
+    if (!p) return;
+
+    const pct = p.total ? Math.round(p.done/p.total*100) : 0;
+    document.getElementById('bulk-progress-bar').style.width = pct + '%';
+    document.getElementById('bulk-progress-text').textContent = `${p.done}/${p.total} (${pct}%)`;
+    document.getElementById('bulk-progress-stats').innerHTML = 
+      `<span style="color:var(--green)">✅ สำเร็จ ${p.success}</span> · <span style="color:var(--red)">❌ ล้มเหลว ${p.failed}</span>`;
+    document.getElementById('bulk-progress-current').textContent = p.current ? '🔄 กำลังทำ: ' + p.current : '';
+
+    // แสดงผลรายตัว
+    const resultsEl = document.getElementById('bulk-progress-results');
+    resultsEl.innerHTML = (p.results||[]).slice().reverse().slice(0, 50).map(r => {
+      const icon = r.ok ? '✅' : (r.manualTXT ? '⚠️' : '❌');
+      const color = r.ok ? 'var(--green)' : (r.manualTXT ? 'var(--amber)' : 'var(--red)');
+      return `<div style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span>${icon}</span>
+          <span style="font-family:var(--mono);flex:1">${r.domain}</span>
+          <span style="font-size:10px;color:var(--text3)">${r.provider||''}</span>
+        </div>
+        ${r.error ? `<div style="font-size:10px;color:${color};margin-left:24px;margin-top:2px">${r.error}</div>` : ''}
+        ${r.manualTXT ? `<div style="font-size:10px;color:var(--amber);margin-left:24px;margin-top:2px;word-break:break-all">📋 เพิ่ม TXT เอง: <code>${r.manualTXT}</code></div>` : ''}
+      </div>`;
+    }).join('');
+
+    if (!p.running && p.done >= p.total && p.total > 0) {
+      clearInterval(bulkGSCPolling); bulkGSCPolling = null;
+      document.getElementById('bulk-progress-current').textContent = '✅ เสร็จสิ้น!';
+      toast(`เสร็จ! สำเร็จ ${p.success} / ล้มเหลว ${p.failed}`, 'success');
+    }
+  } catch(e) {}
 }
 </script>
