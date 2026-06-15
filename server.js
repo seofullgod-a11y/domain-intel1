@@ -3132,7 +3132,15 @@ async function cfWriteTXT(domain, txtValue) {
     }, res => {
       let d = ''; res.on('data', c => d += c);
       res.on('end', () => {
-        try { const r = JSON.parse(d); resolve({ ok: r.success, error: r.success ? '' : JSON.stringify(r.errors).slice(0,100) }); }
+        try {
+          const r = JSON.parse(d);
+          if (r.success) { resolve({ ok: true }); return; }
+          // ถ้า record มีอยู่แล้ว (81058/81057/81053) = ถือว่าสำเร็จ พร้อม verify ได้เลย
+          const errs = r.errors || [];
+          const alreadyExists = errs.some(e => [81058, 81057, 81053].includes(e.code) || (e.message||'').toLowerCase().includes('identical record'));
+          if (alreadyExists) { resolve({ ok: true, existed: true }); return; }
+          resolve({ ok: false, error: JSON.stringify(errs).slice(0,120) });
+        }
         catch { resolve({ ok: false, error: d.slice(0,100) }); }
       });
     });
@@ -3151,8 +3159,11 @@ async function pleskWriteTXT(domain, txtValue, serverHost) {
     await new Promise(r => setTimeout(r, 1000));
     if (agentResults[cmdId]) {
       const res = agentResults[cmdId]; delete agentResults[cmdId];
-      const out = (res.output||'').replace(/~/g,'\n');
-      return { ok: out.includes('DNS_DONE') && !out.toLowerCase().includes('error'), output: out.slice(0,150) };
+      const out = (res.output||'').replace(/~/g,'\n').toLowerCase();
+      // ถ้ามี record อยู่แล้ว ถือว่าสำเร็จ
+      const alreadyExists = out.includes('already exists') || out.includes('duplicate');
+      const ok = out.includes('dns_done') && (!out.includes('error') || alreadyExists);
+      return { ok, existed: alreadyExists, output: out.slice(0,150) };
     }
   }
   return { ok: false, error: 'timeout' };
