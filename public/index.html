@@ -1230,8 +1230,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         <div id="bulk-progress-current" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
       </div>
       <div id="bulk-progress-results" style="flex:1;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);min-height:200px;max-height:340px"></div>
-      <div style="padding-top:14px;display:flex;justify-content:flex-end">
-        <button class="btn" onclick="closeBulkGSCModal()">ปิด</button>
+      <div style="padding-top:14px;display:flex;justify-content:space-between;align-items:center">
+        <button class="btn" id="bulk-verify-pending-btn" onclick="verifyPendingGSC()" style="display:none;background:var(--amber-dim);color:var(--amber);border-color:rgba(251,191,36,0.3)"><i class="ti ti-refresh"></i> Verify ที่ค้าง</button>
+        <button class="btn" onclick="closeBulkGSCModal()" style="margin-left:auto">ปิด</button>
       </div>
     </div>
   </div>
@@ -4809,8 +4810,8 @@ async function pollBulkGSC() {
     // แสดงผลรายตัว
     const resultsEl = document.getElementById('bulk-progress-results');
     resultsEl.innerHTML = (p.results||[]).slice().reverse().slice(0, 50).map(r => {
-      const icon = r.ok ? '✅' : (r.manualTXT ? '⚠️' : '❌');
-      const color = r.ok ? 'var(--green)' : (r.manualTXT ? 'var(--amber)' : 'var(--red)');
+      const icon = r.ok ? '✅' : (r.pendingVerify ? '⏳' : (r.manualTXT ? '⚠️' : '❌'));
+      const color = r.ok ? 'var(--green)' : (r.pendingVerify ? 'var(--amber)' : (r.manualTXT ? 'var(--amber)' : 'var(--red)'));
       return `<div style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
         <div style="display:flex;align-items:center;gap:8px">
           <span>${icon}</span>
@@ -4825,8 +4826,30 @@ async function pollBulkGSC() {
     if (!p.running && p.done >= p.total && p.total > 0) {
       clearInterval(bulkGSCPolling); bulkGSCPolling = null;
       document.getElementById('bulk-progress-current').textContent = '✅ เสร็จสิ้น!';
+      // แสดงปุ่ม verify ที่ค้าง ถ้ามี
+      const pendingCount = (p.results||[]).filter(r => r.pendingVerify && !r.ok).length;
+      const pendingBtn = document.getElementById('bulk-verify-pending-btn');
+      if (pendingBtn) {
+        pendingBtn.style.display = pendingCount > 0 ? 'inline-flex' : 'none';
+        pendingBtn.innerHTML = `<i class="ti ti-refresh"></i> Verify ที่ค้าง (${pendingCount})`;
+      }
       toast(`เสร็จ! สำเร็จ ${p.success} / ล้มเหลว ${p.failed}`, 'success');
     }
   } catch(e) {}
+}
+
+async function verifyPendingGSC() {
+  const btn = document.getElementById('bulk-verify-pending-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลัง verify...'; }
+  try {
+    const res = await fetch(`${API}/api/gsc/verify-pending`, { method: 'POST' });
+    const data = await res.json();
+    if (data.error) { toast(data.error, 'error'); }
+    else {
+      toast(`Verify สำเร็จ ${data.verified} / ยังค้าง ${data.stillPending}`, data.verified > 0 ? 'success' : 'error');
+      pollBulkGSC(); // refresh ผล
+    }
+  } catch(e) { toast('verify ไม่ได้: ' + e.message, 'error'); }
+  if (btn) btn.disabled = false;
 }
 </script>
