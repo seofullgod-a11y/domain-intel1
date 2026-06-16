@@ -422,12 +422,27 @@ async function checkAllDomains() {
   if (!memoryDomains.length) return;
   if (isCheckingDomains) { console.log('[Check] already running, skip'); return; }
   isCheckingDomains = true;
-  console.log(`[Check] ${memoryDomains.length} domains...`);
+
+  // เช็คเฉพาะโดเมนที่อยู่บนโฮสเรา — ข้าม GSC-only (import มาเป็น property เฉยๆ ไม่ได้อยู่บน server)
+  const isGscOnly = d => {
+    const tags = d.tags || [];
+    return tags.includes('gsc') && !tags.includes('plesk') && !d.pleskServer;
+  };
+  const checkable = memoryDomains.filter(d => !isGscOnly(d));
+
+  // reset GSC-only ที่เคยถูก mark down ให้เป็น unknown (ครั้งเดียว)
+  memoryDomains.forEach(d => {
+    if (isGscOnly(d) && d.status === 'down') {
+      d.status = 'unknown'; d.statusCode = 0; d.error = null;
+    }
+  });
+
+  console.log(`[Check] ${checkable.length} domains (ข้าม GSC-only ${memoryDomains.length - checkable.length})...`);
   const BATCH = 10; // ลดจาก 20 เป็น 10 เพื่อลด memory
   let downCount = 0;
   try {
-    for (let i = 0; i < memoryDomains.length; i += BATCH) {
-      const batch = memoryDomains.slice(i, i + BATCH);
+    for (let i = 0; i < checkable.length; i += BATCH) {
+      const batch = checkable.slice(i, i + BATCH);
       const results = await Promise.all(batch.map(d => checkDomain(d.domain)));
       for (const r of results) {
         const idx = memoryDomains.findIndex(d => d.domain === r.domain);
