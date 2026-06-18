@@ -546,6 +546,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
         <div id="gsc-banner-wrap"></div>
 
+        <!-- CEO Report card -->
+        <div id="ceo-report-wrap"></div>
+
         <!-- Quick domain list -->
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
           <div style="font-size:14px;font-weight:600">โดเมนล่าสุด / ต้องดูแล</div>
@@ -1224,6 +1227,25 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
     </div>
 
+    <!-- EMPLOYEE DETAIL PAGE -->
+    <div id="page-employee-detail" style="display:none">
+      <div class="topbar">
+        <div style="display:flex;align-items:center;gap:12px">
+          <button class="btn btn-sm" onclick="showPage('company')"><i class="ti ti-arrow-left"></i> กลับ</button>
+          <div>
+            <div class="topbar-title" id="emp-detail-title">พนักงาน</div>
+            <div class="topbar-sub">รายละเอียดและประวัติการทำงาน</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="showEmployeeActivity(currentEmployee)"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px" id="employee-detail-content">
+        <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -1504,6 +1526,18 @@ async function initApp() {
   await loadData();
   setInterval(loadData, 30000);
   startCountdown();
+
+  // โหลด approval badge + อัพเดททุก 60 วิ
+  refreshApprovalBadge();
+  setInterval(refreshApprovalBadge, 60000);
+}
+
+async function refreshApprovalBadge() {
+  try {
+    const res = await fetch(`${API}/api/approvals`);
+    const data = await res.json();
+    updateApprovalBadge(data.pending || 0);
+  } catch(e) {}
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -2766,7 +2800,7 @@ function showPage(name) {
   });
   currentPageName = name;
   if (name === 'domains') applyFilters();
-  if (name === 'dashboard') renderQuickTable();
+  if (name === 'dashboard') { renderQuickTable(); loadCEOReport(); }
   if (name === 'traffic') renderTrafficPage();
   if (name === 'keywords') renderKeywordsPage();
   if (name === 'botwatch') {
@@ -4990,16 +5024,156 @@ function renderCompanyActivity(activity) {
   `).join('');
 }
 
+let currentEmployee = null;
 async function showEmployeeActivity(empId, empName) {
+  // เปิดหน้า detail เต็มของพนักงานคนนี้
+  currentEmployee = empId;
+  showPage('employee-detail');
+  const titleEl = document.getElementById('emp-detail-title');
+  const el = document.getElementById('employee-detail-content');
+  if (el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>';
   try {
-    const res = await fetch(`${API}/api/employees/activity?emp=${empId}&limit=30`);
+    const [empRes, actRes] = await Promise.all([
+      fetch(`${API}/api/employees`),
+      fetch(`${API}/api/employees/activity?emp=${empId}&limit=100`)
+    ]);
+    const empData = await empRes.json();
+    const actData = await actRes.json();
+    const emp = empData.employees.find(e => e.id === empId);
+    if (!emp) { el.innerHTML = '<div style="padding:20px;color:var(--red)">ไม่พบพนักงาน</div>'; return; }
+    renderEmployeeDetail(emp, actData.activity || []);
+  } catch(e) {
+    if (el) el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+function renderEmployeeDetail(emp, activity) {
+  const titleEl = document.getElementById('emp-detail-title');
+  if (titleEl) titleEl.innerHTML = `${emp.emoji} ${emp.name}`;
+  const st = emp.state || {};
+  const el = document.getElementById('employee-detail-content');
+  if (!el) return;
+
+  // พนักงานที่มีสมอง AI
+  const hasBrain = ['ceo','analyst','seo','security'].includes(emp.id);
+
+  const hostBadge = emp.canActOnHost
+    ? '<span style="font-size:11px;background:var(--amber-dim);color:var(--amber);padding:3px 10px;border-radius:10px">🔧 แก้ไขบนโฮสได้ (ต้องขออนุมัติ)</span>'
+    : '<span style="font-size:11px;background:var(--green-dim);color:var(--green);padding:3px 10px;border-radius:10px">👁️ ดู/วิเคราะห์เท่านั้น (ปลอดภัย)</span>';
+
+  // สถิติรายวัน 7 วันจาก activity
+  const byDay = {};
+  activity.forEach(a => {
+    const day = new Date(a.at).toLocaleDateString('th-TH', {month:'short',day:'numeric'});
+    byDay[day] = (byDay[day]||0) + 1;
+  });
+  const days = Object.entries(byDay).slice(0, 7).reverse();
+  const maxDay = Math.max(...days.map(d=>d[1]), 1);
+
+  el.innerHTML = `
+    <!-- โปรไฟล์ -->
+    <div class="metric-card" style="margin-bottom:16px;padding:20px">
+      <div style="display:flex;align-items:flex-start;gap:16px">
+        <div style="font-size:48px;line-height:1">${emp.emoji}</div>
+        <div style="flex:1">
+          <div style="font-size:20px;font-weight:700;margin-bottom:4px">${emp.name}</div>
+          <div style="font-size:13px;color:var(--text2);margin-bottom:8px">แผนก${emp.dept}</div>
+          <div style="font-size:13px;color:var(--text);margin-bottom:12px;line-height:1.5">${emp.role}</div>
+          ${hostBadge}
+        </div>
+        ${hasBrain ? `<button class="btn btn-green" onclick="employeeThink('${emp.id}')" id="think-btn"><i class="ti ti-brain"></i> ให้คิด/วิเคราะห์</button>` : ''}
+      </div>
+    </div>
+
+    ${hasBrain ? `<div id="ai-report-section" style="margin-bottom:16px"></div>` : ''}
+
+    <!-- สถิติ -->
+    <div class="metrics-grid" style="margin-bottom:16px">
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-checklist"></i> งานวันนี้</div><div class="metric-val" style="color:var(--teal)">${st.tasksToday||0}</div></div>
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-chart-bar"></i> งานสะสม</div><div class="metric-val">${st.tasksTotal||0}</div></div>
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-clock"></i> ทำงานล่าสุด</div><div class="metric-val" style="font-size:16px">${st.lastActiveAt?timeAgo(st.lastActiveAt):'—'}</div></div>
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-activity"></i> งานล่าสุด</div><div class="metric-val" style="font-size:14px">${st.lastTask||'—'}</div></div>
+    </div>
+
+    <!-- กราฟ 7 วัน -->
+    ${days.length ? `<div class="metric-card" style="margin-bottom:16px;padding:16px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:14px">งานย้อนหลัง</div>
+      <div style="display:flex;align-items:flex-end;gap:10px;height:100px">
+        ${days.map(([day,count]) => `
+          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
+            <div style="font-size:11px;color:var(--teal);font-weight:600">${count}</div>
+            <div style="width:100%;background:linear-gradient(180deg,var(--teal),var(--green));border-radius:4px 4px 0 0;height:${Math.round(count/maxDay*70)}px;min-height:4px"></div>
+            <div style="font-size:10px;color:var(--text3)">${day}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+
+    <!-- กิจกรรมทั้งหมด -->
+    <div>
+      <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">ประวัติการทำงาน (${activity.length})</div>
+      <div class="table-container" style="max-height:400px;overflow-y:auto">
+        ${activity.length ? activity.map(a => `
+          <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px">
+            <span style="color:var(--text);font-weight:500;min-width:130px">${a.action}</span>
+            <span style="flex:1;color:var(--text2)">${a.detail||''}</span>
+            <span style="font-size:11px;color:var(--text3)">${timeAgo(a.at)}</span>
+          </div>
+        `).join('') : '<div style="padding:30px;text-align:center;color:var(--text3)">ยังไม่มีกิจกรรม</div>'}
+      </div>
+    </div>
+  `;
+
+  // โหลดรายงาน AI ที่มีอยู่
+  if (hasBrain) loadEmployeeReport(emp.id);
+}
+
+async function loadEmployeeReport(empId) {
+  const sec = document.getElementById('ai-report-section');
+  if (!sec) return;
+  try {
+    const res = await fetch(`${API}/api/employees/report/${empId}`);
     const data = await res.json();
-    const acts = data.activity || [];
-    const body = acts.length
-      ? acts.map(a => `${a.emoji} ${a.action}${a.detail?' — '+a.detail:''}  <span style="color:var(--text3);font-size:11px">(${timeAgo(a.at)})</span>`).join('<br>')
-      : 'ยังไม่มีกิจกรรม';
-    toast(`${empName}: ${acts.length} งานล่าสุด`, 'success');
+    if (!data.hasAI) {
+      sec.innerHTML = `<div class="metric-card" style="padding:16px;border-color:rgba(251,191,36,0.25)">
+        <div style="font-size:12px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> ยังไม่ได้เปิดใช้สมอง AI</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:4px">ตั้งค่า ANTHROPIC_API_KEY ใน Railway เพื่อให้พนักงานวิเคราะห์ได้จริง</div>
+      </div>`;
+      return;
+    }
+    if (data.report) renderAIReport(data.report);
   } catch(e) {}
+}
+
+function renderAIReport(report) {
+  const sec = document.getElementById('ai-report-section');
+  if (!sec) return;
+  sec.innerHTML = `<div class="metric-card" style="padding:18px;border-color:rgba(52,211,153,0.25);box-shadow:var(--shadow),var(--glow-green)">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:600;color:var(--teal)"><i class="ti ti-brain"></i> รายงานจาก AI</div>
+      <span style="font-size:11px;color:var(--text3)">${timeAgo(report.at)}</span>
+    </div>
+    <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${report.text}</div>
+  </div>`;
+}
+
+async function employeeThink(empId) {
+  const btn = document.getElementById('think-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังคิด...'; }
+  const sec = document.getElementById('ai-report-section');
+  if (sec) sec.innerHTML = '<div class="metric-card" style="padding:18px"><div style="font-size:12px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> พนักงานกำลังวิเคราะห์ข้อมูล...</div></div>';
+  try {
+    const res = await fetch(`${API}/api/employees/think/${empId}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      renderAIReport({ text: data.text, at: new Date().toISOString() });
+      toast('วิเคราะห์เสร็จแล้ว', 'success');
+    } else {
+      if (sec) sec.innerHTML = `<div class="metric-card" style="padding:16px;border-color:rgba(248,113,113,0.25)"><div style="font-size:12px;color:var(--red)">❌ ${data.error||'คิดไม่ได้'}</div></div>`;
+      toast(data.error || 'วิเคราะห์ไม่ได้', 'error');
+    }
+  } catch(e) { toast('เกิดข้อผิดพลาด: ' + e.message, 'error'); }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brain"></i> ให้คิด/วิเคราะห์'; }
 }
 
 function timeAgo(iso) {
@@ -5096,5 +5270,38 @@ function updateApprovalBadge(count) {
   if (!badge) return;
   if (count > 0) { badge.style.display = 'inline-block'; badge.textContent = count; }
   else badge.style.display = 'none';
+}
+</script>
+<script>
+// ===== CEO Report card บน Dashboard =====
+async function loadCEOReport() {
+  const wrap = document.getElementById('ceo-report-wrap');
+  if (!wrap) return;
+  try {
+    const res = await fetch(`${API}/api/employees/report/ceo`);
+    const data = await res.json();
+    if (!data.hasAI || !data.report) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = `
+      <div class="metric-card" style="margin-bottom:20px;padding:18px;border-color:rgba(192,132,252,0.25);box-shadow:var(--shadow),0 0 20px rgba(192,132,252,0.08)">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+          <div style="font-size:14px;font-weight:600;color:var(--purple)"><i class="ti ti-user-star"></i> 👔 รายงานจาก CEO</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span style="font-size:11px;color:var(--text3)">${timeAgo(data.report.at)}</span>
+            <button class="btn btn-sm" onclick="refreshCEOReport()" id="ceo-refresh-btn"><i class="ti ti-refresh"></i></button>
+          </div>
+        </div>
+        <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${data.report.text}</div>
+      </div>`;
+  } catch(e) { wrap.innerHTML = ''; }
+}
+
+async function refreshCEOReport() {
+  const btn = document.getElementById('ceo-refresh-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i>'; }
+  try {
+    await fetch(`${API}/api/employees/think/ceo`, { method: 'POST' });
+    await loadCEOReport();
+    toast('CEO อัพเดทรายงานแล้ว', 'success');
+  } catch(e) { toast('อัพเดทไม่ได้', 'error'); }
 }
 </script>
