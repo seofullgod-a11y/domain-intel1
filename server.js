@@ -1506,6 +1506,106 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // ดึงรายการปัญหาที่ตรวจพบ (พร้อม action แก้)
+  if (req.method === 'GET' && url === '/api/problems') {
+    const problems = [];
+    // โดเมน down
+    const down = memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer);
+    down.slice(0, 50).forEach(d => {
+      problems.push({
+        id: 'down-' + d.domain, severity: 'high', emoji: '🔴',
+        title: 'โดเมน down: ' + d.domain,
+        detail: 'Server: ' + (d.pleskServer||'-') + ' · Status: ' + (d.statusCode||'timeout'),
+        action: 'fix-down-domain', actionLabel: 'กู้โดเมน', meta: { domain: d.domain },
+        canAutoFix: true
+      });
+    });
+    // server สุขภาพต่ำ
+    const health = (typeof getAllHealthScores === 'function') ? getAllHealthScores() : [];
+    health.filter(h => h.score < 70).forEach(h => {
+      problems.push({
+        id: 'health-' + h.server, severity: h.score < 50 ? 'high' : 'medium', emoji: '⚠️',
+        title: h.server + ' สุขภาพต่ำ (เกรด ' + h.grade + ')',
+        detail: 'คะแนน ' + h.score + '/100 · down ' + h.down + ' โดเมน',
+        action: 'disk-cleanup', actionLabel: 'ทำความสะอาด', meta: {},
+        canAutoFix: true
+      });
+    });
+    // SSL ใกล้หมด
+    const sslSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0);
+    sslSoon.slice(0, 30).forEach(d => {
+      problems.push({
+        id: 'ssl-' + d.domain, severity: d.sslDaysLeft <= 7 ? 'high' : 'medium', emoji: '🔒',
+        title: 'SSL ใกล้หมด: ' + d.domain,
+        detail: 'เหลือ ' + d.sslDaysLeft + ' วัน',
+        action: null, actionLabel: null, meta: { domain: d.domain },
+        canAutoFix: false, note: 'certbot ต่ออายุอัตโนมัติทุก 90 วัน'
+      });
+    });
+    // โดเมนใกล้หมดอายุ
+    const expSoon = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0);
+    expSoon.slice(0, 30).forEach(d => {
+      problems.push({
+        id: 'exp-' + d.domain, severity: d.daysLeft <= 7 ? 'high' : 'low', emoji: '📅',
+        title: 'โดเมนใกล้หมดอายุ: ' + d.domain,
+        detail: 'เหลือ ' + d.daysLeft + ' วัน',
+        action: null, actionLabel: null, meta: { domain: d.domain },
+        canAutoFix: false, note: 'ต้องต่ออายุที่ผู้ให้บริการโดเมน'
+      });
+    });
+
+    problems.sort((a,b) => {
+      const order = { high: 0, medium: 1, low: 2 };
+      return order[a.severity] - order[b.severity];
+    });
+    json(res, { success: true, problems, total: problems.length,
+      autoFixable: problems.filter(p => p.canAutoFix).length });
+    return;
+  }
+
+  // แก้ปัญหาทันที (กดจากรายงาน) — งานปลอดภัยทำเลย งานเสี่ยงขออนุมัติ
+  if (req.method === 'POST' && url === '/api/problems/fix') {
+    let body = '';
+    req.on('data', ch => body += ch);
+    req.on('end', async () => {
+      try {
+        const { action, meta, immediate } = JSON.parse(body || '{}');
+        if (!action || !SAFE_ACTIONS[action]) return json(res, { ok: false, error: 'action ไม่ถูกต้อง' });
+        const act = SAFE_ACTIONS[action];
+
+        if (immediate) {
+          // ทำเลย (เฉพาะ action ปลอดภัย)
+          setEmployeeWorking(act.emp, act.label, 30000);
+          const result = await act.run(meta || {});
+          logAutoFix(act.emp, 'สั่งแก้จากรายงาน', act.label, result);
+          empLog(act.emp, 'แก้ปัญหา (สั่งด้วยมือ)', act.label);
+          json(res, { ok: true, immediate: true, result });
+        } else {
+          // ขออนุมัติ
+          requestApproval(act.emp, act.label, act.desc, action, meta || {});
+          json(res, { ok: true, immediate: false, message: 'ส่งขออนุมัติแล้ว' });
+        }
+      } catch(e) { json(res, { ok: false, error: e.message }); }
+    });
+    return;
+  }
+
+  // Auto-fix history + toggle
+  if (req.method === 'GET' && url === '/api/autofix/history') {
+    json(res, { success: true, history: autoFixHistory.slice(0, 50), enabled: autoFixEnabled });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/autofix/toggle') {
+    autoFixEnabled = !autoFixEnabled;
+    json(res, { success: true, enabled: autoFixEnabled });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/autofix/run') {
+    runAutoFixCycle().then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
   // ===== EMPLOYEE BRAIN API =====
   // สั่งให้พนักงานวิเคราะห์ (manual trigger)
   if (req.method === 'POST' && url.startsWith('/api/employees/think/')) {
@@ -3879,6 +3979,92 @@ async function runEmployeeTask(empId, taskId) {
   }
 }
 
+
+// ===== ระบบแก้ปัญหาอัตโนมัติ (เฉพาะงานปลอดภัย) =====
+// หลักการ: ปัญหาปลอดภัย (disk เต็ม, โดเมน down) → แก้เองเลย
+//          ปัญหาเสี่ยง → ขออนุมัติ
+let autoFixEnabled = true; // เปิด/ปิดได้
+const autoFixHistory = []; // เก็บประวัติการแก้อัตโนมัติ
+const MAX_AUTOFIX_HISTORY = 200;
+
+// ตั้งสถานะ "กำลังทำงาน" ให้พนักงาน (ค้างไว้ตามเวลาที่กำหนด)
+function setEmployeeWorking(empId, taskLabel, durationMs) {
+  const st = employeeState[empId];
+  if (!st) return;
+  st.status = 'working';
+  st.currentTask = taskLabel;
+  st.workingSince = new Date().toISOString();
+  saveEmployeeState();
+  // กลับเป็น idle หลังเสร็จ
+  setTimeout(() => {
+    if (st.status === 'working' && st.currentTask === taskLabel) {
+      st.status = 'idle';
+      st.currentTask = null;
+      saveEmployeeState();
+    }
+  }, durationMs || 8000);
+}
+
+function logAutoFix(empId, problem, action, result) {
+  const emp = EMPLOYEES.find(e => e.id === empId);
+  const entry = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    empId, empName: emp ? emp.name : empId, emoji: emp ? emp.emoji : '🤖',
+    problem, action, result: result.ok ? 'สำเร็จ' : 'ล้มเหลว', detail: result.detail || '',
+    at: new Date().toISOString()
+  };
+  autoFixHistory.unshift(entry);
+  if (autoFixHistory.length > MAX_AUTOFIX_HISTORY) autoFixHistory.pop();
+  return entry;
+}
+
+// สแกนปัญหา + แก้อัตโนมัติ (เฉพาะปลอดภัย)
+async function runAutoFixCycle() {
+  if (!autoFixEnabled) return { ok: false, reason: 'auto-fix ปิดอยู่' };
+
+  const snap = gatherSystemSnapshot();
+  const fixed = [];
+
+  // 1. โดเมน down → Engineer auto-heal (ปลอดภัย: ใช้ autoFix เดิม)
+  const downDomains = memoryDomains.filter(d =>
+    d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer
+  ).slice(0, 10); // ทีละไม่เกิน 10
+
+  if (downDomains.length > 0) {
+    setEmployeeWorking('engineer', 'กู้โดเมน down ' + downDomains.length + ' โดเมน', 30000);
+    for (const d of downDomains) {
+      try {
+        if (typeof autoFix === 'function') {
+          await autoFix(d, 'down');
+          const entry = logAutoFix('engineer', 'โดเมน ' + d.domain + ' down', 'auto-heal', { ok: true, detail: 'พยายามกู้แล้ว' });
+          empLog('engineer', 'แก้อัตโนมัติ: กู้โดเมน', d.domain);
+          fixed.push(entry);
+        }
+      } catch(e) {}
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+
+  // 2. Server สุขภาพต่ำ (disk อาจเต็ม) → Janitor cleanup อัตโนมัติ
+  const lowHealth = (snap.serverHealth||[]).filter(h => h.score < 60);
+  if (lowHealth.length > 0 && typeof runManualDiskCleanup === 'function') {
+    setEmployeeWorking('janitor', 'ทำความสะอาด ' + lowHealth.length + ' server', 60000);
+    try {
+      const results = await runManualDiskCleanup();
+      const okCount = results.filter(r => r.ok).length;
+      const entry = logAutoFix('janitor', 'มี ' + lowHealth.length + ' server สุขภาพต่ำ', 'disk cleanup', { ok: true, detail: 'cleanup ' + okCount + ' servers' });
+      empLog('janitor', 'แก้อัตโนมัติ: ทำความสะอาด', okCount + ' servers');
+      fixed.push(entry);
+    } catch(e) {}
+  }
+
+  if (fixed.length > 0) {
+    logEvent('fix', 'Auto-fix แก้ปัญหา ' + fixed.length + ' รายการ', { count: fixed.length });
+    smartAlert('info', '🤖 Auto-fix ทำงาน: แก้ปัญหา ' + fixed.length + ' รายการอัตโนมัติ');
+  }
+  return { ok: true, fixed: fixed.length, details: fixed };
+}
+
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
   console.log(`║   DomainIntel + Plesk + Google Sheets    ║`);
@@ -3921,6 +4107,9 @@ server.listen(PORT, async () => {
   setInterval(setupAllCloudflareWhitelists, 24 * 60 * 60 * 1000);
 
   setInterval(sendWarningDigest, 30 * 60 * 1000); // Warning digest ทุก 30 นาที
+  // Auto-fix งานปลอดภัยทุก 15 นาที (โดเมน down → กู้, disk เต็ม → cleanup)
+  setInterval(() => { runAutoFixCycle().catch(()=>{}); }, 15 * 60 * 1000);
+  setTimeout(() => { runAutoFixCycle().catch(()=>{}); }, 90 * 1000); // รันครั้งแรกหลัง startup 90 วิ
   // เฟส 3: Diagnostician เสนองานแก้ปัญหาทุก 6 ชม. (ถ้ามี API key) — เข้า approval queue รอเจ้าของอนุมัติ
   if (process.env.ANTHROPIC_API_KEY) {
     setInterval(() => { proposeActionsFromAnalysis().catch(()=>{}); }, 6 * 60 * 60 * 1000);
