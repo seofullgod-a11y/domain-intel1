@@ -3708,8 +3708,11 @@ function gatherSystemSnapshot() {
     .slice(0, 10)
     .map(d => ({ domain: d.domain, clicks: d.gsc.d30.clicks, impressions: d.gsc.d30.impressions }));
 
-  // health scores
-  const health = (typeof getAllHealthScores === 'function') ? getAllHealthScores() : [];
+  // health scores (ห่อ try-catch กัน throw ทำให้ snapshot พัง)
+  let health = [];
+  try {
+    if (typeof getAllHealthScores === 'function') health = getAllHealthScores() || [];
+  } catch(e) { console.log('[Snapshot] health error:', e.message); }
 
   return {
     timestamp: new Date().toISOString(),
@@ -4022,47 +4025,52 @@ function logAutoFix(empId, problem, action, result) {
 async function runAutoFixCycle() {
   if (!autoFixEnabled) return { ok: false, reason: 'auto-fix ปิดอยู่' };
 
-  const snap = gatherSystemSnapshot();
-  const fixed = [];
+  try {
+    const snap = gatherSystemSnapshot();
+    const fixed = [];
 
-  // 1. โดเมน down → Engineer auto-heal (ปลอดภัย: ใช้ autoFix เดิม)
-  const downDomains = memoryDomains.filter(d =>
-    d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer
-  ).slice(0, 10); // ทีละไม่เกิน 10
+    // 1. โดเมน down → Engineer auto-heal (ปลอดภัย: ใช้ autoFix เดิม)
+    const downDomains = memoryDomains.filter(d =>
+      d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer
+    ).slice(0, 10); // ทีละไม่เกิน 10
 
-  if (downDomains.length > 0) {
-    setEmployeeWorking('engineer', 'กู้โดเมน down ' + downDomains.length + ' โดเมน', 30000);
-    for (const d of downDomains) {
-      try {
-        if (typeof autoFix === 'function') {
-          await autoFix(d, 'down');
-          const entry = logAutoFix('engineer', 'โดเมน ' + d.domain + ' down', 'auto-heal', { ok: true, detail: 'พยายามกู้แล้ว' });
-          empLog('engineer', 'แก้อัตโนมัติ: กู้โดเมน', d.domain);
-          fixed.push(entry);
-        }
-      } catch(e) {}
-      await new Promise(r => setTimeout(r, 1000));
+    if (downDomains.length > 0) {
+      setEmployeeWorking('engineer', 'กู้โดเมน down ' + downDomains.length + ' โดเมน', 30000);
+      for (const d of downDomains) {
+        try {
+          if (typeof autoFix === 'function') {
+            await autoFix(d, 'down');
+            const entry = logAutoFix('engineer', 'โดเมน ' + d.domain + ' down', 'auto-heal', { ok: true, detail: 'พยายามกู้แล้ว' });
+            empLog('engineer', 'แก้อัตโนมัติ: กู้โดเมน', d.domain);
+            fixed.push(entry);
+          }
+        } catch(e) {}
+        await new Promise(r => setTimeout(r, 1000));
+      }
     }
-  }
 
-  // 2. Server สุขภาพต่ำ (disk อาจเต็ม) → Janitor cleanup อัตโนมัติ
-  const lowHealth = (snap.serverHealth||[]).filter(h => h.score < 60);
-  if (lowHealth.length > 0 && typeof runManualDiskCleanup === 'function') {
-    setEmployeeWorking('janitor', 'ทำความสะอาด ' + lowHealth.length + ' server', 60000);
-    try {
-      const results = await runManualDiskCleanup();
-      const okCount = results.filter(r => r.ok).length;
-      const entry = logAutoFix('janitor', 'มี ' + lowHealth.length + ' server สุขภาพต่ำ', 'disk cleanup', { ok: true, detail: 'cleanup ' + okCount + ' servers' });
-      empLog('janitor', 'แก้อัตโนมัติ: ทำความสะอาด', okCount + ' servers');
-      fixed.push(entry);
-    } catch(e) {}
-  }
+    // 2. Server สุขภาพต่ำ (disk อาจเต็ม) → Janitor cleanup อัตโนมัติ
+    const lowHealth = (snap.serverHealth||[]).filter(h => h.score < 60);
+    if (lowHealth.length > 0 && typeof runManualDiskCleanup === 'function') {
+      setEmployeeWorking('janitor', 'ทำความสะอาด ' + lowHealth.length + ' server', 60000);
+      try {
+        const results = await runManualDiskCleanup();
+        const okCount = (results||[]).filter(r => r.ok).length;
+        const entry = logAutoFix('janitor', 'มี ' + lowHealth.length + ' server สุขภาพต่ำ', 'disk cleanup', { ok: true, detail: 'cleanup ' + okCount + ' servers' });
+        empLog('janitor', 'แก้อัตโนมัติ: ทำความสะอาด', okCount + ' servers');
+        fixed.push(entry);
+      } catch(e) { console.log('[AutoFix] cleanup error:', e.message); }
+    }
 
-  if (fixed.length > 0) {
-    logEvent('fix', 'Auto-fix แก้ปัญหา ' + fixed.length + ' รายการ', { count: fixed.length });
-    smartAlert('info', '🤖 Auto-fix ทำงาน: แก้ปัญหา ' + fixed.length + ' รายการอัตโนมัติ');
+    if (fixed.length > 0) {
+      logEvent('fix', 'Auto-fix แก้ปัญหา ' + fixed.length + ' รายการ', { count: fixed.length });
+      smartAlert('info', '🤖 Auto-fix ทำงาน: แก้ปัญหา ' + fixed.length + ' รายการอัตโนมัติ');
+    }
+    return { ok: true, fixed: fixed.length, details: fixed };
+  } catch(e) {
+    console.log('[AutoFix] error:', e.message);
+    return { ok: false, error: 'เกิดข้อผิดพลาด: ' + e.message };
   }
-  return { ok: true, fixed: fixed.length, details: fixed };
 }
 
 server.listen(PORT, async () => {
