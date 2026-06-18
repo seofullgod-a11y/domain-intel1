@@ -429,6 +429,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="showPage('company')">
         <i class="ti ti-building"></i> ทีมพนักงาน
       </div>
+      <div class="nav-item" onclick="showPage('problems')">
+        <i class="ti ti-alert-hexagon"></i> ศูนย์ปัญหา <span id="nav-problem-badge" class="nav-badge" style="display:none"></span>
+      </div>
       <div class="nav-item" onclick="showPage('approvals')">
         <i class="ti ti-checkbox"></i> รออนุมัติ <span id="nav-approval-badge" class="nav-badge" style="display:none;background:var(--gold);color:#000"></span>
       </div>
@@ -1252,6 +1255,31 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
     </div>
 
+    <!-- PROBLEMS CENTER PAGE -->
+    <div id="page-problems" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-alert-hexagon" style="color:var(--red)"></i> ศูนย์ปัญหา</div>
+          <div class="topbar-sub">ปัญหาทั้งหมดในระบบ พร้อมปุ่มแก้ทันที</div>
+        </div>
+        <div class="topbar-right">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
+            <input type="checkbox" id="autofix-toggle" onchange="toggleAutoFix()" checked> Auto-fix อัตโนมัติ
+          </label>
+          <button class="btn" onclick="runAutoFixNow()" id="autofix-run-btn"><i class="ti ti-bolt"></i> แก้อัตโนมัติเดี๋ยวนี้</button>
+          <button class="btn" onclick="loadProblemsPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:16px">
+        <div class="metrics-grid" id="problems-summary"></div>
+        <div id="problems-list"></div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px"><i class="ti ti-robot"></i> ประวัติการแก้อัตโนมัติ</div>
+          <div id="autofix-history" class="table-container" style="max-height:300px;overflow-y:auto"></div>
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -1536,6 +1564,9 @@ async function initApp() {
   // โหลด approval badge + อัพเดททุก 60 วิ
   refreshApprovalBadge();
   setInterval(refreshApprovalBadge, 60000);
+  // โหลด problem badge + อัพเดททุก 60 วิ
+  refreshProblemBadge();
+  setInterval(refreshProblemBadge, 60000);
 }
 
 async function refreshApprovalBadge() {
@@ -1543,6 +1574,15 @@ async function refreshApprovalBadge() {
     const res = await fetch(`${API}/api/approvals`);
     const data = await res.json();
     updateApprovalBadge(data.pending || 0);
+  } catch(e) {}
+}
+
+async function refreshProblemBadge() {
+  try {
+    const res = await fetch(`${API}/api/problems`);
+    const data = await res.json();
+    const high = (data.problems||[]).filter(p => p.severity === 'high').length;
+    updateProblemBadge(high);
   } catch(e) {}
 }
 
@@ -2832,6 +2872,9 @@ function showPage(name) {
   }
   if (name === 'approvals') {
     setTimeout(loadApprovalsPage, 100);
+  }
+  if (name === 'problems') {
+    setTimeout(loadProblemsPage, 100);
   }
   if (name === 'resources') {
     // resources page just shows the button
@@ -5435,5 +5478,147 @@ async function refreshCEOReport() {
     await loadCEOReport();
     toast('CEO อัพเดทรายงานแล้ว', 'success');
   } catch(e) { toast('อัพเดทไม่ได้', 'error'); }
+}
+</script>
+<script>
+// ===== PROBLEMS CENTER =====
+async function loadProblemsPage() {
+  try {
+    const [probRes, histRes] = await Promise.all([
+      fetch(`${API}/api/problems`),
+      fetch(`${API}/api/autofix/history`)
+    ]);
+    const probData = await probRes.json();
+    const histData = await histRes.json();
+    renderProblemsSummary(probData);
+    renderProblemsList(probData.problems);
+    renderAutoFixHistory(histData.history);
+    const toggle = document.getElementById('autofix-toggle');
+    if (toggle) toggle.checked = histData.enabled;
+    updateProblemBadge(probData.problems.filter(p => p.severity === 'high').length);
+  } catch(e) {
+    document.getElementById('problems-list').innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+function renderProblemsSummary(data) {
+  const el = document.getElementById('problems-summary');
+  if (!el) return;
+  const high = data.problems.filter(p => p.severity === 'high').length;
+  const medium = data.problems.filter(p => p.severity === 'medium').length;
+  el.innerHTML = `
+    <div class="metric-card highlight-red"><div class="metric-label"><i class="ti ti-alert-circle"></i> เร่งด่วน</div><div class="metric-val red">${high}</div></div>
+    <div class="metric-card highlight-amber"><div class="metric-label"><i class="ti ti-alert-triangle"></i> ปานกลาง</div><div class="metric-val amber">${medium}</div></div>
+    <div class="metric-card"><div class="metric-label"><i class="ti ti-list"></i> ทั้งหมด</div><div class="metric-val">${data.total}</div></div>
+    <div class="metric-card highlight-green"><div class="metric-label"><i class="ti ti-robot"></i> แก้อัตโนมัติได้</div><div class="metric-val green">${data.autoFixable}</div></div>
+  `;
+}
+
+function renderProblemsList(problems) {
+  const el = document.getElementById('problems-list');
+  if (!el) return;
+  if (!problems || !problems.length) {
+    el.innerHTML = `<div class="metric-card" style="text-align:center;padding:50px">
+      <div style="font-size:40px;margin-bottom:12px">✅</div>
+      <div style="font-size:15px;font-weight:600;color:var(--green)">ไม่มีปัญหาในระบบ</div>
+      <div style="font-size:12px;color:var(--text3);margin-top:4px">ทุกอย่างทำงานปกติ</div>
+    </div>`;
+    return;
+  }
+  const sevColor = s => s==='high'?'var(--red)':s==='medium'?'var(--amber)':'var(--text3)';
+  const sevLabel = s => s==='high'?'เร่งด่วน':s==='medium'?'ปานกลาง':'ต่ำ';
+
+  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">
+    ${problems.map(p => `
+      <div class="metric-card" style="padding:14px 16px;border-left:3px solid ${sevColor(p.severity)}">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
+              <span style="font-size:16px">${p.emoji}</span>
+              <span style="font-weight:600;font-size:13px">${p.title}</span>
+              <span style="font-size:10px;background:${sevColor(p.severity)}22;color:${sevColor(p.severity)};padding:1px 7px;border-radius:8px">${sevLabel(p.severity)}</span>
+            </div>
+            <div style="font-size:12px;color:var(--text2);margin-left:24px">${p.detail}</div>
+            ${p.note ? `<div style="font-size:11px;color:var(--text3);margin-left:24px;margin-top:3px"><i class="ti ti-info-circle"></i> ${p.note}</div>` : ''}
+          </div>
+          ${p.canAutoFix ? `<div style="display:flex;gap:6px;flex-shrink:0">
+            <button class="btn btn-sm btn-green" onclick="fixProblem('${p.action}','${JSON.stringify(p.meta).replace(/"/g,'&quot;')}',true,this)"><i class="ti ti-bolt"></i> แก้เลย</button>
+            <button class="btn btn-sm" onclick="fixProblem('${p.action}','${JSON.stringify(p.meta).replace(/"/g,'&quot;')}',false,this)" style="color:var(--gold);border-color:rgba(251,191,36,0.3)">ขออนุมัติ</button>
+          </div>` : '<span style="font-size:11px;color:var(--text3);flex-shrink:0">แก้เองไม่ได้</span>'}
+        </div>
+      </div>
+    `).join('')}
+  </div>`;
+}
+
+async function fixProblem(action, metaStr, immediate, btn) {
+  const meta = JSON.parse(metaStr.replace(/&quot;/g, '"'));
+  if (immediate && !confirm('แก้ปัญหานี้ทันทีบนโฮส?')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i>'; }
+  try {
+    const res = await fetch(`${API}/api/problems/fix`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action, meta, immediate })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      if (data.immediate) {
+        toast('แก้แล้ว: ' + (data.result?.detail || data.result?.summary || 'สำเร็จ'), 'success');
+      } else {
+        toast('ส่งขออนุมัติแล้ว — ดูที่หน้ารออนุมัติ', 'info');
+        refreshApprovalBadge();
+      }
+      setTimeout(loadProblemsPage, 1500);
+    } else {
+      toast(data.error || 'แก้ไม่ได้', 'error');
+      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-bolt"></i> แก้เลย'; }
+    }
+  } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); if (btn) btn.disabled = false; }
+}
+
+function renderAutoFixHistory(history) {
+  const el = document.getElementById('autofix-history');
+  if (!el) return;
+  if (!history || !history.length) {
+    el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">ยังไม่มีการแก้อัตโนมัติ</div>';
+    return;
+  }
+  el.innerHTML = history.map(h => `
+    <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="font-size:15px">${h.emoji}</span>
+      <span style="font-weight:600;min-width:100px">${h.empName}</span>
+      <span style="flex:1;color:var(--text2)">${h.problem} → ${h.action}</span>
+      <span style="font-size:11px;font-weight:600;color:${h.result==='สำเร็จ'?'var(--green)':'var(--red)'}">${h.result}</span>
+      <span style="font-size:11px;color:var(--text3)">${timeAgo(h.at)}</span>
+    </div>
+  `).join('');
+}
+
+async function toggleAutoFix() {
+  try {
+    const res = await fetch(`${API}/api/autofix/toggle`, { method: 'POST' });
+    const data = await res.json();
+    toast(data.enabled ? 'เปิด Auto-fix แล้ว' : 'ปิด Auto-fix แล้ว', 'success');
+  } catch(e) {}
+}
+
+async function runAutoFixNow() {
+  const btn = document.getElementById('autofix-run-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังแก้...'; }
+  try {
+    const res = await fetch(`${API}/api/autofix/run`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) toast(data.fixed > 0 ? `แก้ไป ${data.fixed} รายการ` : 'ไม่พบปัญหาที่ต้องแก้', 'success');
+    else toast(data.reason || 'ทำงานไม่ได้', 'error');
+    setTimeout(loadProblemsPage, 1000);
+  } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-bolt"></i> แก้อัตโนมัติเดี๋ยวนี้'; }
+}
+
+function updateProblemBadge(count) {
+  const badge = document.getElementById('nav-problem-badge');
+  if (!badge) return;
+  if (count > 0) { badge.style.display = 'inline-block'; badge.textContent = count; }
+  else badge.style.display = 'none';
 }
 </script>
