@@ -1205,7 +1205,12 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div id="company-employees" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
         </div>
         <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">กิจกรรมล่าสุด</div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+            <span style="font-size:13px;font-weight:600;color:var(--text2)">กิจกรรมล่าสุด</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:10px">
+              <span style="width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite"></span> LIVE
+            </span>
+          </div>
           <div id="company-activity" class="table-container" style="max-height:400px;overflow-y:auto"></div>
         </div>
       </div>
@@ -4958,8 +4963,47 @@ async function loadCompanyPage() {
     renderCompanySummary(empData);
     renderEmployees(empData.employees);
     renderCompanyActivity(actData.activity);
+    startLiveFeed();
   } catch(e) {
     document.getElementById('company-employees').innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+// Live feed — อัพเดทกิจกรรมสดๆ ทุก 5 วิ (เฉพาะตอนอยู่หน้า company)
+let liveFeedTimer = null;
+let lastLiveCheck = new Date().toISOString();
+function startLiveFeed() {
+  stopLiveFeed();
+  liveFeedTimer = setInterval(async () => {
+    if (currentPageName !== 'company') { stopLiveFeed(); return; }
+    try {
+      const res = await fetch(`${API}/api/employees/live?since=${encodeURIComponent(lastLiveCheck)}`);
+      const data = await res.json();
+      lastLiveCheck = data.now;
+      if (data.activity && data.activity.length) {
+        // มีกิจกรรมใหม่ — refresh feed + summary
+        const actRes = await fetch(`${API}/api/employees/activity?limit=50`);
+        const actData = await actRes.json();
+        renderCompanyActivity(actData.activity);
+        const empRes = await fetch(`${API}/api/employees`);
+        const empData = await empRes.json();
+        renderCompanySummary(empData);
+        renderEmployees(empData.employees);
+        // ไฮไลต์รายการใหม่
+        flashNewActivity(data.activity.length);
+      }
+    } catch(e) {}
+  }, 5000);
+}
+function stopLiveFeed() {
+  if (liveFeedTimer) { clearInterval(liveFeedTimer); liveFeedTimer = null; }
+}
+function flashNewActivity(count) {
+  const el = document.getElementById('company-activity');
+  if (el) {
+    el.style.transition = 'box-shadow 0.3s';
+    el.style.boxShadow = '0 0 20px rgba(52,211,153,0.3)';
+    setTimeout(() => { el.style.boxShadow = ''; }, 800);
   }
 }
 
@@ -5088,6 +5132,9 @@ function renderEmployeeDetail(emp, activity) {
 
     ${hasBrain ? `<div id="ai-report-section" style="margin-bottom:16px"></div>` : ''}
 
+    <!-- งานที่กดรันได้ -->
+    <div id="emp-tasks-section" style="margin-bottom:16px"></div>
+
     <!-- สถิติ -->
     <div class="metrics-grid" style="margin-bottom:16px">
       <div class="metric-card"><div class="metric-label"><i class="ti ti-checklist"></i> งานวันนี้</div><div class="metric-val" style="color:var(--teal)">${st.tasksToday||0}</div></div>
@@ -5127,6 +5174,73 @@ function renderEmployeeDetail(emp, activity) {
 
   // โหลดรายงาน AI ที่มีอยู่
   if (hasBrain) loadEmployeeReport(emp.id);
+  // โหลดงานที่กดรันได้
+  loadEmployeeTasks(emp.id);
+}
+
+async function loadEmployeeTasks(empId) {
+  const sec = document.getElementById('emp-tasks-section');
+  if (!sec) return;
+  try {
+    const res = await fetch(`${API}/api/employees/tasks/${empId}`);
+    const data = await res.json();
+    const tasks = data.tasks || [];
+    if (!tasks.length) { sec.innerHTML = ''; return; }
+
+    const typeBadge = t => {
+      if (t === 'view') return '<span style="font-size:9px;background:var(--green-dim);color:var(--green);padding:1px 6px;border-radius:8px">ดูข้อมูล</span>';
+      if (t === 'ai') return '<span style="font-size:9px;background:var(--purple-dim);color:var(--purple);padding:1px 6px;border-radius:8px">AI</span>';
+      return '<span style="font-size:9px;background:var(--amber-dim);color:var(--amber);padding:1px 6px;border-radius:8px">ขออนุมัติ</span>';
+    };
+
+    sec.innerHTML = `<div class="metric-card" style="padding:16px">
+      <div style="font-size:13px;font-weight:600;margin-bottom:12px"><i class="ti ti-player-play" style="color:var(--teal)"></i> งานที่สั่งได้เดี๋ยวนี้</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        ${tasks.map(t => `
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius-sm)">
+            <div style="display:flex;align-items:center;gap:8px">
+              <span style="font-size:13px">${t.label}</span>
+              ${typeBadge(t.type)}
+            </div>
+            <button class="btn btn-sm ${t.type==='host'?'':'btn-green'}" onclick="runEmpTask('${empId}','${t.id}','${t.label.replace(/'/g,'')}')" id="task-btn-${t.id}">
+              <i class="ti ti-player-play"></i> สั่งงาน
+            </button>
+          </div>
+          <div id="task-result-${t.id}" style="display:none;padding:8px 12px;background:var(--bg2);border-radius:var(--radius-sm);font-size:12px;color:var(--text2);margin-top:-4px"></div>
+        `).join('')}
+      </div>
+    </div>`;
+  } catch(e) { sec.innerHTML = ''; }
+}
+
+async function runEmpTask(empId, taskId, label) {
+  const btn = document.getElementById('task-btn-' + taskId);
+  const resultEl = document.getElementById('task-result-' + taskId);
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังทำ...'; }
+  try {
+    const res = await fetch(`${API}/api/employees/run/${empId}/${taskId}`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      if (resultEl) {
+        resultEl.style.display = 'block';
+        // แสดงผลตามประเภทงาน
+        if (data.type === 'ai' && data.result && data.result.text) {
+          resultEl.innerHTML = '<div style="color:var(--purple);font-weight:600;margin-bottom:4px"><i class="ti ti-brain"></i> ผลวิเคราะห์ AI:</div><div style="white-space:pre-wrap;line-height:1.6">' + data.result.text + '</div>';
+          if (typeof loadEmployeeReport === 'function') loadEmployeeReport(empId);
+        } else if (data.result && data.result.summary) {
+          resultEl.innerHTML = '<i class="ti ti-circle-check" style="color:var(--green)"></i> ' + data.result.summary;
+        } else {
+          resultEl.innerHTML = '<i class="ti ti-circle-check" style="color:var(--green)"></i> ทำงานเสร็จแล้ว';
+        }
+      }
+      toast(label + ' — เสร็จแล้ว', 'success');
+      if (data.type === 'host') { toast('ส่งขออนุมัติแล้ว ดูที่หน้า "รออนุมัติ"', 'info'); refreshApprovalBadge(); }
+    } else {
+      if (resultEl) { resultEl.style.display = 'block'; resultEl.innerHTML = '<span style="color:var(--red)">❌ ' + (data.error||'ทำงานไม่ได้') + '</span>'; }
+      toast(data.error || 'ทำงานไม่ได้', 'error');
+    }
+  } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> สั่งงาน'; }
 }
 
 async function loadEmployeeReport(empId) {
