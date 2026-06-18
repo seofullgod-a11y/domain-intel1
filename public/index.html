@@ -425,6 +425,13 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="showPage('overview')">
         <i class="ti ti-topology-star"></i> System Overview
       </div>
+      <div class="nav-section">// บริษัท</div>
+      <div class="nav-item" onclick="showPage('company')">
+        <i class="ti ti-building"></i> ทีมพนักงาน
+      </div>
+      <div class="nav-item" onclick="showPage('approvals')">
+        <i class="ti ti-checkbox"></i> รออนุมัติ <span id="nav-approval-badge" class="nav-badge" style="display:none;background:var(--gold);color:#000"></span>
+      </div>
       <div class="nav-section">// MONITORING</div>
       <div class="nav-item" onclick="showPage('domains');currentTab='all';applyFilters();">
         <i class="ti ti-world"></i> โดเมนทั้งหมด
@@ -1174,6 +1181,46 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         <div id="kanban-board" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start">
           <div style="text-align:center;padding:40px;color:var(--text3);grid-column:1/-1"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
         </div>
+      </div>
+    </div>
+
+    <!-- COMPANY / TEAM PAGE -->
+    <div id="page-company" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-building" style="color:var(--teal)"></i> ทีมพนักงาน AI</div>
+          <div class="topbar-sub">พนักงาน 11 คน ทำงานอัตโนมัติ — ดูว่าใครทำอะไรบ้าง</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="loadCompanyPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:16px">
+        <div class="metrics-grid" id="company-summary"></div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">พนักงานทั้งหมด</div>
+          <div id="company-employees" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
+        </div>
+        <div>
+          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">กิจกรรมล่าสุด</div>
+          <div id="company-activity" class="table-container" style="max-height:400px;overflow-y:auto"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- APPROVALS PAGE -->
+    <div id="page-approvals" style="display:none">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-checkbox" style="color:var(--gold)"></i> รออนุมัติจากเจ้าของ</div>
+          <div class="topbar-sub">งานที่กระทบโฮส พนักงานต้องขออนุมัติก่อนทำ</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="loadApprovalsPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px" id="approvals-content">
+        <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
       </div>
     </div>
 
@@ -2739,6 +2786,12 @@ function showPage(name) {
   }
   if (name === 'tasks') {
     setTimeout(loadTasksPage, 100);
+  }
+  if (name === 'company') {
+    setTimeout(loadCompanyPage, 100);
+  }
+  if (name === 'approvals') {
+    setTimeout(loadApprovalsPage, 100);
   }
   if (name === 'resources') {
     // resources page just shows the button
@@ -4855,5 +4908,193 @@ async function verifyPendingGSC() {
     }
   } catch(e) { toast('verify ไม่ได้: ' + e.message, 'error'); }
   if (btn) btn.disabled = false;
+}
+</script>
+<script>
+// ===== COMPANY / TEAM PAGE =====
+async function loadCompanyPage() {
+  try {
+    const [empRes, actRes] = await Promise.all([
+      fetch(`${API}/api/employees`),
+      fetch(`${API}/api/employees/activity?limit=50`)
+    ]);
+    const empData = await empRes.json();
+    const actData = await actRes.json();
+    renderCompanySummary(empData);
+    renderEmployees(empData.employees);
+    renderCompanyActivity(actData.activity);
+  } catch(e) {
+    document.getElementById('company-employees').innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+function renderCompanySummary(data) {
+  const el = document.getElementById('company-summary');
+  if (!el) return;
+  const working = data.employees.filter(e => e.state.status === 'working').length;
+  el.innerHTML = `
+    <div class="metric-card"><div class="metric-label"><i class="ti ti-users"></i> พนักงานทั้งหมด</div><div class="metric-val" style="color:var(--teal)">${data.employees.length}</div></div>
+    <div class="metric-card"><div class="metric-label"><i class="ti ti-checklist"></i> งานวันนี้</div><div class="metric-val">${data.totalToday}</div></div>
+    <div class="metric-card"><div class="metric-label"><i class="ti ti-chart-bar"></i> งานสะสม</div><div class="metric-val">${data.totalAll}</div></div>
+    <div class="metric-card highlight-green"><div class="metric-label"><i class="ti ti-bolt"></i> กำลังทำงาน</div><div class="metric-val" style="color:var(--green)">${working}</div></div>
+  `;
+}
+
+function renderEmployees(employees) {
+  const el = document.getElementById('company-employees');
+  if (!el) return;
+  // จัดกลุ่มตาม dept
+  const depts = {};
+  employees.forEach(e => { (depts[e.dept] = depts[e.dept] || []).push(e); });
+
+  el.innerHTML = employees.map(e => {
+    const st = e.state || {};
+    const lastActive = st.lastActiveAt ? timeAgo(st.lastActiveAt) : 'ยังไม่เริ่มงาน';
+    const hostBadge = e.canActOnHost
+      ? '<span style="font-size:9px;background:var(--amber-dim);color:var(--amber);padding:1px 6px;border-radius:8px">แก้โฮสได้</span>'
+      : '<span style="font-size:9px;background:var(--bg4);color:var(--text3);padding:1px 6px;border-radius:8px">ดู/วิเคราะห์</span>';
+    return `<div class="metric-card" style="cursor:pointer" onclick="showEmployeeActivity('${e.id}','${e.name}')">
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <div style="font-size:26px;line-height:1">${e.emoji}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+            <span style="font-weight:600;font-size:13px">${e.name}</span>
+            ${hostBadge}
+          </div>
+          <div style="font-size:11px;color:var(--text3);margin-top:1px">${e.dept}</div>
+          <div style="font-size:11px;color:var(--text2);margin-top:6px;line-height:1.4">${e.role}</div>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:8px;font-size:11px">
+            <span style="color:var(--teal)"><i class="ti ti-checklist" style="font-size:11px"></i> ${st.tasksToday||0} วันนี้</span>
+            <span style="color:var(--text3)">${lastActive}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function renderCompanyActivity(activity) {
+  const el = document.getElementById('company-activity');
+  if (!el) return;
+  if (!activity || !activity.length) {
+    el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">ยังไม่มีกิจกรรม — รอพนักงานเริ่มทำงาน</div>';
+    return;
+  }
+  el.innerHTML = activity.map(a => `
+    <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px">
+      <span style="font-size:16px">${a.emoji}</span>
+      <span style="font-weight:600;min-width:110px;color:var(--text)">${a.empName}</span>
+      <span style="flex:1;color:var(--text2)">${a.action}${a.detail?' — <span style="color:var(--text3)">'+a.detail+'</span>':''}</span>
+      <span style="font-size:11px;color:var(--text3)">${timeAgo(a.at)}</span>
+    </div>
+  `).join('');
+}
+
+async function showEmployeeActivity(empId, empName) {
+  try {
+    const res = await fetch(`${API}/api/employees/activity?emp=${empId}&limit=30`);
+    const data = await res.json();
+    const acts = data.activity || [];
+    const body = acts.length
+      ? acts.map(a => `${a.emoji} ${a.action}${a.detail?' — '+a.detail:''}  <span style="color:var(--text3);font-size:11px">(${timeAgo(a.at)})</span>`).join('<br>')
+      : 'ยังไม่มีกิจกรรม';
+    toast(`${empName}: ${acts.length} งานล่าสุด`, 'success');
+  } catch(e) {}
+}
+
+function timeAgo(iso) {
+  if (!iso) return '—';
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff/60000), h = Math.floor(m/60), d = Math.floor(h/24);
+  if (d > 0) return d + ' วันก่อน';
+  if (h > 0) return h + ' ชม.ก่อน';
+  if (m > 0) return m + ' นาทีก่อน';
+  return 'เมื่อสักครู่';
+}
+
+// ===== APPROVALS PAGE =====
+async function loadApprovalsPage() {
+  const el = document.getElementById('approvals-content');
+  if (!el) return;
+  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>';
+  try {
+    const res = await fetch(`${API}/api/approvals`);
+    const data = await res.json();
+    renderApprovals(data.approvals);
+    updateApprovalBadge(data.pending);
+  } catch(e) {
+    el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+function renderApprovals(approvals) {
+  const el = document.getElementById('approvals-content');
+  if (!el) return;
+  const pending = (approvals||[]).filter(a => a.status === 'pending');
+  const decided = (approvals||[]).filter(a => a.status !== 'pending');
+
+  if (!approvals || !approvals.length) {
+    el.innerHTML = `<div style="text-align:center;padding:50px;color:var(--text3)">
+      <div style="font-size:40px;margin-bottom:12px">✅</div>
+      <div style="font-size:14px;font-weight:600;margin-bottom:4px">ไม่มีงานรออนุมัติ</div>
+      <div style="font-size:12px">พนักงานทำงานในขอบเขตที่ปลอดภัยอยู่</div>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    ${pending.length ? `<div style="margin-bottom:20px">
+      <div style="font-size:13px;font-weight:600;color:var(--gold);margin-bottom:10px">⏳ รออนุมัติ (${pending.length})</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${pending.map(a => `
+          <div class="metric-card highlight-amber" style="padding:14px 16px">
+            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+              <div style="flex:1">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+                  <span style="font-size:18px">${a.emoji}</span>
+                  <span style="font-weight:600;font-size:14px">${a.title}</span>
+                </div>
+                <div style="font-size:12px;color:var(--text2);margin-left:26px">${a.description||''}</div>
+                <div style="font-size:11px;color:var(--text3);margin-left:26px;margin-top:4px">โดย ${a.empName} · ${timeAgo(a.createdAt)}</div>
+              </div>
+              <div style="display:flex;gap:6px;flex-shrink:0">
+                <button class="btn btn-sm btn-green" onclick="decideApproval('${a.id}','approve')"><i class="ti ti-check"></i> อนุมัติ</button>
+                <button class="btn btn-sm" onclick="decideApproval('${a.id}','reject')" style="color:var(--red);border-color:rgba(248,113,113,0.3)"><i class="ti ti-x"></i> ปฏิเสธ</button>
+              </div>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+    ${decided.length ? `<div>
+      <div style="font-size:13px;font-weight:600;color:var(--text3);margin-bottom:10px">ประวัติการตัดสินใจ</div>
+      <div class="table-container">
+        ${decided.slice(0,20).map(a => `
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px">
+            <span style="font-size:15px">${a.emoji}</span>
+            <span style="flex:1">${a.title}</span>
+            <span style="font-size:11px;font-weight:600;color:${a.status==='approved'?'var(--green)':'var(--red)'}">${a.status==='approved'?'✅ อนุมัติ':'❌ ปฏิเสธ'}</span>
+            <span style="font-size:11px;color:var(--text3)">${timeAgo(a.decidedAt)}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>` : ''}
+  `;
+}
+
+async function decideApproval(id, decision) {
+  if (decision === 'reject' && !confirm('ปฏิเสธงานนี้?')) return;
+  try {
+    await fetch(`${API}/api/approvals/${id}/${decision}`, { method: 'POST' });
+    toast(decision === 'approve' ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว', 'success');
+    loadApprovalsPage();
+  } catch(e) { toast('ทำรายการไม่ได้', 'error'); }
+}
+
+function updateApprovalBadge(count) {
+  const badge = document.getElementById('nav-approval-badge');
+  if (!badge) return;
+  if (count > 0) { badge.style.display = 'inline-block'; badge.textContent = count; }
+  else badge.style.display = 'none';
 }
 </script>
