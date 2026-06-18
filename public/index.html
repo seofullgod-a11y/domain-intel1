@@ -1219,6 +1219,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="topbar-sub">งานที่กระทบโฮส พนักงานต้องขออนุมัติก่อนทำ</div>
         </div>
         <div class="topbar-right">
+          <button class="btn" onclick="proposeActions()" id="propose-btn" style="background:var(--purple-dim);color:var(--purple);border-color:rgba(192,132,252,0.3)"><i class="ti ti-bulb"></i> ให้ AI เสนองาน</button>
           <button class="btn" onclick="loadApprovalsPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
         </div>
       </div>
@@ -5246,7 +5247,7 @@ function renderApprovals(approvals) {
         ${decided.slice(0,20).map(a => `
           <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px">
             <span style="font-size:15px">${a.emoji}</span>
-            <span style="flex:1">${a.title}</span>
+            <span style="flex:1">${a.title}${a.executeResult?` <span style="color:${a.executeResult.ok?'var(--green)':'var(--red)'};font-size:11px">· ${a.executeResult.detail||''}</span>`:''}</span>
             <span style="font-size:11px;font-weight:600;color:${a.status==='approved'?'var(--green)':'var(--red)'}">${a.status==='approved'?'✅ อนุมัติ':'❌ ปฏิเสธ'}</span>
             <span style="font-size:11px;color:var(--text3)">${timeAgo(a.decidedAt)}</span>
           </div>
@@ -5258,11 +5259,28 @@ function renderApprovals(approvals) {
 
 async function decideApproval(id, decision) {
   if (decision === 'reject' && !confirm('ปฏิเสธงานนี้?')) return;
+  if (decision === 'approve' && !confirm('อนุมัติให้พนักงานทำงานนี้จริงบนโฮส?')) return;
   try {
     await fetch(`${API}/api/approvals/${id}/${decision}`, { method: 'POST' });
-    toast(decision === 'approve' ? 'อนุมัติแล้ว' : 'ปฏิเสธแล้ว', 'success');
-    loadApprovalsPage();
+    toast(decision === 'approve' ? 'อนุมัติแล้ว — พนักงานกำลังทำงาน' : 'ปฏิเสธแล้ว', 'success');
+    setTimeout(loadApprovalsPage, 1000);
   } catch(e) { toast('ทำรายการไม่ได้', 'error'); }
+}
+
+async function proposeActions() {
+  const btn = document.getElementById('propose-btn');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> AI กำลังวิเคราะห์...'; }
+  try {
+    const res = await fetch(`${API}/api/employees/propose`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      toast(data.created > 0 ? `AI เสนองาน ${data.created} รายการ` : 'ไม่พบปัญหาที่ต้องแก้ตอนนี้', 'success');
+      loadApprovalsPage();
+    } else {
+      toast(data.error || 'เสนองานไม่ได้', 'error');
+    }
+  } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-bulb"></i> ให้ AI เสนองาน'; }
 }
 
 function updateApprovalBadge(count) {
