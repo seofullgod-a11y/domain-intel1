@@ -1480,6 +1480,32 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // ดึงงานที่พนักงานคนนี้ทำได้
+  if (req.method === 'GET' && url.startsWith('/api/employees/tasks/')) {
+    const empId = url.split('/api/employees/tasks/')[1];
+    const tasks = (EMPLOYEE_TASKS[empId] || []).map(t => ({ id: t.id, type: t.type, label: t.label }));
+    json(res, { success: true, tasks, hasAI: !!process.env.ANTHROPIC_API_KEY });
+    return;
+  }
+  // รันงานของพนักงาน (real-time)
+  if (req.method === 'POST' && url.startsWith('/api/employees/run/')) {
+    const rest = url.split('/api/employees/run/')[1];
+    const [empId, taskId] = rest.split('/');
+    runEmployeeTask(empId, taskId).then(result => json(res, result))
+      .catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+  // Live activity feed (สำหรับ polling แบบ real-time)
+  if (req.method === 'GET' && url.startsWith('/api/employees/live')) {
+    const u = new URL('http://x' + url);
+    const since = u.searchParams.get('since');
+    let acts = employeeActivity;
+    if (since) acts = acts.filter(a => a.at > since);
+    json(res, { success: true, activity: acts.slice(0, 30), now: new Date().toISOString() });
+    return;
+  }
+
   // ===== EMPLOYEE BRAIN API =====
   // สั่งให้พนักงานวิเคราะห์ (manual trigger)
   if (req.method === 'POST' && url.startsWith('/api/employees/think/')) {
@@ -3735,6 +3761,122 @@ async function proposeActionsFromAnalysis() {
   }
   if (created > 0) empLog('diagnostician', 'เสนองานแก้ปัญหา', created + ' รายการ รออนุมัติ');
   return { ok: true, created };
+}
+
+
+// ===== งานที่พนักงานกดรันได้เดี๋ยวนี้ (real-time) =====
+// ประเภท: 'view' = ดูข้อมูล (รันเลย ไม่เรียก API ฟรี) | 'ai' = วิเคราะห์ (เรียก Claude) | 'host' = แก้โฮส (ขออนุมัติ)
+const EMPLOYEE_TASKS = {
+  ceo: [
+    { id: 'ceo-overview', type: 'view', label: 'ดูภาพรวมระบบ', run: () => {
+        const s = gatherSystemSnapshot();
+        return { summary: 'โดเมน ' + s.domains.total + ' (up ' + s.domains.up + '/down ' + s.domains.down + ') · SSL ใกล้หมด ' + s.alerts.sslExpiringSoon };
+      }},
+    { id: 'ceo-report', type: 'ai', label: 'เขียนรายงานสรุป (AI)', run: () => runEmployeeBrain('ceo') }
+  ],
+  manager: [
+    { id: 'mgr-pending', type: 'view', label: 'ดูงานที่ค้างอยู่', run: () => {
+        const pending = approvalQueue.filter(a => a.status === 'pending').length;
+        const tasks = memoryTasks.filter(t => t.status !== 'done').length;
+        return { summary: 'งานรออนุมัติ ' + pending + ' · งานในบอร์ด ' + tasks };
+      }}
+  ],
+  diagnostician: [
+    { id: 'diag-scan', type: 'view', label: 'สแกนหาปัญหา', run: () => {
+        const down = memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc')).length;
+        const sslSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0).length;
+        return { summary: 'พบโดเมน down ' + down + ' · SSL ใกล้หมด ' + sslSoon, issues: down + sslSoon };
+      }},
+    { id: 'diag-propose', type: 'host', label: 'เสนองานแก้ปัญหา', run: () => proposeActionsFromAnalysis() }
+  ],
+  engineer: [
+    { id: 'eng-disk', type: 'host', label: 'ขอทำความสะอาด disk', run: () => {
+        const act = SAFE_ACTIONS['disk-cleanup'];
+        requestApproval('engineer', act.label, act.desc, 'disk-cleanup', {});
+        return { summary: 'ส่งขออนุมัติแล้ว' };
+      }},
+    { id: 'eng-phpfpm', type: 'host', label: 'ขอปรับ PHP-FPM', run: () => {
+        const act = SAFE_ACTIONS['phpfpm-ondemand'];
+        requestApproval('engineer', act.label, act.desc, 'phpfpm-ondemand', {});
+        return { summary: 'ส่งขออนุมัติแล้ว' };
+      }}
+  ],
+  safety: [
+    { id: 'safety-check', type: 'view', label: 'ตรวจความปลอดภัยระบบ', run: () => {
+        const health = (typeof getAllHealthScores === 'function') ? getAllHealthScores() : [];
+        const low = health.filter(h => h.score < 70).length;
+        return { summary: 'Server สุขภาพต่ำกว่า 70: ' + low + '/' + health.length };
+      }}
+  ],
+  janitor: [
+    { id: 'jan-status', type: 'view', label: 'ดูสถานะ disk', run: () => {
+        return { summary: 'พร้อมทำความสะอาด — กดเสนองานเพื่อ cleanup' };
+      }},
+    { id: 'jan-cleanup', type: 'host', label: 'ขอทำความสะอาด', run: () => {
+        const act = SAFE_ACTIONS['disk-cleanup'];
+        requestApproval('janitor', act.label, act.desc, 'disk-cleanup', {});
+        return { summary: 'ส่งขออนุมัติแล้ว' };
+      }}
+  ],
+  security: [
+    { id: 'sec-risk', type: 'view', label: 'ประเมินความเสี่ยง', run: () => {
+        const expiring = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0).length;
+        const sslSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0).length;
+        return { summary: 'โดเมนใกล้หมดอายุ ' + expiring + ' · SSL ใกล้หมด ' + sslSoon };
+      }},
+    { id: 'sec-analyze', type: 'ai', label: 'วิเคราะห์ความเสี่ยง (AI)', run: () => runEmployeeBrain('security') }
+  ],
+  seo: [
+    { id: 'seo-opportunity', type: 'view', label: 'หาโอกาส SEO', run: () => {
+        const opp = memoryDomains.filter(d => d.gsc && d.gsc.d30 && d.gsc.d30.impressions >= 100 &&
+          d.gsc.d30.clicks > 0 && (d.gsc.d30.clicks / d.gsc.d30.impressions) < 0.02).length;
+        return { summary: 'พบ ' + opp + ' โดเมนที่ impression สูงแต่ CTR ต่ำ (โอกาสปรับ)' };
+      }},
+    { id: 'seo-analyze', type: 'ai', label: 'วิเคราะห์ SEO (AI)', run: () => runEmployeeBrain('seo') }
+  ],
+  onboarder: [
+    { id: 'onb-new', type: 'view', label: 'ดูโดเมนใหม่ที่ยังไม่ตั้งค่า', run: () => {
+        const notInGSC = memoryDomains.filter(d => !(d.gsc && d.gsc.inGSC)).length;
+        return { summary: 'โดเมนที่ยังไม่อยู่ใน GSC: ' + notInGSC + ' (เพิ่มได้ที่ Traffic & GSC)' };
+      }}
+  ],
+  coordinator: [
+    { id: 'coord-stats', type: 'view', label: 'ดูสถิติพนักงาน', run: () => {
+        const total = Object.values(employeeState).reduce((s,st)=>s+(st.tasksToday||0),0);
+        const busiest = Object.entries(employeeState).sort((a,b)=>(b[1].tasksToday||0)-(a[1].tasksToday||0))[0];
+        const busiestName = busiest ? (EMPLOYEES.find(e=>e.id===busiest[0])||{}).name : '-';
+        return { summary: 'งานวันนี้รวม ' + total + ' · ขยันสุด: ' + busiestName };
+      }}
+  ],
+  analyst: [
+    { id: 'ana-value', type: 'view', label: 'วิเคราะห์คุณค่าโดเมน', run: () => {
+        const ghost = memoryDomains.filter(d => d.gsc && d.gsc.inGSC && d.gsc.d30 && d.gsc.d30.clicks === 0).length;
+        const hot = memoryDomains.filter(d => d.gsc && d.gsc.d30 && d.gsc.d30.clicks >= 100).length;
+        return { summary: 'โดเมนทำเงิน (100+ clicks): ' + hot + ' · โดเมนเงียบ (0 clicks): ' + ghost };
+      }},
+    { id: 'ana-analyze', type: 'ai', label: 'วิเคราะห์เชิงลึก (AI)', run: () => runEmployeeBrain('analyst') }
+  ]
+};
+
+// รันงานของพนักงาน
+async function runEmployeeTask(empId, taskId) {
+  const tasks = EMPLOYEE_TASKS[empId];
+  if (!tasks) return { ok: false, error: 'ไม่พบพนักงาน' };
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return { ok: false, error: 'ไม่พบงาน' };
+
+  // งาน AI ต้องมี key
+  if (task.type === 'ai' && !process.env.ANTHROPIC_API_KEY) {
+    return { ok: false, error: 'งานนี้ต้องใช้ AI — ยังไม่ได้ตั้ง ANTHROPIC_API_KEY' };
+  }
+
+  try {
+    empLog(empId, task.label, task.type === 'view' ? 'ดูข้อมูล' : task.type === 'ai' ? 'วิเคราะห์ด้วย AI' : 'เสนองาน');
+    const result = await task.run();
+    return { ok: true, type: task.type, label: task.label, result };
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 server.listen(PORT, async () => {
