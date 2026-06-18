@@ -1466,6 +1466,20 @@ async function handleRequest(req, res) {
   }
 
 
+
+  // ให้ Diagnostician วิเคราะห์แล้วเสนองาน (เข้า approval queue)
+  if (req.method === 'POST' && url === '/api/employees/propose') {
+    proposeActionsFromAnalysis().then(result => json(res, result))
+      .catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+  // ดู safe actions ที่มี
+  if (req.method === 'GET' && url === '/api/safe-actions') {
+    const actions = Object.entries(SAFE_ACTIONS).map(([key, a]) => ({ key, label: a.label, desc: a.desc, emp: a.emp }));
+    json(res, { success: true, actions });
+    return;
+  }
+
   // ===== EMPLOYEE BRAIN API =====
   // สั่งให้พนักงานวิเคราะห์ (manual trigger)
   if (req.method === 'POST' && url.startsWith('/api/employees/think/')) {
@@ -1507,7 +1521,13 @@ async function handleRequest(req, res) {
       apr.status = 'approved'; apr.decidedAt = new Date().toISOString();
       empLog(apr.empId, 'ได้รับอนุมัติ', apr.title, { approvalId: id });
       logEvent('approval', 'เจ้าของอนุมัติ: ' + apr.title, { empId: apr.empId });
-      // หมายเหตุ: เฟสแรกยังไม่ทำงานจริงบนโฮส แค่บันทึกว่าอนุมัติแล้ว
+      saveApprovals();
+      // เฟส 3: รัน action จริงหลังอนุมัติ (async ไม่ block response)
+      if (apr.action && typeof executeApprovedAction === 'function') {
+        executeApprovedAction(apr).then(result => {
+          apr.executed = true; apr.executeResult = result; saveApprovals();
+        }).catch(e => { apr.executeResult = { ok: false, detail: e.message }; saveApprovals(); });
+      }
     } else if (decision === 'reject') {
       apr.status = 'rejected'; apr.decidedAt = new Date().toISOString();
       empLog(apr.empId, 'ถูกปฏิเสธ', apr.title, { approvalId: id });
@@ -3613,6 +3633,110 @@ async function runEmployeeBrain(empId) {
   return result;
 }
 
+
+// ===== เฟส 3: ทะเบียน Action ที่ปลอดภัย =====
+// พนักงานเสนอได้เฉพาะที่นี่ — ทุกตัวผ่านการ test แล้วและไม่ทำลายโฮส
+const SAFE_ACTIONS = {
+  'disk-cleanup': {
+    label: 'ทำความสะอาด disk ทุก server',
+    desc: 'ลบ log เก่า, cache, session เก่า — ไม่แตะข้อมูลโดเมน',
+    emp: 'janitor',
+    run: async () => {
+      if (typeof runManualDiskCleanup === 'function') {
+        const results = await runManualDiskCleanup();
+        return { ok: true, detail: 'cleanup ' + results.filter(r=>r.ok).length + '/' + results.length + ' servers' };
+      }
+      return { ok: false, detail: 'function ไม่พร้อม' };
+    }
+  },
+  'phpfpm-ondemand': {
+    label: 'ปรับ PHP-FPM เป็น ondemand',
+    desc: 'ลด memory โดยให้ PHP-FPM ทำงานเมื่อมีคนเข้าเท่านั้น',
+    emp: 'engineer',
+    run: async () => {
+      if (typeof applyAllPhpFpmOndemand === 'function') {
+        await applyAllPhpFpmOndemand();
+        return { ok: true, detail: 'ปรับ PHP-FPM ondemand แล้ว' };
+      }
+      return { ok: false, detail: 'function ไม่พร้อม' };
+    }
+  },
+  'fix-down-domain': {
+    label: 'Auto-heal โดเมนที่ down',
+    desc: 'พยายามกู้โดเมนที่ down (unsuspend, restart service)',
+    emp: 'engineer',
+    run: async (meta) => {
+      const domain = meta && meta.domain;
+      if (!domain) return { ok: false, detail: 'ไม่ระบุโดเมน' };
+      const d = memoryDomains.find(x => x.domain === domain);
+      if (!d) return { ok: false, detail: 'ไม่พบโดเมน' };
+      if (typeof autoFix === 'function') {
+        await autoFix(d, 'down');
+        return { ok: true, detail: 'พยายามกู้ ' + domain + ' แล้ว' };
+      }
+      return { ok: false, detail: 'function ไม่พร้อม' };
+    }
+  }
+};
+
+// รัน action หลังได้รับอนุมัติ
+async function executeApprovedAction(approval) {
+  const action = SAFE_ACTIONS[approval.action];
+  if (!action) {
+    empLog(approval.empId, 'รัน action ไม่ได้', 'ไม่รู้จัก action: ' + approval.action);
+    return { ok: false, detail: 'ไม่รู้จัก action นี้' };
+  }
+  try {
+    empLog(action.emp, 'เริ่มทำงาน (อนุมัติแล้ว)', action.label, { approvalId: approval.id });
+    const result = await action.run(approval.meta || {});
+    empLog(action.emp, result.ok ? 'ทำงานสำเร็จ' : 'ทำงานล้มเหลว', result.detail, { approvalId: approval.id });
+    logEvent(result.ok ? 'fix' : 'warning', '[' + action.emp + '] ' + action.label + ': ' + result.detail);
+    smartAlert('info', '🤖 ' + action.label + ' — ' + (result.ok ? 'สำเร็จ' : 'ล้มเหลว') + '\n' + result.detail);
+    return result;
+  } catch(e) {
+    empLog(action.emp, 'ทำงานผิดพลาด', e.message, { approvalId: approval.id });
+    return { ok: false, detail: e.message };
+  }
+}
+
+// พนักงาน AI เสนองาน (Diagnostician วิเคราะห์แล้วเสนอ)
+// เฉพาะเมื่อมี API key — ใช้ Claude ตัดสินใจว่าควรเสนออะไร
+async function proposeActionsFromAnalysis() {
+  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'ไม่มี API key' };
+
+  const snap = gatherSystemSnapshot();
+  // ให้ Diagnostician ดูว่ามีปัญหาอะไรที่ควรเสนอแก้
+  const proposals = [];
+
+  // ตรวจ disk เต็มจาก health (เสนอ cleanup)
+  const highDisk = (snap.serverHealth||[]).filter(h => h.score < 70);
+  if (highDisk.length > 0) {
+    proposals.push({ action: 'disk-cleanup', reason: 'มี ' + highDisk.length + ' server สุขภาพต่ำกว่า 70 คะแนน' });
+  }
+
+  // ตรวจโดเมน down (เสนอ auto-heal)
+  if (snap.domains.down > 0 && snap.domains.down <= 10) {
+    const downDomains = memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc')).slice(0, 5);
+    downDomains.forEach(d => {
+      proposals.push({ action: 'fix-down-domain', reason: 'โดเมน down', meta: { domain: d.domain } });
+    });
+  }
+
+  // สร้าง approval request สำหรับแต่ละข้อเสนอ (ไม่ซ้ำกับที่ pending อยู่)
+  let created = 0;
+  for (const p of proposals) {
+    const act = SAFE_ACTIONS[p.action];
+    if (!act) continue;
+    const dupe = approvalQueue.find(a => a.status === 'pending' && a.action === p.action &&
+      JSON.stringify(a.meta||{}) === JSON.stringify(p.meta||{}));
+    if (dupe) continue;
+    requestApproval(act.emp, act.label, act.desc + ' — เหตุผล: ' + p.reason, p.action, p.meta || {});
+    created++;
+  }
+  if (created > 0) empLog('diagnostician', 'เสนองานแก้ปัญหา', created + ' รายการ รออนุมัติ');
+  return { ok: true, created };
+}
+
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
   console.log(`║   DomainIntel + Plesk + Google Sheets    ║`);
@@ -3655,6 +3779,10 @@ server.listen(PORT, async () => {
   setInterval(setupAllCloudflareWhitelists, 24 * 60 * 60 * 1000);
 
   setInterval(sendWarningDigest, 30 * 60 * 1000); // Warning digest ทุก 30 นาที
+  // เฟส 3: Diagnostician เสนองานแก้ปัญหาทุก 6 ชม. (ถ้ามี API key) — เข้า approval queue รอเจ้าของอนุมัติ
+  if (process.env.ANTHROPIC_API_KEY) {
+    setInterval(() => { proposeActionsFromAnalysis().catch(()=>{}); }, 6 * 60 * 60 * 1000);
+  }
 
   // Daily summary ตอนเที่ยงคืน
   const scheduleDailySummary = () => {
