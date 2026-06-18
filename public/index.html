@@ -5608,8 +5608,8 @@ async function runAutoFixNow() {
   try {
     const res = await fetch(`${API}/api/autofix/run`, { method: 'POST' });
     const data = await res.json();
-    if (data.ok) toast(data.fixed > 0 ? `แก้ไป ${data.fixed} รายการ` : 'ไม่พบปัญหาที่ต้องแก้', 'success');
-    else toast(data.reason || 'ทำงานไม่ได้', 'error');
+    if (data.ok) toast(data.fixed > 0 ? `แก้ไป ${data.fixed} รายการ` : 'ไม่พบปัญหาที่ต้องแก้ตอนนี้', 'success');
+    else toast(data.reason || data.error || 'ทำงานไม่ได้', 'error');
     setTimeout(loadProblemsPage, 1000);
   } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); }
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-bolt"></i> แก้อัตโนมัติเดี๋ยวนี้'; }
