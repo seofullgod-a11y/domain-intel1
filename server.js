@@ -195,6 +195,7 @@ async function initSheets() {
   console.log('[Tasks] โหลด', memoryTasks.length, 'tasks');
   loadEmployeeState();
   loadApprovals();
+  loadReports();
   console.log('[Employees] พนักงาน', EMPLOYEES.length, 'คน | รออนุมัติ', approvalQueue.filter(a=>a.status==='pending').length);
   console.log(`[Sheets] โหลด ${memoryDomains.length} โดเมน`);
 }
@@ -1461,6 +1462,29 @@ async function handleRequest(req, res) {
     let acts = employeeActivity;
     if (empId && empId !== 'all') acts = acts.filter(a => a.empId === empId);
     json(res, { success: true, activity: acts.slice(0, limit) });
+    return;
+  }
+
+
+  // ===== EMPLOYEE BRAIN API =====
+  // สั่งให้พนักงานวิเคราะห์ (manual trigger)
+  if (req.method === 'POST' && url.startsWith('/api/employees/think/')) {
+    const empId = url.split('/api/employees/think/')[1];
+    runEmployeeBrain(empId).then(result => {
+      json(res, result);
+    }).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+  // ดูรายงานล่าสุดของพนักงาน
+  if (req.method === 'GET' && url.startsWith('/api/employees/report/')) {
+    const empId = url.split('/api/employees/report/')[1];
+    const report = employeeReports[empId];
+    json(res, { success: true, report: report || null, hasAI: !!process.env.ANTHROPIC_API_KEY });
+    return;
+  }
+  // ดูรายงานทั้งหมด (สำหรับ CEO dashboard)
+  if (req.method === 'GET' && url === '/api/reports') {
+    json(res, { success: true, reports: employeeReports, hasAI: !!process.env.ANTHROPIC_API_KEY });
     return;
   }
 
@@ -2987,7 +3011,7 @@ function sendWarningDigest() {
 
 // ส่ง Daily Summary ตอนเที่ยงคืน
 function sendDailySummary() {
-  try { empLog('ceo', 'สรุปรายวัน', 'รายงานเที่ยงคืน'); resetEmployeeDailyStats(); } catch(e){}
+  try { empLog('ceo', 'สรุปรายวัน', 'รายงานเที่ยงคืน'); resetEmployeeDailyStats(); if(process.env.ANTHROPIC_API_KEY){ runEmployeeBrain('ceo').catch(()=>{}); } } catch(e){}
   const infoItems = infoDigest.splice(0, infoDigest.length);
   const warnings = []; // เก็บ warning ที่ผ่านมาวันนี้
   const up = memoryDomains.filter(d => d.status === 'up').length;
@@ -3463,6 +3487,130 @@ function requestApproval(empId, title, description, action, meta) {
   // แจ้งเจ้าของผ่าน Telegram
   try { smartAlert('warning', '🔔 รออนุมัติ: ' + (emp ? emp.name : empId) + ' ขอ "' + title + '"', 'approval:' + req.id); } catch(e) {}
   return req;
+}
+
+
+// ===== เฟส 2: สมอง AI (Claude API) =====
+// เรียก Claude ให้พนักงานวิเคราะห์/คิด — เฉพาะงาน "ดู/วิเคราะห์" ปลอดภัย ไม่แตะโฮส
+// ต้องตั้ง ANTHROPIC_API_KEY ใน Railway env
+
+async function callClaude(systemPrompt, userPrompt, maxTokens) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { ok: false, error: 'ยังไม่ได้ตั้ง ANTHROPIC_API_KEY' };
+
+  const body = JSON.stringify({
+    model: 'claude-haiku-4-5-20251001', // ใช้ Haiku ประหยัด เหมาะงานวิเคราะห์
+    max_tokens: maxTokens || 1024,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  });
+
+  return new Promise(resolve => {
+    const req = https.request({
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, res => {
+      let d = ''; res.on('data', ch => d += ch);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(d);
+          if (r.content && r.content[0] && r.content[0].text) {
+            resolve({ ok: true, text: r.content[0].text, usage: r.usage });
+          } else {
+            resolve({ ok: false, error: (r.error && r.error.message) || 'no content' });
+          }
+        } catch(e) { resolve({ ok: false, error: 'parse error: ' + d.slice(0,100) }); }
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.write(body); req.end();
+  });
+}
+
+// เก็บผลงานวิเคราะห์ของพนักงาน (รายงานล่าสุด)
+const EMP_REPORTS_FILE = '/tmp/domainintel-reports.json';
+let employeeReports = {}; // { empId: { text, at, ... } }
+
+function loadReports() {
+  try { employeeReports = JSON.parse(fs.readFileSync(EMP_REPORTS_FILE, 'utf8')); }
+  catch { employeeReports = {}; }
+}
+function saveReports() {
+  try { fs.writeFileSync(EMP_REPORTS_FILE, JSON.stringify(employeeReports)); } catch(e) {}
+}
+
+// รวบรวมข้อมูลระบบให้พนักงานวิเคราะห์
+function gatherSystemSnapshot() {
+  const up = memoryDomains.filter(d => d.status === 'up').length;
+  const down = memoryDomains.filter(d => d.status === 'down').length;
+  const total = memoryDomains.length;
+  const sslExpiringSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0).length;
+  const domainExpiringSoon = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0).length;
+  const inGSC = memoryDomains.filter(d => d.gsc && d.gsc.inGSC).length;
+
+  // top traffic
+  const topTraffic = memoryDomains
+    .filter(d => d.gsc && d.gsc.d30 && d.gsc.d30.clicks > 0)
+    .sort((a,b) => (b.gsc.d30.clicks||0) - (a.gsc.d30.clicks||0))
+    .slice(0, 10)
+    .map(d => ({ domain: d.domain, clicks: d.gsc.d30.clicks, impressions: d.gsc.d30.impressions }));
+
+  // health scores
+  const health = (typeof getAllHealthScores === 'function') ? getAllHealthScores() : [];
+
+  return {
+    timestamp: new Date().toISOString(),
+    domains: { total, up, down, inGSC },
+    alerts: { sslExpiringSoon, domainExpiringSoon },
+    topTraffic,
+    serverHealth: health.map(h => ({ server: h.server, score: h.score, grade: h.grade, up: h.up, down: h.down }))
+  };
+}
+
+// ===== งานวิเคราะห์ของพนักงานแต่ละคน =====
+const EMP_BRAINS = {
+  ceo: {
+    system: 'คุณคือ CEO ของบริษัทจัดการโดเมนและเซิร์ฟเวอร์ มีหน้าที่สรุปภาพรวมให้เจ้าของบริษัทเข้าใจง่ายใน 3-5 บรรทัด ใช้ภาษาไทย กระชับ ชี้จุดที่ควรสนใจ ถ้าทุกอย่างปกติก็บอกว่าปกติ',
+    prompt: (snap) => 'สรุปสถานะบริษัทวันนี้ให้เจ้าของฟัง:\n' + JSON.stringify(snap, null, 2)
+  },
+  analyst: {
+    system: 'คุณคือนักวิเคราะห์ข้อมูล วิเคราะห์คุณค่า-ต้นทุนของโดเมนและ server เป็นภาษาไทย ชี้ว่าโดเมนไหนคุ้ม โดเมนไหนควรพิจารณา server ไหนใกล้เต็ม ตอบกระชับเป็นข้อๆ',
+    prompt: (snap) => 'วิเคราะห์ข้อมูลนี้ หาจุดที่ควรปรับปรุง:\n' + JSON.stringify(snap, null, 2)
+  },
+  seo: {
+    system: 'คุณคือผู้เชี่ยวชาญ SEO วิเคราะห์โอกาสเพิ่ม traffic ของโดเมน เป็นภาษาไทย เสนอแนวทางที่ทำได้จริง เช่น โดเมนที่ impression สูงแต่ CTR ต่ำควรปรับ title ตอบเป็นข้อๆ',
+    prompt: (snap) => 'หาโอกาสพัฒนา SEO จากข้อมูลนี้:\n' + JSON.stringify(snap, null, 2)
+  },
+  security: {
+    system: 'คุณคือเจ้าหน้าที่ความปลอดภัย ประเมินความเสี่ยงของระบบ เป็นภาษาไทย ชี้โดเมนที่เสี่ยง (SSL ใกล้หมด โดเมนใกล้หมดอายุ down) จัดลำดับความเร่งด่วน ตอบกระชับ',
+    prompt: (snap) => 'ประเมินความเสี่ยงด้านความปลอดภัยจากข้อมูลนี้:\n' + JSON.stringify(snap, null, 2)
+  }
+};
+
+async function runEmployeeBrain(empId) {
+  const brain = EMP_BRAINS[empId];
+  if (!brain) return { ok: false, error: 'พนักงานคนนี้ยังไม่มีสมอง AI' };
+
+  const snap = gatherSystemSnapshot();
+  const result = await callClaude(brain.system, brain.prompt(snap), 1024);
+
+  if (result.ok) {
+    employeeReports[empId] = {
+      text: result.text,
+      at: new Date().toISOString(),
+      usage: result.usage || null
+    };
+    saveReports();
+    empLog(empId, 'วิเคราะห์ด้วย AI', 'สร้างรายงานใหม่', { aiGenerated: true });
+  }
+  return result;
 }
 
 server.listen(PORT, async () => {
