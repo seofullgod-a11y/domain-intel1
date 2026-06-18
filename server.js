@@ -3797,8 +3797,10 @@ const SAFE_ACTIONS = {
     run: async (meta) => {
       const domain = meta && meta.domain;
       if (!domain) return { ok: false, detail: 'ไม่ระบุโดเมน' };
-      const d = memoryDomains.find(x => x.domain === domain);
-      if (!d) return { ok: false, detail: 'ไม่พบโดเมน' };
+      const norm = String(domain).toLowerCase().trim().replace(/^https?:\/\//,'').replace(/\/$/,'');
+      const d = memoryDomains.find(x => (x.domain||'').toLowerCase() === norm);
+      if (!d) return { ok: false, detail: 'ไม่พบโดเมน "' + domain + '" ในระบบ (อาจถูกลบไปแล้ว)' };
+      if (d.status !== 'down') return { ok: true, detail: domain + ' กลับมา up แล้ว ไม่ต้องกู้' };
       if (typeof autoFix === 'function') {
         await autoFix(d, 'down');
         return { ok: true, detail: 'พยายามกู้ ' + domain + ' แล้ว' };
