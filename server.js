@@ -193,6 +193,9 @@ async function initSheets() {
   memoryDomains = await loadFromSheets();
   loadTasks();
   console.log('[Tasks] โหลด', memoryTasks.length, 'tasks');
+  loadEmployeeState();
+  loadApprovals();
+  console.log('[Employees] พนักงาน', EMPLOYEES.length, 'คน | รออนุมัติ', approvalQueue.filter(a=>a.status==='pending').length);
   console.log(`[Sheets] โหลด ${memoryDomains.length} โดเมน`);
 }
 
@@ -1438,6 +1441,58 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // ===== EMPLOYEES / COMPANY API =====
+  if (req.method === 'GET' && url === '/api/employees') {
+    const list = EMPLOYEES.map(e => ({
+      ...e,
+      state: employeeState[e.id] || { status:'idle', tasksToday:0, tasksTotal:0, lastActiveAt:null, lastTask:null }
+    }));
+    json(res, { success: true, employees: list,
+      totalToday: Object.values(employeeState).reduce((s,st)=>s+(st.tasksToday||0),0),
+      totalAll: Object.values(employeeState).reduce((s,st)=>s+(st.tasksTotal||0),0)
+    });
+    return;
+  }
+  if (req.method === 'GET' && url.startsWith('/api/employees/activity')) {
+    const u = new URL('http://x' + url);
+    const empId = u.searchParams.get('emp');
+    const limit = parseInt(u.searchParams.get('limit') || '100');
+    let acts = employeeActivity;
+    if (empId && empId !== 'all') acts = acts.filter(a => a.empId === empId);
+    json(res, { success: true, activity: acts.slice(0, limit) });
+    return;
+  }
+
+  // ===== APPROVAL QUEUE API =====
+  if (req.method === 'GET' && url === '/api/approvals') {
+    json(res, { success: true,
+      approvals: approvalQueue.slice(0, 100),
+      pending: approvalQueue.filter(a => a.status === 'pending').length
+    });
+    return;
+  }
+  if (req.method === 'POST' && url.startsWith('/api/approvals/')) {
+    const parts = url.split('/');
+    const id = parts[3];
+    const decision = parts[4]; // approve | reject
+    const idx = approvalQueue.findIndex(a => a.id === id);
+    if (idx === -1) return json(res, { error: 'ไม่พบคำขอ' });
+    const apr = approvalQueue[idx];
+    if (decision === 'approve') {
+      apr.status = 'approved'; apr.decidedAt = new Date().toISOString();
+      empLog(apr.empId, 'ได้รับอนุมัติ', apr.title, { approvalId: id });
+      logEvent('approval', 'เจ้าของอนุมัติ: ' + apr.title, { empId: apr.empId });
+      // หมายเหตุ: เฟสแรกยังไม่ทำงานจริงบนโฮส แค่บันทึกว่าอนุมัติแล้ว
+    } else if (decision === 'reject') {
+      apr.status = 'rejected'; apr.decidedAt = new Date().toISOString();
+      empLog(apr.empId, 'ถูกปฏิเสธ', apr.title, { approvalId: id });
+    }
+    saveApprovals();
+    json(res, { success: true, approval: apr });
+    return;
+  }
+
   // ===== TASKS API =====
   if (req.method === 'GET' && url === '/api/tasks') {
     json(res, { success: true, tasks: memoryTasks });
@@ -1842,6 +1897,7 @@ const server = http.createServer(handleRequest);
 
 // ===== PROACTIVE MONITOR =====
 async function proactiveMonitor() {
+  try { empLog('diagnostician', 'ตรวจสุขภาพระบบ', 'proactive scan'); } catch(e){}
   for (const srv of PLESK_SERVERS) {
     try {
       const statCmd2 = 'L=$(cat /proc/loadavg | cut -d" " -f1); D=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo LOAD:$L DISK:$D';
@@ -2174,6 +2230,7 @@ const blacklistCooldown = {};
 const BLACKLISTS = ['zen.spamhaus.org', 'bl.spamcop.net', 'dnsbl.sorbs.net', 'b.barracudacentral.org', 'dnsbl-1.uceprotect.net'];
 
 async function checkBlacklists() {
+  try { empLog('security', 'ตรวจ IP blacklist', 'สแกน DNSBL'); } catch(e){}
   const dns = require('dns');
   const serverIPs = [...new Set(PLESK_SERVERS.map(s => s.host))];
   const results = [];
@@ -2221,6 +2278,7 @@ function updateWeeklyStats(fixed, checked) {
 }
 
 async function sendWeeklyReport() {
+  try { empLog('ceo', 'ส่งรายงานประจำสัปดาห์', 'สรุปภาพรวมให้เจ้าของ'); } catch(e){}
   const total = memoryDomains.length;
   const upDomains = memoryDomains.filter(d => d.status === 'up').length;
   const downDomains = memoryDomains.filter(d => d.status === 'down').length;
@@ -2269,6 +2327,7 @@ async function sendWeeklyReport() {
 const gscDropCooldown = {}; // { domain: lastAlertTime }
 
 async function checkGSCTrafficDrop() {
+  try { empLog('security', 'ตรวจ traffic drop', 'สแกนทุกโดเมน'); } catch(e){}
   const withGSC = memoryDomains.filter(d => d.gsc && d.gsc.d7 && d.gsc.d30);
   let alerts = 0;
   for (const d of withGSC) {
@@ -2708,6 +2767,7 @@ async function diskCleanup(srv, diskPct) {
         const output = (result.output || '').replace(/~/g, ' ');
         const diskAfter = parseInt((output.match(/DISK_AFTER:(\d+)/) || [])[1] || diskPct);
         console.log('[DiskCleanup] ' + srv.name + ': ' + diskPct + '% → ' + diskAfter + '%');
+        try { empLog('janitor', 'ทำความสะอาด disk', srv.name, { server: srv.name }); } catch(e){}
         smartAlert('info', '🧹 Disk Cleanup สำเร็จ\n🖥️ ' + srv.name + '\n📊 ' + diskPct + '% → ' + diskAfter + '%\n✅ ข้อมูลโดเมนปลอดภัย');
         return { ok: true, diskAfter };
       }
@@ -2927,6 +2987,7 @@ function sendWarningDigest() {
 
 // ส่ง Daily Summary ตอนเที่ยงคืน
 function sendDailySummary() {
+  try { empLog('ceo', 'สรุปรายวัน', 'รายงานเที่ยงคืน'); resetEmployeeDailyStats(); } catch(e){}
   const infoItems = infoDigest.splice(0, infoDigest.length);
   const warnings = []; // เก็บ warning ที่ผ่านมาวันนี้
   const up = memoryDomains.filter(d => d.status === 'up').length;
@@ -3002,6 +3063,7 @@ function calcServerHealthScore(serverName) {
 }
 
 function getAllHealthScores() {
+  try { empLog('analyst', 'วิเคราะห์ health score', 'ทุก server'); } catch(e){}
   const servers = [...new Set(memoryDomains.map(d => d.pleskServer).filter(Boolean))];
   return servers.map(s => calcServerHealthScore(s)).filter(Boolean).sort((a,b) => b.score - a.score);
 }
@@ -3269,6 +3331,7 @@ async function bulkAddToGSC(domains) {
           result.ok = true;
           bulkGSCProgress.success++;
           logEvent('gsc', 'เพิ่ม ' + domain + ' เข้า GSC สำเร็จ', { domain });
+          try { empLog('onboarder', 'เพิ่มโดเมนเข้า GSC', domain, { domain }); } catch(e){}
         } else {
           // TXT เขียนแล้วแต่ DNS ยังไม่ propagate — แยกเป็นสถานะ pending
           result.pendingVerify = true;
@@ -3294,6 +3357,113 @@ async function bulkAddToGSC(domains) {
   return { ok: true, message: 'เริ่มเพิ่ม ' + domains.length + ' โดเมน' };
 }
 
+
+
+// ===== ระบบพนักงาน AI 11 คน =====
+// เฟสแรก: โครงสร้าง + activity tracking (ยังไม่ต่อ Claude API)
+// หลักการ: งานดู/วิเคราะห์ = อัตโนมัติ | งานแก้บนโฮส = ต้องอนุมัติจากเจ้าของ
+
+const EMPLOYEES = [
+  { id: 'ceo',          name: 'CEO',            emoji: '👔', dept: 'บริหาร',      role: 'ดูภาพรวมระบบ + สรุป report ส่งเจ้าของ', canActOnHost: false },
+  { id: 'manager',      name: 'Manager',        emoji: '📋', dept: 'บริหาร',      role: 'รับเรื่องจาก CEO มาแตกเป็นงานย่อย',     canActOnHost: false },
+  { id: 'diagnostician',name: 'Diagnostician',  emoji: '🔬', dept: 'แก้ปัญหา',    role: 'วินิจฉัยปัญหา หาสาเหตุและวิธีแก้',       canActOnHost: false },
+  { id: 'engineer',     name: 'Engineer',       emoji: '🔧', dept: 'แก้ปัญหา',    role: 'ลงมือแก้ปัญหาบนระบบ',                  canActOnHost: true },
+  { id: 'safety',       name: 'Safety Reviewer',emoji: '🛡️', dept: 'แก้ปัญหา',    role: 'ตรวจผลกระทบก่อนแก้ ป้องกันโฮสเสียหาย',  canActOnHost: false },
+  { id: 'janitor',      name: 'Janitor',        emoji: '🧹', dept: 'เฉพาะทาง',    role: 'ทำความสะอาดระบบ ลบ log/cache เก่า',     canActOnHost: true },
+  { id: 'security',     name: 'Security Guard', emoji: '👮', dept: 'เฉพาะทาง',    role: 'ตรวจความเสี่ยง + เฝ้า traffic drop',     canActOnHost: false },
+  { id: 'seo',          name: 'SEO Strategist', emoji: '📈', dept: 'เฉพาะทาง',    role: 'วิเคราะห์ + เสนอแนวทางพัฒนาโดเมน',       canActOnHost: false },
+  { id: 'onboarder',    name: 'Onboarder',      emoji: '📦', dept: 'เฉพาะทาง',    role: 'จัดการโดเมนใหม่ ตั้งค่าเริ่มต้น',         canActOnHost: true },
+  { id: 'coordinator',  name: 'Coordinator',    emoji: '🎯', dept: 'สนับสนุน',    role: 'จัดคิวงาน กระจายงาน เก็บสถิติพนักงาน',   canActOnHost: false },
+  { id: 'analyst',      name: 'Analyst',        emoji: '📊', dept: 'สนับสนุน',    role: 'วิเคราะห์คุณค่า-ต้นทุน โดเมน/server',     canActOnHost: false }
+];
+
+// สถานะพนักงาน (in-memory + persist /tmp)
+const EMP_STATE_FILE = '/tmp/domainintel-employees.json';
+let employeeState = {};
+let employeeActivity = []; // log งานที่พนักงานทำ (ล่าสุด 300)
+const MAX_EMP_ACTIVITY = 300;
+
+function loadEmployeeState() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(EMP_STATE_FILE, 'utf8'));
+    employeeState = saved.state || {};
+    employeeActivity = saved.activity || [];
+  } catch { employeeState = {}; employeeActivity = []; }
+  // init ค่าเริ่มต้นให้ครบทุกคน
+  EMPLOYEES.forEach(e => {
+    if (!employeeState[e.id]) {
+      employeeState[e.id] = { status: 'idle', lastTask: null, lastActiveAt: null, tasksToday: 0, tasksTotal: 0 };
+    }
+  });
+}
+function saveEmployeeState() {
+  try { fs.writeFileSync(EMP_STATE_FILE, JSON.stringify({ state: employeeState, activity: employeeActivity })); } catch(e) {}
+}
+
+// บันทึกว่าพนักงานทำงาน
+function empLog(empId, action, detail, meta) {
+  const emp = EMPLOYEES.find(e => e.id === empId);
+  if (!emp) return;
+  const entry = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    empId, empName: emp.name, emoji: emp.emoji,
+    action, detail: detail || '',
+    meta: meta || {},
+    at: new Date().toISOString()
+  };
+  employeeActivity.unshift(entry);
+  if (employeeActivity.length > MAX_EMP_ACTIVITY) employeeActivity.pop();
+
+  // อัพเดทสถานะ
+  const st = employeeState[empId];
+  if (st) {
+    st.lastTask = action;
+    st.lastActiveAt = entry.at;
+    st.tasksToday = (st.tasksToday || 0) + 1;
+    st.tasksTotal = (st.tasksTotal || 0) + 1;
+  }
+  saveEmployeeState();
+  return entry;
+}
+
+// reset tasksToday ทุกเที่ยงคืน
+function resetEmployeeDailyStats() {
+  Object.values(employeeState).forEach(st => { st.tasksToday = 0; });
+  saveEmployeeState();
+}
+
+// ===== APPROVAL QUEUE (งานที่ต้องขออนุมัติจากเจ้าของ) =====
+const APPROVAL_FILE = '/tmp/domainintel-approvals.json';
+let approvalQueue = [];
+
+function loadApprovals() {
+  try { approvalQueue = JSON.parse(fs.readFileSync(APPROVAL_FILE, 'utf8')); }
+  catch { approvalQueue = []; }
+}
+function saveApprovals() {
+  try { fs.writeFileSync(APPROVAL_FILE, JSON.stringify(approvalQueue)); } catch(e) {}
+}
+
+// พนักงานขออนุมัติ (สำหรับงานแก้บนโฮส)
+function requestApproval(empId, title, description, action, meta) {
+  const emp = EMPLOYEES.find(e => e.id === empId);
+  const req = {
+    id: 'apr_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+    empId, empName: emp ? emp.name : empId, emoji: emp ? emp.emoji : '🤖',
+    title, description: description || '',
+    action: action || '', // action key ที่จะทำถ้าอนุมัติ
+    meta: meta || {},
+    status: 'pending', // pending | approved | rejected
+    createdAt: new Date().toISOString(),
+    decidedAt: null
+  };
+  approvalQueue.unshift(req);
+  saveApprovals();
+  empLog(empId, 'ขออนุมัติ', title, { approvalId: req.id });
+  // แจ้งเจ้าของผ่าน Telegram
+  try { smartAlert('warning', '🔔 รออนุมัติ: ' + (emp ? emp.name : empId) + ' ขอ "' + title + '"', 'approval:' + req.id); } catch(e) {}
+  return req;
+}
 
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
