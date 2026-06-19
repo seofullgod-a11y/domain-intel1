@@ -1606,6 +1606,25 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+
+  // วินิจฉัย server ทีละตัว
+  if (req.method === 'GET' && url.startsWith('/api/diagnose/')) {
+    const serverName = decodeURIComponent(url.split('/api/diagnose/')[1]);
+    const srv = PLESK_SERVERS.find(s => s.name === serverName);
+    if (!srv) return json(res, { ok: false, error: 'ไม่พบ server' });
+    empLog('diagnostician', 'วินิจฉัย server', serverName);
+    diagnoseServer(srv).then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
+  // ===== COMMAND CENTER API =====
+  if (req.method === 'GET' && url === '/api/command-center') {
+    try { json(res, { success: true, data: buildCommandCenter() }); }
+    catch(e) { json(res, { success: false, error: e.message }); }
+    return;
+  }
+
   // ===== EMPLOYEE BRAIN API =====
   // สั่งให้พนักงานวิเคราะห์ (manual trigger)
   if (req.method === 'POST' && url.startsWith('/api/employees/think/')) {
@@ -4073,6 +4092,153 @@ async function runAutoFixCycle() {
     console.log('[AutoFix] error:', e.message);
     return { ok: false, error: 'เกิดข้อผิดพลาด: ' + e.message };
   }
+}
+
+
+// ===== ศูนย์บัญชาการ: รวมสถานะทุกอย่าง จัดหมวด เรียงความเร่งด่วน =====
+function buildCommandCenter() {
+  // 1. ปัญหาเร่งด่วน (เรียงตามความรุนแรง)
+  const problems = [];
+  memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer).slice(0,30).forEach(d => {
+    problems.push({ severity: 'high', emoji: '🔴', cat: 'โดเมนล่ม', title: d.domain, detail: 'Server: ' + (d.pleskServer||'-'), action: 'fix-down-domain', meta: { domain: d.domain }, canFix: true });
+  });
+  let health = [];
+  try { health = getAllHealthScores() || []; } catch(e) {}
+  health.filter(h => h.score < 70).forEach(h => {
+    problems.push({ severity: h.score < 50 ? 'high' : 'medium', emoji: '⚠️', cat: 'Server สุขภาพต่ำ', title: h.server + ' (เกรด ' + h.grade + ')', detail: 'คะแนน ' + h.score + '/100 · down ' + h.down + ' · ตอบสนอง ' + h.avgResponseTime + 'ms', action: 'disk-cleanup', meta: {}, canFix: true });
+  });
+  memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 7 && d.sslDaysLeft > 0).slice(0,20).forEach(d => {
+    problems.push({ severity: 'high', emoji: '🔒', cat: 'SSL ใกล้หมด', title: d.domain, detail: 'เหลือ ' + d.sslDaysLeft + ' วัน', action: null, canFix: false });
+  });
+  memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 7 && d.daysLeft > 0).slice(0,20).forEach(d => {
+    problems.push({ severity: 'high', emoji: '📅', cat: 'โดเมนใกล้หมดอายุ', title: d.domain, detail: 'เหลือ ' + d.daysLeft + ' วัน', action: null, canFix: false });
+  });
+  problems.sort((a,b) => ({high:0,medium:1,low:2}[a.severity]) - ({high:0,medium:1,low:2}[b.severity]));
+
+  // 2. สรุปตัวเลขรวม
+  const summary = {
+    totalDomains: memoryDomains.length,
+    up: memoryDomains.filter(d => d.status === 'up').length,
+    down: memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer).length,
+    inGSC: memoryDomains.filter(d => d.gsc && d.gsc.inGSC).length,
+    highPriority: problems.filter(p => p.severity === 'high').length,
+    pendingApprovals: approvalQueue.filter(a => a.status === 'pending').length
+  };
+
+  // 3. สุขภาพ server เรียงจากแย่ไปดี
+  const serverHealth = health.slice().sort((a,b) => a.score - b.score);
+
+  // 4. พนักงานที่กำลังทำงาน + งานล่าสุด
+  const working = EMPLOYEES.filter(e => (employeeState[e.id]||{}).status === 'working')
+    .map(e => ({ name: e.name, emoji: e.emoji, task: employeeState[e.id].currentTask }));
+
+  // 5. CEO report ล่าสุด
+  const ceoReport = employeeReports['ceo'] || null;
+
+  // 6. auto-fix ล่าสุด
+  const recentFixes = (typeof autoFixHistory !== 'undefined' ? autoFixHistory : []).slice(0, 5);
+
+  return { summary, problems: problems.slice(0, 50), serverHealth, working, ceoReport, recentFixes,
+    pendingApprovals: approvalQueue.filter(a => a.status === 'pending').slice(0, 10) };
+}
+
+
+// ===== วินิจฉัย server: ดึงข้อมูลจริง หาสาเหตุ slowness =====
+async function diagnoseServer(srv) {
+  try {
+    const cmd = [
+      'echo "=LOAD="',
+      'cat /proc/loadavg | cut -d" " -f1-3',
+      'echo "=CPU_CORES="',
+      'nproc',
+      'echo "=RAM="',
+      'free -m | grep Mem | tr -s " " | cut -d" " -f2,3,4,7',  // total used free available
+      'echo "=SWAP="',
+      'free -m | grep Swap | tr -s " " | cut -d" " -f2,3',     // total used
+      'echo "=DISK="',
+      'df -h / | tail -1 | tr -s " " | cut -d" " -f5',         // use%
+      'echo "=PHPFPM_COUNT="',
+      'ps aux | grep -c "[p]hp-fpm"',
+      'echo "=MYSQL_MEM="',
+      'ps aux | grep "[m]ysqld" | awk "{print int(\$6/1024)}" | head -1',  // MySQL RSS in MB
+      'echo "=TOP5="',
+      'ps aux --sort=-%cpu | awk "NR>1 && NR<=6 {printf \"%s|%s|%s\\n\", \$3, \$4, \$11}"',  // cpu% mem% command
+      'echo "=APACHE_CONN="',
+      'ss -tn state established 2>/dev/null | grep -c ":80\|:443" || echo 0',
+      'echo "=MYSQL_SLOW="',
+      'mysql -e "SHOW GLOBAL STATUS LIKE \"Slow_queries\";" 2>/dev/null | tail -1 | awk "{print \$2}" || echo "n/a"',
+      'echo "=DONE="'
+    ].join('; ');
+
+    const cmdId = queueCommand(srv.host, cmd);
+    for (let i = 0; i < 45; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const res = agentResults[cmdId]; delete agentResults[cmdId];
+        const out = (res.output||'').replace(/~/g,'\n');
+        return parseDiagnostic(srv.name, out);
+      }
+    }
+    return { server: srv.name, ok: false, error: 'timeout' };
+  } catch(e) { return { server: srv.name, ok: false, error: e.message }; }
+}
+
+function parseDiagnostic(serverName, out) {
+  const section = (name) => {
+    const re = new RegExp('=' + name + '=\\s*\\n([\\s\\S]*?)(?:\\n=|$)');
+    const m = out.match(re);
+    return m ? m[1].trim() : '';
+  };
+
+  const load = section('LOAD').split(' ').map(Number);
+  const cores = parseInt(section('CPU_CORES')) || 1;
+  const ramParts = section('RAM').split(' ').map(Number); // total used free available
+  const swapParts = section('SWAP').split(' ').map(Number); // total used
+  const disk = parseInt(section('DISK')) || 0;
+  const phpfpm = parseInt(section('PHPFPM_COUNT')) || 0;
+  const mysqlMem = parseInt(section('MYSQL_MEM')) || 0;
+  const apacheConn = parseInt(section('APACHE_CONN')) || 0;
+  const slowQueries = section('MYSQL_SLOW');
+  const top5 = section('TOP5').split('\n').filter(Boolean).map(line => {
+    const [cpu, mem, command] = line.split('|');
+    return { cpu: parseFloat(cpu)||0, mem: parseFloat(mem)||0, command: (command||'').split('/').pop().slice(0,30) };
+  });
+
+  const load1 = load[0] || 0;
+  const ramTotal = ramParts[0] || 1;
+  const ramUsed = ramParts[1] || 0;
+  const ramAvail = ramParts[3] || 0;
+  const swapTotal = swapParts[0] || 0;
+  const swapUsed = swapParts[1] || 0;
+
+  const loadPerCore = load1 / cores;
+  const ramPct = Math.round(ramUsed / ramTotal * 100);
+  const swapPct = swapTotal ? Math.round(swapUsed / swapTotal * 100) : 0;
+
+  // วิเคราะห์หาสาเหตุ
+  const issues = [];
+  if (loadPerCore > 2) issues.push({ level: 'high', text: 'Load สูงมาก (' + load1.toFixed(1) + ' บน ' + cores + ' core = ' + loadPerCore.toFixed(1) + '/core) — CPU ทำงานหนักเกินไป' });
+  else if (loadPerCore > 1) issues.push({ level: 'medium', text: 'Load ค่อนข้างสูง (' + loadPerCore.toFixed(1) + '/core) — เริ่มแน่น' });
+  if (ramPct > 90) issues.push({ level: 'high', text: 'RAM เกือบเต็ม (' + ramPct + '%) — เหลือว่าง ' + ramAvail + 'MB' });
+  else if (ramPct > 80) issues.push({ level: 'medium', text: 'RAM ใช้เยอะ (' + ramPct + '%)' });
+  if (swapPct > 50) issues.push({ level: 'high', text: 'ใช้ Swap หนัก (' + swapPct + '%) — นี่คือสาเหตุหลักที่ทำให้ช้า! RAM ไม่พอเลยต้องใช้ disk แทน' });
+  else if (swapUsed > 100) issues.push({ level: 'medium', text: 'เริ่มใช้ Swap (' + swapUsed + 'MB) — RAM ใกล้หมด' });
+  if (phpfpm > 100) issues.push({ level: 'high', text: 'PHP-FPM เยอะมาก (' + phpfpm + ' process) — แต่ละตัวกิน RAM, ควรปรับ ondemand' });
+  else if (phpfpm > 50) issues.push({ level: 'medium', text: 'PHP-FPM ค่อนข้างเยอะ (' + phpfpm + ' process)' });
+  if (disk > 90) issues.push({ level: 'high', text: 'Disk เกือบเต็ม (' + disk + '%) — ควร cleanup' });
+  if (mysqlMem > 2048) issues.push({ level: 'medium', text: 'MySQL กิน RAM เยอะ (' + mysqlMem + 'MB)' });
+
+  // แนะนำการแก้ (เฉพาะ safe action ที่มี)
+  const recommendations = [];
+  if (phpfpm > 50 || ramPct > 80 || swapPct > 30) recommendations.push({ action: 'phpfpm-ondemand', label: 'ปรับ PHP-FPM ondemand (ลด RAM)', reason: 'ลดจำนวน process ที่ค้างกิน RAM' });
+  if (disk > 80) recommendations.push({ action: 'disk-cleanup', label: 'ทำความสะอาด disk', reason: 'disk ใกล้เต็ม' });
+
+  return {
+    server: serverName, ok: true,
+    metrics: { load1, loadPerCore: +loadPerCore.toFixed(2), cores, ramPct, ramUsed, ramTotal, ramAvail, swapPct, swapUsed, swapTotal, disk, phpfpm, mysqlMem, apacheConn, slowQueries, top5 },
+    issues, recommendations,
+    verdict: issues.some(i => i.level === 'high') ? 'critical' : issues.length ? 'warning' : 'healthy'
+  };
 }
 
 server.listen(PORT, async () => {
