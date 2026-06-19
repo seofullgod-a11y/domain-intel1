@@ -524,6 +524,10 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="topbar-sub">ทุกอย่างที่ต้องรู้ ในที่เดียว — เรียงตามความเร่งด่วน</div>
         </div>
         <div class="topbar-right">
+          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer" title="ให้บอทวินิจฉัยแล้วแก้งานปลอดภัยเองทุก 30 นาที (มี cooldown + เพดานต่อวัน)">
+            <input type="checkbox" id="remediate-toggle" onchange="toggleRemediate()" checked> 🤖 แก้เองอัตโนมัติ
+          </label>
+          <button class="btn btn-green" onclick="runRemediateNow()" id="remediate-run-btn"><i class="ti ti-wand"></i> วินิจฉัย+แก้เลย</button>
           <button class="btn" onclick="loadCommandCenter()"><i class="ti ti-refresh"></i> รีเฟรช</button>
         </div>
       </div>
@@ -5661,6 +5665,7 @@ async function loadCommandCenter() {
     if (!data.success) { el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + (data.error||'') + '</div>'; return; }
     commandData = data.data;
     renderCommandCenter(data.data);
+    loadRemediateStatus();
     // อัพเดท badge
     const badge = document.getElementById('nav-command-badge');
     if (badge) {
@@ -5832,5 +5837,40 @@ async function ccApplyFix(action, serverName, btn) {
     else toast(data.error||'ส่งไม่ได้', 'error');
   } catch(e) { toast('ผิดพลาด', 'error'); }
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> ส่งแล้ว'; }
+}
+
+// ===== Auto-remediate (วินิจฉัยแล้วแก้เอง) =====
+async function toggleRemediate() {
+  try {
+    const res = await fetch(`${API}/api/remediate/toggle`, { method: 'POST' });
+    const data = await res.json();
+    toast(data.enabled ? 'เปิดแก้เองอัตโนมัติแล้ว' : 'ปิดแก้เองอัตโนมัติแล้ว — จะขออนุมัติแทน', 'success');
+  } catch(e) {}
+}
+
+async function runRemediateNow() {
+  const btn = document.getElementById('remediate-run-btn');
+  if (!confirm('ให้บอทวินิจฉัยทุก server ที่สุขภาพต่ำ แล้วแก้งานปลอดภัยเองเดี๋ยวนี้?\n(เฉพาะ cleanup / PHP-FPM ondemand · มี cooldown กันทำซ้ำ)')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> วินิจฉัย+แก้...'; }
+  try {
+    const res = await fetch(`${API}/api/remediate/run`, { method: 'POST' });
+    const data = await res.json();
+    if (data.ok) {
+      toast(`วินิจฉัย ${data.diagnosed} server · แก้ ${data.applied} รายการ`, 'success');
+    } else {
+      toast(data.reason || data.error || 'ทำงานไม่ได้', 'error');
+    }
+    setTimeout(loadCommandCenter, 1500);
+  } catch(e) { toast('ผิดพลาด: ' + e.message, 'error'); }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> วินิจฉัย+แก้เลย'; }
+}
+
+async function loadRemediateStatus() {
+  try {
+    const res = await fetch(`${API}/api/remediate/status`);
+    const data = await res.json();
+    const toggle = document.getElementById('remediate-toggle');
+    if (toggle) toggle.checked = data.enabled;
+  } catch(e) {}
 }
 </script>
