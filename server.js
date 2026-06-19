@@ -1618,6 +1618,25 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // Deep remediation — วินิจฉัยแล้วแก้เอง
+  if (req.method === 'POST' && url === '/api/remediate/run') {
+    runDeepRemediation().then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/remediate/status') {
+    const today = new Date().toISOString().split('T')[0];
+    if (today !== autoFixDayStamp) { autoFixDayStamp = today; autoFixDailyCount = 0; }
+    json(res, { success: true, enabled: autoRemediateEnabled, dailyCount: autoFixDailyCount, dailyCap: AUTO_FIX_DAILY_CAP,
+      cooldowns: Object.entries(autoFixCooldowns).map(([k,t]) => ({ key: k, minsLeft: Math.max(0, Math.ceil((AUTO_FIX_COOLDOWN_MS-(Date.now()-t))/60000)) })).filter(c=>c.minsLeft>0) });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/remediate/toggle') {
+    autoRemediateEnabled = !autoRemediateEnabled;
+    json(res, { success: true, enabled: autoRemediateEnabled });
+    return;
+  }
+
   // ===== COMMAND CENTER API =====
   if (req.method === 'GET' && url === '/api/command-center') {
     try { json(res, { success: true, data: buildCommandCenter() }); }
@@ -4241,6 +4260,102 @@ function parseDiagnostic(serverName, out) {
   };
 }
 
+
+// ===== ระบบแก้เองอัตโนมัติจากการวินิจฉัย (พร้อมตัวกันพลาด) =====
+let autoRemediateEnabled = true;        // เปิด/ปิดได้
+const AUTO_FIX_COOLDOWN_MS = 2 * 60 * 60 * 1000; // งานเดียวกัน server เดียวกัน ห้ามซ้ำใน 2 ชม.
+const AUTO_FIX_DAILY_CAP = 20;          // เพดานต่อวัน
+let autoFixCooldowns = {};              // { 'action:server': timestamp }
+let autoFixDailyCount = 0;
+let autoFixDayStamp = new Date().toISOString().split('T')[0];
+
+function canAutoFix(action, server) {
+  // เช็ควันใหม่ → reset count
+  const today = new Date().toISOString().split('T')[0];
+  if (today !== autoFixDayStamp) { autoFixDayStamp = today; autoFixDailyCount = 0; }
+  if (autoFixDailyCount >= AUTO_FIX_DAILY_CAP) return { ok: false, reason: 'ถึงเพดานต่อวันแล้ว (' + AUTO_FIX_DAILY_CAP + ')' };
+  const key = action + ':' + (server || 'all');
+  const last = autoFixCooldowns[key];
+  if (last && (Date.now() - last) < AUTO_FIX_COOLDOWN_MS) {
+    const mins = Math.ceil((AUTO_FIX_COOLDOWN_MS - (Date.now() - last)) / 60000);
+    return { ok: false, reason: 'cooldown เหลือ ' + mins + ' นาที' };
+  }
+  return { ok: true };
+}
+
+function markAutoFix(action, server) {
+  autoFixCooldowns[action + ':' + (server || 'all')] = Date.now();
+  autoFixDailyCount++;
+}
+
+// วินิจฉัย server แล้วแก้เองถ้าเจอปัญหาปลอดภัย
+async function autoRemediateServer(srv, appliedThisCycle) {
+  const diag = await diagnoseServer(srv);
+  if (!diag.ok) return { server: srv.name, ok: false, error: diag.error };
+
+  const applied = [];
+  // แก้เฉพาะถ้า verdict = critical และมี safe recommendation
+  if (diag.verdict === 'critical' && diag.recommendations.length > 0) {
+    for (const rec of diag.recommendations) {
+      const act = SAFE_ACTIONS[rec.action];
+      if (!act) continue;
+
+      // กัน action เดียวกันรันซ้ำในรอบเดียว (cleanup/phpfpm ครอบทุก server อยู่แล้ว)
+      if (appliedThisCycle && appliedThisCycle.has(rec.action)) {
+        applied.push({ action: rec.action, label: rec.label, result: { ok: true, detail: 'ทำไปแล้วในรอบนี้ (ครอบทุก server)' } });
+        continue;
+      }
+
+      // เช็คตัวกันพลาด
+      const gate = canAutoFix(rec.action, srv.name);
+      if (!gate.ok) {
+        logAutoFix(act.emp, srv.name + ': ' + rec.reason, rec.label + ' (ข้าม: ' + gate.reason + ')', { ok: false, detail: gate.reason });
+        continue;
+      }
+
+      // ลงมือแก้
+      try {
+        setEmployeeWorking(act.emp, rec.label + ' @ ' + srv.name, 45000);
+        markAutoFix(rec.action, srv.name);
+        if (appliedThisCycle) appliedThisCycle.add(rec.action);
+        const result = await act.run({ server: srv.name });
+        logAutoFix(act.emp, srv.name + ': ' + rec.reason, rec.label, result);
+        empLog(act.emp, 'วินิจฉัยแล้วแก้เอง', srv.name + ' — ' + rec.label);
+        applied.push({ action: rec.action, label: rec.label, result });
+        smartAlert('warning', '🤖 แก้อัตโนมัติ: ' + srv.name + '\n' + rec.label + ' — ' + (result.ok ? 'สำเร็จ' : 'ล้มเหลว') + '\nสาเหตุ: ' + rec.reason);
+      } catch(e) {
+        logAutoFix(act.emp, srv.name, rec.label + ' (error)', { ok: false, detail: e.message });
+      }
+    }
+  }
+  return { server: srv.name, ok: true, verdict: diag.verdict, applied, metrics: diag.metrics };
+}
+
+// วนวินิจฉัย+แก้ทุก server ที่สุขภาพต่ำ
+async function runDeepRemediation() {
+  if (!autoRemediateEnabled) return { ok: false, reason: 'auto-remediate ปิดอยู่' };
+  try {
+    let health = [];
+    try { health = getAllHealthScores() || []; } catch(e) {}
+    // วินิจฉัยเฉพาะ server สุขภาพต่ำกว่า 75 (ไม่ต้องวินิจฉัยทุกตัวทุกครั้ง ประหยัด)
+    const targets = health.filter(h => h.score < 75).map(h => h.server);
+    const allResults = [];
+    const appliedThisCycle = new Set(); // กัน action เดียวกันรันซ้ำในรอบเดียว (เพราะ cleanup/phpfpm ทำทุก server)
+    for (const serverName of targets) {
+      const srv = PLESK_SERVERS.find(s => s.name === serverName);
+      if (!srv) continue;
+      const r = await autoRemediateServer(srv, appliedThisCycle);
+      allResults.push(r);
+      await new Promise(rs => setTimeout(rs, 2000)); // เว้นระยะ
+    }
+    const totalApplied = allResults.reduce((s,r) => s + (r.applied ? r.applied.length : 0), 0);
+    if (totalApplied > 0) logEvent('fix', 'Deep remediation แก้ ' + totalApplied + ' รายการ', { count: totalApplied });
+    return { ok: true, diagnosed: targets.length, applied: totalApplied, results: allResults };
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
+}
+
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
   console.log(`║   DomainIntel + Plesk + Google Sheets    ║`);
@@ -4286,6 +4401,9 @@ server.listen(PORT, async () => {
   // Auto-fix งานปลอดภัยทุก 15 นาที (โดเมน down → กู้, disk เต็ม → cleanup)
   setInterval(() => { runAutoFixCycle().catch(()=>{}); }, 15 * 60 * 1000);
   setTimeout(() => { runAutoFixCycle().catch(()=>{}); }, 90 * 1000); // รันครั้งแรกหลัง startup 90 วิ
+  // Deep remediation: วินิจฉัยละเอียดแล้วแก้เองทุก 30 นาที (เฉพาะ server สุขภาพต่ำ + งานปลอดภัย + มี cooldown/เพดาน)
+  setInterval(() => { runDeepRemediation().catch(()=>{}); }, 30 * 60 * 1000);
+  setTimeout(() => { runDeepRemediation().catch(()=>{}); }, 150 * 1000); // ครั้งแรกหลัง startup 2.5 นาที
   // เฟส 3: Diagnostician เสนองานแก้ปัญหาทุก 6 ชม. (ถ้ามี API key) — เข้า approval queue รอเจ้าของอนุมัติ
   if (process.env.ANTHROPIC_API_KEY) {
     setInterval(() => { proposeActionsFromAnalysis().catch(()=>{}); }, 6 * 60 * 60 * 1000);
