@@ -419,7 +419,10 @@ textarea.form-input { resize: vertical; min-height: 80px; }
     </div>
     <nav class="nav">
       <div class="nav-section">// OVERVIEW</div>
-      <div class="nav-item active" onclick="showPage('dashboard')">
+      <div class="nav-item active" onclick="showPage('command')">
+        <i class="ti ti-layout-grid"></i> ศูนย์บัญชาการ <span id="nav-command-badge" class="nav-badge" style="display:none"></span>
+      </div>
+      <div class="nav-item" onclick="showPage('dashboard')">
         <i class="ti ti-dashboard"></i> Dashboard
       </div>
       <div class="nav-item" onclick="showPage('overview')">
@@ -513,7 +516,23 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   <main class="main">
 
     <!-- DASHBOARD PAGE -->
-    <div id="page-dashboard">
+    <!-- COMMAND CENTER PAGE -->
+    <div id="page-command">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title"><i class="ti ti-layout-grid" style="color:var(--teal)"></i> ศูนย์บัญชาการ</div>
+          <div class="topbar-sub">ทุกอย่างที่ต้องรู้ ในที่เดียว — เรียงตามความเร่งด่วน</div>
+        </div>
+        <div class="topbar-right">
+          <button class="btn" onclick="loadCommandCenter()"><i class="ti ti-refresh"></i> รีเฟรช</button>
+        </div>
+      </div>
+      <div style="padding:16px 20px" id="command-content">
+        <div style="text-align:center;padding:50px;color:var(--text3)"><i class="ti ti-refresh ti-spin" style="font-size:24px"></i><br>กำลังรวบรวมข้อมูล...</div>
+      </div>
+    </div>
+
+    <div id="page-dashboard" style="display:none">
       <div class="topbar">
         <div>
           <div class="topbar-title">Dashboard</div>
@@ -1560,6 +1579,9 @@ async function initApp() {
   await loadData();
   setInterval(loadData, 30000);
   startCountdown();
+
+  // หน้าแรกคือศูนย์บัญชาการ — โหลดเลย
+  if (currentPageName === 'command') loadCommandCenter();
 
   // โหลด approval badge + อัพเดททุก 60 วิ
   refreshApprovalBadge();
@@ -2739,7 +2761,7 @@ async function bulkDelete() {
   renderQuickTable();
 }
 
-let currentPageName = 'dashboard';
+let currentPageName = 'command';
 let isSelectAllFiltered = false; // ติ๊กทุกโดเมนในตัวกรองปัจจุบัน
 let countdownInterval = null;
 let secondsLeft = 30;
@@ -2847,6 +2869,7 @@ function showPage(name) {
   currentPageName = name;
   if (name === 'domains') applyFilters();
   if (name === 'dashboard') { renderQuickTable(); loadCEOReport(); }
+  if (name === 'command') { setTimeout(loadCommandCenter, 100); }
   if (name === 'traffic') renderTrafficPage();
   if (name === 'keywords') renderKeywordsPage();
   if (name === 'botwatch') {
@@ -5624,5 +5647,190 @@ function updateProblemBadge(count) {
   if (!badge) return;
   if (count > 0) { badge.style.display = 'inline-block'; badge.textContent = count; }
   else badge.style.display = 'none';
+}
+</script>
+<script>
+// ===== ศูนย์บัญชาการ (COMMAND CENTER) =====
+let commandData = null;
+async function loadCommandCenter() {
+  const el = document.getElementById('command-content');
+  if (!el) return;
+  try {
+    const res = await fetch(`${API}/api/command-center`);
+    const data = await res.json();
+    if (!data.success) { el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + (data.error||'') + '</div>'; return; }
+    commandData = data.data;
+    renderCommandCenter(data.data);
+    // อัพเดท badge
+    const badge = document.getElementById('nav-command-badge');
+    if (badge) {
+      if (data.data.summary.highPriority > 0) { badge.style.display='inline-block'; badge.textContent = data.data.summary.highPriority; }
+      else badge.style.display = 'none';
+    }
+  } catch(e) {
+    el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
+  }
+}
+
+function renderCommandCenter(d) {
+  const el = document.getElementById('command-content');
+  const s = d.summary;
+  const sevColor = x => x==='high'?'var(--red)':x==='medium'?'var(--amber)':'var(--text3)';
+
+  // จัดกลุ่มปัญหาตามหมวด
+  const byCat = {};
+  (d.problems||[]).forEach(p => { (byCat[p.cat] = byCat[p.cat]||[]).push(p); });
+
+  el.innerHTML = `
+    <!-- สรุปด่วน -->
+    <div class="metrics-grid" style="margin-bottom:20px">
+      <div class="metric-card ${s.highPriority>0?'highlight-red':''}" style="cursor:pointer" onclick="document.getElementById('cc-urgent').scrollIntoView({behavior:'smooth'})">
+        <div class="metric-label"><i class="ti ti-alert-circle"></i> ต้องทำเลย</div>
+        <div class="metric-val" style="color:${s.highPriority>0?'var(--red)':'var(--green)'}">${s.highPriority}</div>
+      </div>
+      <div class="metric-card"><div class="metric-label"><i class="ti ti-world"></i> โดเมนทั้งหมด</div><div class="metric-val">${s.totalDomains}</div></div>
+      <div class="metric-card ${s.down>0?'highlight-amber':''}"><div class="metric-label"><i class="ti ti-arrow-down"></i> ล่มจริง</div><div class="metric-val" style="color:${s.down>0?'var(--amber)':'var(--green)'}">${s.down}</div></div>
+      <div class="metric-card ${s.pendingApprovals>0?'highlight-amber':''}" style="cursor:pointer" onclick="showPage('approvals')"><div class="metric-label"><i class="ti ti-checkbox"></i> รออนุมัติ</div><div class="metric-val" style="color:${s.pendingApprovals>0?'var(--gold)':'var(--text)'}">${s.pendingApprovals}</div></div>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
+
+      <!-- ซ้าย: ปัญหาเร่งด่วน -->
+      <div id="cc-urgent">
+        <div style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--text)"><i class="ti ti-flame" style="color:var(--red)"></i> สิ่งที่ต้องทำ (เรียงด่วนสุดก่อน)</div>
+        ${Object.keys(byCat).length ? Object.entries(byCat).map(([cat, items]) => `
+          <div style="margin-bottom:14px">
+            <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">${items[0].emoji} ${cat} <span style="color:var(--text3)">(${items.length})</span></div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              ${items.slice(0,8).map(p => `
+                <div class="metric-card" style="padding:10px 12px;border-left:3px solid ${sevColor(p.severity)}">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                    <div style="flex:1;min-width:0">
+                      <div style="font-size:12px;font-weight:600;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.title}</div>
+                      <div style="font-size:11px;color:var(--text3)">${p.detail}</div>
+                    </div>
+                    ${p.canFix ? `<button class="btn btn-sm btn-green" onclick="ccFix('${p.action}','${(p.meta&&p.meta.domain)||''}',this)"><i class="ti ti-bolt"></i> แก้</button>` : '<span style="font-size:10px;color:var(--text3)">แก้เองไม่ได้</span>'}
+                  </div>
+                </div>
+              `).join('')}
+              ${items.length > 8 ? `<div style="font-size:11px;color:var(--text3);padding-left:4px">+ อีก ${items.length-8} รายการ</div>` : ''}
+            </div>
+          </div>
+        `).join('') : '<div class="metric-card" style="text-align:center;padding:30px"><div style="font-size:32px">✅</div><div style="font-size:13px;color:var(--green);font-weight:600;margin-top:8px">ไม่มีปัญหาเร่งด่วน</div></div>'}
+      </div>
+
+      <!-- ขวา: สถานะระบบ -->
+      <div>
+        <!-- CEO Report -->
+        ${d.ceoReport ? `<div class="metric-card" style="padding:16px;margin-bottom:14px;border-color:rgba(192,132,252,0.25)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+            <span style="font-size:13px;font-weight:600;color:var(--purple)">👔 สรุปจาก CEO</span>
+            <span style="font-size:11px;color:var(--text3)">${timeAgo(d.ceoReport.at)}</span>
+          </div>
+          <div style="font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap">${d.ceoReport.text}</div>
+        </div>` : ''}
+
+        <!-- สุขภาพ Server -->
+        <div style="font-size:14px;font-weight:700;margin-bottom:10px"><i class="ti ti-server" style="color:var(--teal)"></i> สุขภาพ Server</div>
+        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
+          ${(d.serverHealth||[]).map(h => {
+            const gColor = h.grade==='A'?'var(--green)':h.grade==='B'?'var(--teal)':h.grade==='C'?'var(--amber)':'var(--red)';
+            return `<div class="metric-card" style="padding:10px 12px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
+                <div style="display:flex;align-items:center;gap:8px">
+                  <span style="font-size:18px;font-weight:700;color:${gColor};min-width:24px">${h.grade}</span>
+                  <div>
+                    <div style="font-size:12px;font-weight:600">${h.server}</div>
+                    <div style="font-size:11px;color:var(--text3)">${h.score}/100 · ตอบสนอง ${h.avgResponseTime}ms · down ${h.down}</div>
+                  </div>
+                </div>
+                <button class="btn btn-sm" onclick="ccDiagnose('${h.server}',this)"><i class="ti ti-stethoscope"></i> วินิจฉัย</button>
+              </div>
+              <div id="cc-diag-${h.server.replace(/\s/g,'')}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
+            </div>`;
+          }).join('')}
+        </div>
+
+        <!-- กำลังทำงาน + auto-fix -->
+        ${d.working && d.working.length ? `<div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-bolt" style="color:var(--green)"></i> กำลังทำงานตอนนี้</div>
+        <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">
+          ${d.working.map(w => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg3);border-radius:8px"><span>${w.emoji}</span><b>${w.name}</b><span style="color:var(--text3)">${w.task||''}</span></div>`).join('')}
+        </div>` : ''}
+
+        ${d.recentFixes && d.recentFixes.length ? `<div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-robot" style="color:var(--teal)"></i> แก้อัตโนมัติล่าสุด</div>
+        <div class="table-container">
+          ${d.recentFixes.map(f => `<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border);font-size:11px">
+            <span>${f.emoji}</span><span style="flex:1;color:var(--text2)">${f.action}</span>
+            <span style="color:${f.result==='สำเร็จ'?'var(--green)':'var(--red)'}">${f.result}</span>
+            <span style="color:var(--text3)">${timeAgo(f.at)}</span>
+          </div>`).join('')}
+        </div>` : ''}
+      </div>
+    </div>
+  `;
+}
+
+async function ccFix(action, domain, btn) {
+  if (!confirm('แก้ปัญหานี้ทันที?')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i>'; }
+  try {
+    const res = await fetch(`${API}/api/problems/fix`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action, meta: domain ? { domain } : {}, immediate: true })
+    });
+    const data = await res.json();
+    if (data.ok) { toast('แก้แล้ว: ' + (data.result?.detail||'สำเร็จ'), 'success'); setTimeout(loadCommandCenter, 1500); }
+    else { toast(data.error||'แก้ไม่ได้', 'error'); if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-bolt"></i> แก้';} }
+  } catch(e) { toast('ผิดพลาด', 'error'); if(btn) btn.disabled=false; }
+}
+
+async function ccDiagnose(serverName, btn) {
+  const box = document.getElementById('cc-diag-' + serverName.replace(/\s/g,''));
+  if (!box) return;
+  if (box.style.display === 'block') { box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="font-size:12px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังดึงข้อมูลจริงจาก server...</div>';
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch(`${API}/api/diagnose/${encodeURIComponent(serverName)}`);
+    const d = await res.json();
+    if (!d.ok) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">วินิจฉัยไม่ได้: ' + (d.error||'') + '</div>'; if(btn)btn.disabled=false; return; }
+    const m = d.metrics;
+    const vColor = d.verdict==='critical'?'var(--red)':d.verdict==='warning'?'var(--amber)':'var(--green)';
+    const vText = d.verdict==='critical'?'🔴 วิกฤต':d.verdict==='warning'?'🟡 เริ่มมีปัญหา':'🟢 ปกติ';
+    box.innerHTML = `
+      <div style="font-size:12px;font-weight:600;color:${vColor};margin-bottom:8px">${vText}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-bottom:10px">
+        <div>Load: <b style="color:${m.loadPerCore>1?'var(--amber)':'var(--text)'}">${m.load1} (${m.loadPerCore}/core)</b></div>
+        <div>RAM: <b style="color:${m.ramPct>85?'var(--red)':'var(--text)'}">${m.ramPct}% (เหลือ ${m.ramAvail}MB)</b></div>
+        <div>Swap: <b style="color:${m.swapPct>40?'var(--red)':'var(--text)'}">${m.swapPct}% (${m.swapUsed}MB)</b></div>
+        <div>Disk: <b style="color:${m.disk>85?'var(--red)':'var(--text)'}">${m.disk}%</b></div>
+        <div>PHP-FPM: <b style="color:${m.phpfpm>80?'var(--amber)':'var(--text)'}">${m.phpfpm} proc</b></div>
+        <div>MySQL: <b>${m.mysqlMem}MB</b></div>
+      </div>
+      ${d.issues.length ? `<div style="margin-bottom:10px">
+        ${d.issues.map(i => `<div style="font-size:11px;color:${i.level==='high'?'var(--red)':'var(--amber)'};margin-bottom:3px">• ${i.text}</div>`).join('')}
+      </div>` : '<div style="font-size:11px;color:var(--green);margin-bottom:8px">ไม่พบปัญหา</div>'}
+      ${d.recommendations.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">
+        ${d.recommendations.map(r => `<button class="btn btn-sm btn-green" onclick="ccApplyFix('${r.action}','${serverName}',this)" title="${r.reason}"><i class="ti ti-wand"></i> ${r.label}</button>`).join('')}
+      </div>` : ''}
+    `;
+  } catch(e) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ผิดพลาด: ' + e.message + '</div>'; }
+  if (btn) btn.disabled = false;
+}
+
+async function ccApplyFix(action, serverName, btn) {
+  if (!confirm('ส่งงาน "' + (action==='phpfpm-ondemand'?'ปรับ PHP-FPM ondemand':'ทำความสะอาด disk') + '" เข้าขออนุมัติ?\n(งานนี้กระทบโฮส ต้องอนุมัติก่อนทำ)')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i>'; }
+  try {
+    const res = await fetch(`${API}/api/problems/fix`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ action, meta: {}, immediate: false })
+    });
+    const data = await res.json();
+    if (data.ok) { toast('ส่งขออนุมัติแล้ว — ดูที่หน้ารออนุมัติ', 'info'); refreshApprovalBadge(); }
+    else toast(data.error||'ส่งไม่ได้', 'error');
+  } catch(e) { toast('ผิดพลาด', 'error'); }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> ส่งแล้ว'; }
 }
 </script>
