@@ -5666,6 +5666,7 @@ async function loadCommandCenter() {
     commandData = data.data;
     renderCommandCenter(data.data);
     loadRemediateStatus();
+    startServerMetricsPolling();
     // อัพเดท badge
     const badge = document.getElementById('nav-command-badge');
     if (badge) {
@@ -5736,10 +5737,17 @@ function renderCommandCenter(d) {
         </div>` : ''}
 
         <!-- สุขภาพ Server -->
-        <div style="font-size:14px;font-weight:700;margin-bottom:10px"><i class="ti ti-server" style="color:var(--teal)"></i> สุขภาพ Server</div>
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <span style="font-size:14px;font-weight:700"><i class="ti ti-server" style="color:var(--teal)"></i> สุขภาพ Server</span>
+          <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:10px">
+            <span style="width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite"></span> LIVE
+          </span>
+          <span id="cc-metrics-updated" style="font-size:10px;color:var(--text3)"></span>
+        </div>
         <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
           ${(d.serverHealth||[]).map(h => {
             const gColor = h.grade==='A'?'var(--green)':h.grade==='B'?'var(--teal)':h.grade==='C'?'var(--amber)':'var(--red)';
+            const sid = h.server.replace(/\s/g,'');
             return `<div class="metric-card" style="padding:10px 12px">
               <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
                 <div style="display:flex;align-items:center;gap:8px">
@@ -5751,7 +5759,8 @@ function renderCommandCenter(d) {
                 </div>
                 <button class="btn btn-sm" onclick="ccDiagnose('${h.server}',this)"><i class="ti ti-stethoscope"></i> วินิจฉัย</button>
               </div>
-              <div id="cc-diag-${h.server.replace(/\s/g,'')}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
+              <div id="cc-live-${sid}" style="margin-top:8px"></div>
+              <div id="cc-diag-${sid}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
             </div>`;
           }).join('')}
         </div>
@@ -5871,6 +5880,48 @@ async function loadRemediateStatus() {
     const data = await res.json();
     const toggle = document.getElementById('remediate-toggle');
     if (toggle) toggle.checked = data.enabled;
+  } catch(e) {}
+}
+
+// ===== Smart Polling: live server metrics ทุก 10 วิ =====
+let ccMetricsTimer = null;
+function startServerMetricsPolling() {
+  stopServerMetricsPolling();
+  updateLiveMetrics(); // ดึงทันทีรอบแรก
+  ccMetricsTimer = setInterval(() => {
+    if (currentPageName !== 'command') { stopServerMetricsPolling(); return; }
+    updateLiveMetrics();
+  }, 10000);
+}
+function stopServerMetricsPolling() {
+  if (ccMetricsTimer) { clearInterval(ccMetricsTimer); ccMetricsTimer = null; }
+}
+
+async function updateLiveMetrics() {
+  try {
+    const res = await fetch(`${API}/api/server-metrics-live`);
+    const data = await res.json();
+    if (!data.success) return;
+    const cache = data.cache || {};
+    // อัพเดทเวลาล่าสุด
+    const updEl = document.getElementById('cc-metrics-updated');
+    if (updEl) updEl.textContent = data.collecting ? '(กำลังเก็บข้อมูล...)' : (data.lastCollectAt ? 'อัพเดต ' + timeAgo(data.lastCollectAt) : '');
+
+    // อัพเดท badge แต่ละ server
+    Object.entries(cache).forEach(([serverName, info]) => {
+      const sid = serverName.replace(/\s/g,'');
+      const box = document.getElementById('cc-live-' + sid);
+      if (!box || !info.metrics) return;
+      const m = info.metrics;
+      const badge = (label, val, warn) => `<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:${warn?'var(--red-dim)':'var(--bg4)'};color:${warn?'var(--red)':'var(--text2)'}">${label} ${val}</span>`;
+      box.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:4px">
+        ${badge('Load', m.load1+' ('+m.loadPerCore+'/c)', m.loadPerCore>1.5)}
+        ${badge('RAM', m.ramPct+'%', m.ramPct>85)}
+        ${badge('Swap', m.swapPct+'%', m.swapPct>40)}
+        ${badge('PHP-FPM', m.phpfpm, m.phpfpm>80)}
+        ${badge('Disk', m.disk+'%', m.disk>85)}
+      </div>`;
+    });
   } catch(e) {}
 }
 </script>
