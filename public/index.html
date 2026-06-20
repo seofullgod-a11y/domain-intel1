@@ -5808,7 +5808,35 @@ async function ccDiagnose(serverName, btn) {
   try {
     const res = await fetch(`${API}/api/diagnose/${encodeURIComponent(serverName)}`);
     const d = await res.json();
-    if (!d.ok) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">วินิจฉัยไม่ได้: ' + (d.error||'') + '</div>'; if(btn)btn.disabled=false; return; }
+    if (!d.ok) {
+      // timeout → ลองใช้ข้อมูล LIVE จาก cache แทน
+      let cacheNote = '';
+      try {
+        const liveRes = await fetch(`${API}/api/server-metrics-live`);
+        const liveData = await liveRes.json();
+        const cached = liveData.cache && liveData.cache[serverName];
+        if (cached && cached.metrics) {
+          const m = cached.metrics;
+          const swapDanger = m.swapPct > 40 && m.ramPct > 80;
+          box.innerHTML = `
+            <div style="font-size:11px;color:var(--amber);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> วินิจฉัยสดไม่ได้ (server แน่นจนตอบไม่ทัน) — แสดงข้อมูลล่าสุดจาก cache (${timeAgo(cached.at)})</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-bottom:10px">
+              <div>Load: <b style="color:${m.loadPerCore>1?'var(--red)':'var(--text)'}">${m.load1} (${m.loadPerCore}/core)</b></div>
+              <div>RAM: <b style="color:${m.ramPct>85?'var(--red)':'var(--text)'}">${m.ramPct}%</b></div>
+              <div>Swap: <b style="color:${swapDanger?'var(--red)':'var(--text)'}">${m.swapPct}%</b></div>
+              <div>PHP-FPM: <b style="color:${m.phpfpm>80?'var(--red)':'var(--text)'}">${m.phpfpm} proc</b></div>
+            </div>
+            ${(cached.recommendations||[]).length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">
+              ${cached.recommendations.map(r => `<button class="btn btn-sm btn-green" onclick="ccApplyFix('${r.action}','${serverName}',this)" title="${r.reason}"><i class="ti ti-wand"></i> ${r.label}</button>`).join('')}
+            </div>` : ''}
+          `;
+          if (btn) btn.disabled = false;
+          return;
+        }
+      } catch(e2) {}
+      box.innerHTML = '<div style="font-size:12px;color:var(--red)">วินิจฉัยไม่ได้: ' + (d.error||'') + '</div>';
+      if(btn)btn.disabled=false; return;
+    }
     const m = d.metrics;
     const vColor = d.verdict==='critical'?'var(--red)':d.verdict==='warning'?'var(--amber)':'var(--green)';
     const vText = d.verdict==='critical'?'🔴 วิกฤต':d.verdict==='warning'?'🟡 เริ่มมีปัญหา':'🟢 ปกติ';
@@ -5914,10 +5942,12 @@ async function updateLiveMetrics() {
       if (!box || !info.metrics) return;
       const m = info.metrics;
       const badge = (label, val, warn) => `<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:${warn?'var(--red-dim)':'var(--bg4)'};color:${warn?'var(--red)':'var(--text2)'}">${label} ${val}</span>`;
+      // Swap แดงเฉพาะเมื่อ swap สูง + RAM ก็สูงด้วย (= ใช้ swap จริง ไม่ใช่ค้างจาก spike เก่า)
+      const swapDanger = m.swapPct > 40 && m.ramPct > 80;
       box.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:4px">
         ${badge('Load', m.load1+' ('+m.loadPerCore+'/c)', m.loadPerCore>1.5)}
         ${badge('RAM', m.ramPct+'%', m.ramPct>85)}
-        ${badge('Swap', m.swapPct+'%', m.swapPct>40)}
+        ${badge('Swap', m.swapPct+'%', swapDanger)}
         ${badge('PHP-FPM', m.phpfpm, m.phpfpm>80)}
         ${badge('Disk', m.disk+'%', m.disk>85)}
       </div>`;
