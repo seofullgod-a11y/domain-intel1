@@ -4203,7 +4203,7 @@ async function diagnoseServer(srv) {
     ].join('; ');
 
     const cmdId = queueCommand(srv.host, cmd);
-    for (let i = 0; i < 45; i++) {
+    for (let i = 0; i < 60; i++) {
       await new Promise(r => setTimeout(r, 1000));
       if (agentResults[cmdId]) {
         const res = agentResults[cmdId]; delete agentResults[cmdId];
@@ -4211,7 +4211,7 @@ async function diagnoseServer(srv) {
         return parseDiagnostic(srv.name, out);
       }
     }
-    return { server: srv.name, ok: false, error: 'timeout' };
+    return { server: srv.name, ok: false, error: 'timeout (server แน่นมากจนตอบไม่ทัน — ดูข้อมูล LIVE จาก cache แทน)' };
   } catch(e) { return { server: srv.name, ok: false, error: e.message }; }
 }
 
@@ -4253,17 +4253,18 @@ function parseDiagnostic(serverName, out) {
   else if (loadPerCore > 1) issues.push({ level: 'medium', text: 'Load ค่อนข้างสูง (' + loadPerCore.toFixed(1) + '/core) — เริ่มแน่น' });
   if (ramPct > 90) issues.push({ level: 'high', text: 'RAM เกือบเต็ม (' + ramPct + '%) — เหลือว่าง ' + ramAvail + 'MB' });
   else if (ramPct > 80) issues.push({ level: 'medium', text: 'RAM ใช้เยอะ (' + ramPct + '%)' });
-  if (swapPct > 50) issues.push({ level: 'high', text: 'ใช้ Swap หนัก (' + swapPct + '%) — นี่คือสาเหตุหลักที่ทำให้ช้า! RAM ไม่พอเลยต้องใช้ disk แทน' });
-  else if (swapUsed > 100) issues.push({ level: 'medium', text: 'เริ่มใช้ Swap (' + swapUsed + 'MB) — RAM ใกล้หมด' });
+  if (swapPct > 50 && ramPct > 80) issues.push({ level: 'high', text: 'ใช้ Swap หนัก (' + swapPct + '%) + RAM เต็ม (' + ramPct + '%) — นี่คือสาเหตุหลักที่ทำให้ช้า! RAM ไม่พอเลยต้องใช้ disk แทน' });
+  else if (swapPct > 50 && ramPct <= 60) { /* swap ค้างจาก spike เก่า แต่ RAM ว่าง = ไม่ใช่ปัญหาตอนนี้ ไม่ต้องเตือน */ }
+  else if (swapUsed > 100 && ramPct > 75) issues.push({ level: 'medium', text: 'เริ่มใช้ Swap (' + swapUsed + 'MB) — RAM ใกล้หมด' });
   if (phpfpm > 100) issues.push({ level: 'high', text: 'PHP-FPM เยอะมาก (' + phpfpm + ' process) — แต่ละตัวกิน RAM, ควรปรับ ondemand' });
   else if (phpfpm > 50) issues.push({ level: 'medium', text: 'PHP-FPM ค่อนข้างเยอะ (' + phpfpm + ' process)' });
   if (disk > 90) issues.push({ level: 'high', text: 'Disk เกือบเต็ม (' + disk + '%) — ควร cleanup' });
   if (mysqlMem > 2048) issues.push({ level: 'medium', text: 'MySQL กิน RAM เยอะ (' + mysqlMem + 'MB)' });
 
-  // แนะนำการแก้ (เฉพาะ safe action ที่มี)
+  // แนะนำการแก้ (เฉพาะ safe action ที่มี) — เฉพาะเมื่อมีปัญหา RAM/PHP-FPM จริง ไม่ใช่ swap ค้าง
   const recommendations = [];
-  if (phpfpm > 50 || ramPct > 80 || swapPct > 30) recommendations.push({ action: 'phpfpm-ondemand', label: 'ปรับ PHP-FPM ondemand (ลด RAM)', reason: 'ลดจำนวน process ที่ค้างกิน RAM' });
-  if (disk > 80) recommendations.push({ action: 'disk-cleanup', label: 'ทำความสะอาด disk', reason: 'disk ใกล้เต็ม' });
+  if (phpfpm > 80 || (ramPct > 85 && phpfpm > 40) || (swapPct > 50 && ramPct > 80)) recommendations.push({ action: 'phpfpm-ondemand', label: 'ปรับ PHP-FPM ondemand (ลด RAM)', reason: 'PHP-FPM ' + phpfpm + ' process + RAM ' + ramPct + '% — ลด process ที่ค้างกิน RAM' });
+  if (disk > 80) recommendations.push({ action: 'disk-cleanup', label: 'ทำความสะอาด disk', reason: 'disk ' + disk + '% ใกล้เต็ม' });
 
   return {
     server: serverName, ok: true,
@@ -4303,7 +4304,17 @@ function markAutoFix(action, server) {
 
 // วินิจฉัย server แล้วแก้เองถ้าเจอปัญหาปลอดภัย
 async function autoRemediateServer(srv, appliedThisCycle) {
-  const diag = await diagnoseServer(srv);
+  let diag = await diagnoseServer(srv);
+  // ถ้า diagnose timeout (server แน่นจนตอบไม่ทัน) → ใช้ cache ล่าสุดแทน
+  // (สำคัญ! server ที่วิกฤตสุดมักตอบไม่ทัน ถ้าข้ามไปจะไม่มีใครช่วย)
+  if (!diag.ok && serverMetricsCache[srv.name]) {
+    const cached = serverMetricsCache[srv.name];
+    const ageMin = (Date.now() - new Date(cached.at).getTime()) / 60000;
+    if (ageMin < 10) { // cache ไม่เกิน 10 นาที
+      diag = { ok: true, verdict: cached.verdict, metrics: cached.metrics, issues: cached.issues, recommendations: cached.recommendations, fromCache: true };
+      empLog('diagnostician', 'ใช้ข้อมูล cache (server แน่นจนตอบไม่ทัน)', srv.name);
+    }
+  }
   if (!diag.ok) return { server: srv.name, ok: false, error: diag.error };
 
   const applied = [];
