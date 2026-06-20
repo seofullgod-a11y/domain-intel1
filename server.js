@@ -1637,6 +1637,19 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // Live server metrics (จาก cache — เร็ว ไม่แตะ agent)
+  if (req.method === 'GET' && url === '/api/server-metrics-live') {
+    json(res, { success: true, cache: serverMetricsCache, lastCollectAt, collecting: isCollectingMetrics });
+    return;
+  }
+  // สั่ง collect ทันที (manual refresh)
+  if (req.method === 'POST' && url === '/api/server-metrics-collect') {
+    if (!isCollectingMetrics) collectServerMetrics().catch(()=>{});
+    json(res, { success: true, started: !isCollectingMetrics ? false : true, collecting: isCollectingMetrics });
+    return;
+  }
+
   // ===== COMMAND CENTER API =====
   if (req.method === 'GET' && url === '/api/command-center') {
     try { json(res, { success: true, data: buildCommandCenter() }); }
@@ -4356,6 +4369,37 @@ async function runDeepRemediation() {
   }
 }
 
+
+// ===== ตัวเก็บ metrics เบื้องหลัง (กันถล่ม agent) =====
+// ดึงข้อมูล server ทุก 90 วิ เก็บใส่ cache → frontend ดึงจาก cache เร็วๆ ได้
+let serverMetricsCache = {};   // { serverName: { metrics, verdict, issues, at } }
+let isCollectingMetrics = false;
+let lastCollectAt = null;
+
+async function collectServerMetrics() {
+  if (isCollectingMetrics) return; // กันรันซ้อน
+  isCollectingMetrics = true;
+  try {
+    for (const srv of PLESK_SERVERS) {
+      try {
+        const diag = await diagnoseServer(srv);
+        if (diag.ok) {
+          serverMetricsCache[srv.name] = {
+            metrics: diag.metrics,
+            verdict: diag.verdict,
+            issues: diag.issues,
+            recommendations: diag.recommendations,
+            at: new Date().toISOString()
+          };
+        }
+      } catch(e) {}
+      await new Promise(r => setTimeout(r, 1500)); // เว้นระยะระหว่าง server
+    }
+    lastCollectAt = new Date().toISOString();
+  } catch(e) { console.log('[Collector] error:', e.message); }
+  finally { isCollectingMetrics = false; }
+}
+
 server.listen(PORT, async () => {
   console.log(`\n╔══════════════════════════════════════════╗`);
   console.log(`║   DomainIntel + Plesk + Google Sheets    ║`);
@@ -4404,6 +4448,9 @@ server.listen(PORT, async () => {
   // Deep remediation: วินิจฉัยละเอียดแล้วแก้เองทุก 30 นาที (เฉพาะ server สุขภาพต่ำ + งานปลอดภัย + มี cooldown/เพดาน)
   setInterval(() => { runDeepRemediation().catch(()=>{}); }, 30 * 60 * 1000);
   setTimeout(() => { runDeepRemediation().catch(()=>{}); }, 150 * 1000); // ครั้งแรกหลัง startup 2.5 นาที
+  // ตัวเก็บ metrics เบื้องหลังทุก 90 วิ (cache ให้ frontend ดึงเร็วๆ)
+  setInterval(() => { collectServerMetrics().catch(()=>{}); }, 90 * 1000);
+  setTimeout(() => { collectServerMetrics().catch(()=>{}); }, 30 * 1000); // ครั้งแรกหลัง startup 30 วิ
   // เฟส 3: Diagnostician เสนองานแก้ปัญหาทุก 6 ชม. (ถ้ามี API key) — เข้า approval queue รอเจ้าของอนุมัติ
   if (process.env.ANTHROPIC_API_KEY) {
     setInterval(() => { proposeActionsFromAnalysis().catch(()=>{}); }, 6 * 60 * 60 * 1000);
