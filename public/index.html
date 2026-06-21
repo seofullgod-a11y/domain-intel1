@@ -6008,6 +6008,7 @@ async function runDomainDiag() {
 
 function renderDiagFix(verdict, domain) {
   const fixes = {
+    'domain-no-ssl-hosting': '🔧 วิธีแก้ (ตรงจุด!): เข้า Plesk → โดเมนนี้ → "Hosting & DNS" → "Hosting Settings" → ติ๊ก "SSL/TLS support" แล้วเลือก cert ที่มีอยู่ → Apply | หรือเข้า "SSL/TLS Certificates" ออก Lets Encrypt ใหม่ ระบบจะเปิด 443 ให้อัตโนมัติ',
     'no-ssl': '🔧 วิธีแก้: ออก SSL ที่ origin (Lets Encrypt ใน Plesk) หรือเปลี่ยน Cloudflare SSL mode เป็น "Flexible" ชั่วคราว',
     'no-vhost': '🔧 วิธีแก้: โดเมนยังไม่ได้ตั้งใน Plesk จริง — เข้า Plesk เพิ่ม subscription/domain ก่อน',
     'wrong-ip': '🔧 วิธีแก้: แก้ A record ใน Cloudflare ให้ชี้ IP ที่ถูกต้องของ server',
