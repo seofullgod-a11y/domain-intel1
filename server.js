@@ -1650,6 +1650,15 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // วินิจฉัยโดเมนเดี่ยว
+  if (req.method === 'GET' && url.startsWith('/api/diagnose-domain/')) {
+    const domain = decodeURIComponent(url.split('/api/diagnose-domain/')[1]);
+    empLog('diagnostician', 'วินิจฉัยโดเมน', domain);
+    diagnoseDomain(domain).then(r => json(res, { success: true, ...r })).catch(e => json(res, { success: false, error: e.message }));
+    return;
+  }
+
   // ===== COMMAND CENTER API =====
   if (req.method === 'GET' && url === '/api/command-center') {
     try { json(res, { success: true, data: buildCommandCenter() }); }
@@ -4409,6 +4418,138 @@ async function collectServerMetrics() {
     lastCollectAt = new Date().toISOString();
   } catch(e) { console.log('[Collector] error:', e.message); }
   finally { isCollectingMetrics = false; }
+}
+
+
+// ===== วินิจฉัยโดเมนเดี่ยว: หาว่าเข้าไม่ได้เพราะอะไร =====
+// เช็ค: DNS resolve, Cloudflare proxy, A record IP, origin SSL, Plesk vhost, firewall
+async function diagnoseDomain(domain) {
+  const d = String(domain).toLowerCase().trim().replace(/^https?:\/\//,'').replace(/\/$/,'');
+  const result = { domain: d, checks: [], verdict: '', summary: '' };
+
+  // 1. DNS resolve — โดเมนชี้ไป IP ไหน?
+  let resolvedIPs = [];
+  try {
+    resolvedIPs = await dnsPromises.resolve4(d);
+    result.checks.push({ name: 'DNS resolve', ok: true, detail: 'ชี้ไป: ' + resolvedIPs.join(', ') });
+  } catch(e) {
+    result.checks.push({ name: 'DNS resolve', ok: false, detail: 'resolve ไม่ได้: ' + e.message + ' (DNS ยังไม่ตั้ง หรือโดเมนหมดอายุ)' });
+    result.verdict = 'dns'; result.summary = 'DNS resolve ไม่ได้ — โดเมนยังไม่ชี้ไปไหนเลย';
+    return result;
+  }
+
+  // 2. เช็คว่า IP เป็น Cloudflare ไหม (CF proxy เปิดอยู่)
+  const cfRanges = ['104.','172.6','172.7','188.114.','162.15','198.41.','190.93.','141.101.','108.162.','173.245.'];
+  const isCF = resolvedIPs.some(ip => cfRanges.some(r => ip.startsWith(r)));
+  result.checks.push({ name: 'Cloudflare proxy', ok: true, detail: isCF ? 'เปิด proxy อยู่ (orange cloud) — IP เป็นของ CF' : 'ไม่ผ่าน CF proxy (grey cloud) — ชี้ตรงไป origin' });
+
+  // 3. หา IP ของ Server ที่โดเมนนี้ควรอยู่
+  const domObj = memoryDomains.find(x => (x.domain||'').toLowerCase() === d);
+  const srv = domObj && domObj.pleskServer ? PLESK_SERVERS.find(s => s.name === domObj.pleskServer) : null;
+
+  if (!srv) {
+    result.checks.push({ name: 'หา Plesk server', ok: false, detail: 'ไม่รู้ว่าโดเมนนี้อยู่ server ไหนในระบบ' });
+  } else {
+    result.checks.push({ name: 'Plesk server', ok: true, detail: 'อยู่ ' + srv.name + ' (' + srv.host + ')' });
+
+    // 4. ถ้าไม่ผ่าน CF เช็คว่า A record ชี้ตรง IP server ไหม
+    if (!isCF && !resolvedIPs.includes(srv.host)) {
+      result.checks.push({ name: 'A record', ok: false, detail: 'ชี้ไป ' + resolvedIPs.join(',') + ' แต่ควรเป็น ' + srv.host });
+      result.verdict = 'wrong-ip'; result.summary = 'A record ชี้ IP ผิด ไม่ใช่ Server';
+    }
+
+    // 5. เช็คผ่าน agent: vhost มีไหม + SSL มีไหม + port เปิดไหม
+    try {
+      const cmd = [
+        'echo "=VHOST="',
+        '[ -d /var/www/vhosts/' + d + ' ] && echo "yes" || echo "no"',
+        'echo "=SSL="',
+        'ls /usr/local/psa/var/certificates/ 2>/dev/null | head -1 >/dev/null && [ -f /var/www/vhosts/system/' + d + '/conf/last_nginx.conf ] && grep -l "ssl_certificate" /var/www/vhosts/system/' + d + '/conf/*.conf 2>/dev/null | head -1 && echo "has_ssl" || echo "no_ssl"',
+        'echo "=NGINX="',
+        'systemctl is-active nginx 2>/dev/null || echo inactive',
+        'echo "=PORT443="',
+        'ss -tln 2>/dev/null | grep -c ":443" || echo 0',
+        'echo "=FIREWALL="',
+        'iptables -L INPUT -n 2>/dev/null | grep -c "DROP\|REJECT" || echo 0',
+        'echo "=VHOST_DONE="'
+      ].join('; ');
+      const cmdId = queueCommand(srv.host, cmd);
+      let agentOut = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        if (agentResults[cmdId]) { agentOut = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
+      }
+      if (agentOut) {
+        const sec = (n) => { const m = agentOut.match(new RegExp('=' + n + '=\\s*\\n([\\s\\S]*?)(?:\\n=|$)')); return m ? m[1].trim() : ''; };
+        const vhost = sec('VHOST');
+        const ssl = sec('SSL');
+        const nginx = sec('NGINX');
+        const port443 = parseInt(sec('PORT443')) || 0;
+
+        result.checks.push({ name: 'Plesk vhost', ok: vhost.includes('yes'), detail: vhost.includes('yes') ? 'มี vhost บน server' : 'ไม่มี vhost! โดเมนยังไม่ได้ตั้งใน Plesk จริง' });
+        result.checks.push({ name: 'Origin SSL', ok: ssl.includes('has_ssl'), detail: ssl.includes('has_ssl') ? 'มี SSL cert' : 'ยังไม่มี SSL cert — ถ้า CF set เป็น Full จะ timeout' });
+        result.checks.push({ name: 'Nginx', ok: nginx.includes('active'), detail: nginx.includes('active') ? 'ทำงานปกติ' : 'nginx ไม่ทำงาน!' });
+        result.checks.push({ name: 'Port 443', ok: port443 > 0, detail: port443 > 0 ? 'เปิดรับ https' : 'port 443 ไม่เปิด' });
+
+        // สรุป verdict
+        if (!vhost.includes('yes')) { result.verdict = 'no-vhost'; result.summary = 'ไม่มี vhost บน server — โดเมนยังไม่ได้ติดตั้งจริงใน Plesk'; }
+        else if (!ssl.includes('has_ssl') && isCF) { result.verdict = 'no-ssl'; result.summary = 'origin ไม่มี SSL + CF proxy เปิด → ถ้า CF SSL mode = Full/Strict จะ timeout (แก้: ออก SSL หรือเปลี่ยน CF เป็น Flexible)'; }
+        else if (!nginx.includes('active')) { result.verdict = 'nginx-down'; result.summary = 'nginx ไม่ทำงานบน server นี้'; }
+        else if (!result.verdict) { result.verdict = 'ok-origin'; result.summary = 'origin ดูปกติ — ปัญหาน่าจะอยู่ที่ Cloudflare (SSL mode / proxy setting) หรือ DNS propagation'; }
+      } else {
+        result.checks.push({ name: 'ตรวจผ่าน agent', ok: false, detail: 'agent ตอบไม่ทัน (server อาจแน่น)' });
+        if (!result.verdict) { result.verdict = 'agent-timeout'; result.summary = 'ตรวจ origin ไม่ได้ (agent timeout)'; }
+      }
+    } catch(e) {
+      result.checks.push({ name: 'ตรวจผ่าน agent', ok: false, detail: e.message });
+    }
+  }
+
+  // 6. เช็ค Cloudflare SSL mode (ถ้ามี token + เป็น CF)
+  if (isCF && CF_API_TOKEN) {
+    try {
+      const sslMode = await getCFSSLMode(d);
+      if (sslMode) {
+        const bad = (sslMode === 'full' || sslMode === 'strict');
+        result.checks.push({ name: 'Cloudflare SSL mode', ok: !bad, detail: 'ตั้งเป็น "' + sslMode + '"' + (bad ? ' — ถ้า origin ไม่มี SSL ที่ถูกต้องจะ timeout! ลองเปลี่ยนเป็น Flexible' : '') });
+        if (bad && result.verdict === 'no-ssl') result.summary = 'CF SSL mode = ' + sslMode + ' แต่ origin ไม่มี SSL → timeout (แก้: เปลี่ยน CF เป็น Flexible หรือออก SSL ที่ origin)';
+      }
+    } catch(e) {}
+  }
+
+  return result;
+}
+
+// ดู Cloudflare SSL mode ของ zone
+async function getCFSSLMode(domain) {
+  return new Promise(resolve => {
+    // หา zone id ก่อน
+    const req = https.request({
+      hostname: 'api.cloudflare.com',
+      path: '/client/v4/zones?name=' + encodeURIComponent(domain),
+      headers: { 'Authorization': 'Bearer ' + CF_API_TOKEN, 'Content-Type': 'application/json' }
+    }, res => {
+      let d=''; res.on('data',c=>d+=c);
+      res.on('end',()=>{
+        try {
+          const r = JSON.parse(d);
+          const zoneId = r.result && r.result[0] ? r.result[0].id : null;
+          if (!zoneId) return resolve(null);
+          // ดู SSL setting
+          const req2 = https.request({
+            hostname: 'api.cloudflare.com',
+            path: '/client/v4/zones/' + zoneId + '/settings/ssl',
+            headers: { 'Authorization': 'Bearer ' + CF_API_TOKEN, 'Content-Type': 'application/json' }
+          }, res2 => {
+            let d2=''; res2.on('data',c=>d2+=c);
+            res2.on('end',()=>{ try { const r2=JSON.parse(d2); resolve(r2.result ? r2.result.value : null); } catch { resolve(null); } });
+          });
+          req2.on('error',()=>resolve(null)); req2.end();
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error',()=>resolve(null)); req.end();
+  });
 }
 
 server.listen(PORT, async () => {
