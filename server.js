@@ -4458,24 +4458,28 @@ async function diagnoseDomain(domain) {
       result.verdict = 'wrong-ip'; result.summary = 'A record ชี้ IP ผิด ไม่ใช่ Server';
     }
 
-    // 5. เช็คผ่าน agent: vhost มีไหม + SSL มีไหม + port เปิดไหม
+    // 5. เช็คผ่าน agent: vhost, SSL, port 443 (ระดับ server + ระดับโดเมนนี้)
     try {
       const cmd = [
         'echo "=VHOST="',
         '[ -d /var/www/vhosts/' + d + ' ] && echo "yes" || echo "no"',
         'echo "=SSL="',
-        'ls /usr/local/psa/var/certificates/ 2>/dev/null | head -1 >/dev/null && [ -f /var/www/vhosts/system/' + d + '/conf/last_nginx.conf ] && grep -l "ssl_certificate" /var/www/vhosts/system/' + d + '/conf/*.conf 2>/dev/null | head -1 && echo "has_ssl" || echo "no_ssl"',
+        'grep -l "ssl_certificate" /var/www/vhosts/system/' + d + '/conf/*.conf 2>/dev/null | head -1 && echo "has_ssl" || echo "no_ssl"',
         'echo "=NGINX="',
         'systemctl is-active nginx 2>/dev/null || echo inactive',
-        'echo "=PORT443="',
-        'ss -tln 2>/dev/null | grep -c ":443" || echo 0',
-        'echo "=FIREWALL="',
-        'iptables -L INPUT -n 2>/dev/null | grep -c "DROP\|REJECT" || echo 0',
+        'echo "=PORT443_SERVER="',
+        'ss -tlnH 2>/dev/null | grep ":443 " | head -1 | grep -c 443 || echo 0',
+        'echo "=DOMAIN_443="',
+        'grep -rl "listen.*443" /var/www/vhosts/system/' + d + '/conf/ 2>/dev/null | head -1 && echo "yes443" || echo "no443"',
+        'echo "=PLESK_SSL="',
+        'grep -c "ssl" /var/www/vhosts/system/' + d + '/conf/last_nginx.conf 2>/dev/null || echo 0',
+        'echo "=CURL_LOCAL="',
+        'curl -sk -o /dev/null -w "%{http_code}" --resolve ' + d + ':443:127.0.0.1 https://' + d + '/ --max-time 8 2>/dev/null || echo "fail"',
         'echo "=VHOST_DONE="'
       ].join('; ');
       const cmdId = queueCommand(srv.host, cmd);
       let agentOut = null;
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 35; i++) {
         await new Promise(r => setTimeout(r, 1000));
         if (agentResults[cmdId]) { agentOut = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
       }
@@ -4484,18 +4488,28 @@ async function diagnoseDomain(domain) {
         const vhost = sec('VHOST');
         const ssl = sec('SSL');
         const nginx = sec('NGINX');
-        const port443 = parseInt(sec('PORT443')) || 0;
+        const port443Server = parseInt(sec('PORT443_SERVER')) || 0;
+        const domain443 = sec('DOMAIN_443');
+        const pleskSsl = parseInt(sec('PLESK_SSL')) || 0;
+        const curlLocal = sec('CURL_LOCAL');
 
         result.checks.push({ name: 'Plesk vhost', ok: vhost.includes('yes'), detail: vhost.includes('yes') ? 'มี vhost บน server' : 'ไม่มี vhost! โดเมนยังไม่ได้ตั้งใน Plesk จริง' });
-        result.checks.push({ name: 'Origin SSL', ok: ssl.includes('has_ssl'), detail: ssl.includes('has_ssl') ? 'มี SSL cert' : 'ยังไม่มี SSL cert — ถ้า CF set เป็น Full จะ timeout' });
-        result.checks.push({ name: 'Nginx', ok: nginx.includes('active'), detail: nginx.includes('active') ? 'ทำงานปกติ' : 'nginx ไม่ทำงาน!' });
-        result.checks.push({ name: 'Port 443', ok: port443 > 0, detail: port443 > 0 ? 'เปิดรับ https' : 'port 443 ไม่เปิด' });
+        result.checks.push({ name: 'Origin SSL cert', ok: ssl.includes('has_ssl'), detail: ssl.includes('has_ssl') ? 'มี SSL cert ใน config' : 'ไม่มี cert ใน config' });
+        result.checks.push({ name: 'Nginx (server)', ok: nginx.includes('active'), detail: nginx.includes('active') ? 'ทำงานปกติ' : 'nginx ไม่ทำงาน!' });
+        result.checks.push({ name: 'Port 443 (server)', ok: port443Server > 0, detail: port443Server > 0 ? 'server เปิดรับ https อยู่ (โดเมนอื่นใช้ได้)' : 'server ไม่ฟัง 443 เลย' });
+        result.checks.push({ name: 'โดเมนนี้ผูก 443', ok: domain443.includes('yes443'), detail: domain443.includes('yes443') ? 'config โดเมนนี้มี listen 443' : 'config โดเมนนี้ไม่มี listen 443 — โดเมนนี้ไม่ได้เปิด SSL hosting!' });
+        result.checks.push({ name: 'ทดสอบเข้าจริง (curl)', ok: /^(200|301|302|403)$/.test(curlLocal), detail: curlLocal === 'fail' ? 'เข้าไม่ได้แม้จาก localhost' : 'HTTP ' + curlLocal });
 
-        // สรุป verdict
-        if (!vhost.includes('yes')) { result.verdict = 'no-vhost'; result.summary = 'ไม่มี vhost บน server — โดเมนยังไม่ได้ติดตั้งจริงใน Plesk'; }
-        else if (!ssl.includes('has_ssl') && isCF) { result.verdict = 'no-ssl'; result.summary = 'origin ไม่มี SSL + CF proxy เปิด → ถ้า CF SSL mode = Full/Strict จะ timeout (แก้: ออก SSL หรือเปลี่ยน CF เป็น Flexible)'; }
+        // สรุป verdict — แม่นขึ้น
+        if (!vhost.includes('yes')) { result.verdict = 'no-vhost'; result.summary = 'ไม่มี vhost — โดเมนยังไม่ได้ติดตั้งจริงใน Plesk'; }
         else if (!nginx.includes('active')) { result.verdict = 'nginx-down'; result.summary = 'nginx ไม่ทำงานบน server นี้'; }
-        else if (!result.verdict) { result.verdict = 'ok-origin'; result.summary = 'origin ดูปกติ — ปัญหาน่าจะอยู่ที่ Cloudflare (SSL mode / proxy setting) หรือ DNS propagation'; }
+        else if (port443Server > 0 && !domain443.includes('yes443')) {
+          // server เปิด 443 แต่โดเมนนี้ไม่ได้ผูก = สาเหตุชัด!
+          result.verdict = 'domain-no-ssl-hosting';
+          result.summary = 'server เปิด 443 อยู่ (โดเมนอื่นใช้ได้) แต่โดเมนนี้ยังไม่ได้เปิด "SSL/TLS support" ใน Plesk → nginx เลยไม่ฟัง 443 ให้โดเมนนี้';
+        }
+        else if (!ssl.includes('has_ssl')) { result.verdict = 'no-ssl'; result.summary = 'โดเมนนี้ยังไม่มี SSL cert ผูกใน config'; }
+        else if (!result.verdict) { result.verdict = 'ok-origin'; result.summary = 'origin ดูปกติทุกอย่าง — ปัญหาน่าจะอยู่ที่ Cloudflare หรือ DNS propagation'; }
       } else {
         result.checks.push({ name: 'ตรวจผ่าน agent', ok: false, detail: 'agent ตอบไม่ทัน (server อาจแน่น)' });
         if (!result.verdict) { result.verdict = 'agent-timeout'; result.summary = 'ตรวจ origin ไม่ได้ (agent timeout)'; }
