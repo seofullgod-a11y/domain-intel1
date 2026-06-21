@@ -534,6 +534,20 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div style="padding:16px 20px" id="command-content">
         <div style="text-align:center;padding:50px;color:var(--text3)"><i class="ti ti-refresh ti-spin" style="font-size:24px"></i><br>กำลังรวบรวมข้อมูล...</div>
       </div>
+      <!-- กล่องวินิจฉัยโดเมน -->
+      <div style="padding:0 20px 20px">
+        <div class="metric-card" style="padding:16px">
+          <div style="font-size:13px;font-weight:600;margin-bottom:10px"><i class="ti ti-stethoscope" style="color:var(--teal)"></i> วินิจฉัยโดเมนที่เข้าไม่ได้</div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:10px">ใส่ชื่อโดเมนที่ขึ้นแดง/timeout ระบบจะเช็ค DNS, Cloudflare, SSL, vhost ให้ว่าติดตรงไหน</div>
+          <div style="display:flex;gap:8px">
+            <input id="diag-domain-input" type="text" placeholder="เช่น slotday88.bio" 
+              onkeypress="if(event.key==='Enter')runDomainDiag()"
+              style="flex:1;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none;font-family:var(--mono)">
+            <button class="btn btn-green" onclick="runDomainDiag()" id="diag-domain-btn"><i class="ti ti-search"></i> วินิจฉัย</button>
+          </div>
+          <div id="diag-domain-result" style="margin-top:12px"></div>
+        </div>
+      </div>
     </div>
 
     <div id="page-dashboard" style="display:none">
@@ -5953,5 +5967,56 @@ async function updateLiveMetrics() {
       </div>`;
     });
   } catch(e) {}
+}
+</script>
+<script>
+// ===== วินิจฉัยโดเมนเดี่ยว =====
+async function runDomainDiag() {
+  const input = document.getElementById('diag-domain-input');
+  const btn = document.getElementById('diag-domain-btn');
+  const resultEl = document.getElementById('diag-domain-result');
+  const domain = (input.value||'').trim();
+  if (!domain) { toast('ใส่ชื่อโดเมนก่อน', 'error'); return; }
+
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังตรวจ...'; }
+  resultEl.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px"><i class="ti ti-refresh ti-spin"></i> กำลังเช็ค DNS, Cloudflare, SSL, vhost...</div>';
+  try {
+    const res = await fetch(`${API}/api/diagnose-domain/${encodeURIComponent(domain)}`);
+    const d = await res.json();
+    if (!d.success) { resultEl.innerHTML = '<div style="color:var(--red);font-size:12px;padding:10px">ตรวจไม่ได้: ' + (d.error||'') + '</div>'; return; }
+
+    const verdictColor = d.verdict === 'ok-origin' ? 'var(--green)' : 'var(--amber)';
+    resultEl.innerHTML = `
+      <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:14px">
+        <div style="font-size:13px;font-weight:600;color:${verdictColor};margin-bottom:10px">
+          <i class="ti ti-clipboard-text"></i> ${d.summary || 'ผลวินิจฉัย ' + d.domain}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px">
+          ${(d.checks||[]).map(ch => `
+            <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px">
+              <span style="flex-shrink:0">${ch.ok ? '✅' : '❌'}</span>
+              <span style="font-weight:600;min-width:130px">${ch.name}</span>
+              <span style="color:var(--text2);flex:1">${ch.detail}</span>
+            </div>
+          `).join('')}
+        </div>
+        ${renderDiagFix(d.verdict, d.domain)}
+      </div>`;
+  } catch(e) { resultEl.innerHTML = '<div style="color:var(--red);font-size:12px;padding:10px">เกิดข้อผิดพลาด: ' + e.message + '</div>'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-search"></i> วินิจฉัย'; }
+}
+
+function renderDiagFix(verdict, domain) {
+  const fixes = {
+    'no-ssl': '🔧 วิธีแก้: ออก SSL ที่ origin (Lets Encrypt ใน Plesk) หรือเปลี่ยน Cloudflare SSL mode เป็น "Flexible" ชั่วคราว',
+    'no-vhost': '🔧 วิธีแก้: โดเมนยังไม่ได้ตั้งใน Plesk จริง — เข้า Plesk เพิ่ม subscription/domain ก่อน',
+    'wrong-ip': '🔧 วิธีแก้: แก้ A record ใน Cloudflare ให้ชี้ IP ที่ถูกต้องของ server',
+    'nginx-down': '🔧 วิธีแก้: nginx ไม่ทำงาน — ต้อง restart (งานนี้กระทบโฮส แนะนำตรวจก่อน)',
+    'dns': '🔧 วิธีแก้: ตั้ง DNS A record ใน Cloudflare ให้ชี้มา server',
+    'ok-origin': '💡 origin ปกติดี ปัญหาอยู่ที่ Cloudflare — เช็ค SSL mode (ควรเป็น Full ถ้า origin มี SSL) และ proxy status'
+  };
+  const fix = fixes[verdict];
+  if (!fix) return '';
+  return `<div style="margin-top:12px;padding:10px 12px;background:var(--bg2);border-left:3px solid var(--teal);border-radius:4px;font-size:12px;color:var(--text);line-height:1.5">${fix}</div>`;
 }
 </script>
