@@ -1659,6 +1659,45 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // ตรวจลึก nginx (อ่านอย่างเดียว)
+  if (req.method === 'GET' && url.startsWith('/api/deep-nginx/')) {
+    const serverName = decodeURIComponent(url.split('/api/deep-nginx/')[1]);
+    empLog('diagnostician', 'ตรวจลึก nginx', serverName);
+    deepCheckNginx(serverName).then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
+
+  // Reload nginx (ปลอดภัย: เช็ค nginx -t ก่อนเสมอ ถ้า config error จะไม่ reload)
+  if (req.method === 'POST' && url.startsWith('/api/nginx-reload/')) {
+    const serverName = decodeURIComponent(url.split('/api/nginx-reload/')[1]);
+    const srv = PLESK_SERVERS.find(s => s.name === serverName);
+    if (!srv) return json(res, { ok: false, error: 'ไม่พบ server' });
+    (async () => {
+      // สำคัญ! เช็ค nginx -t ก่อน ถ้า fail จะไม่ reload (กันโฮสดับ)
+      const cmd = 'nginx -t 2>&1 | tail -3; echo "=RESULT="; if nginx -t 2>/dev/null; then nginx -s reload 2>&1 && echo "RELOADED" || echo "RELOAD_FAIL"; else echo "TEST_FAIL_SKIP_RELOAD"; fi; echo "=DONE="';
+      const cmdId = queueCommand(srv.host, cmd);
+      let out = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        if (agentResults[cmdId]) { out = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
+      }
+      if (!out) return json(res, { ok: false, error: 'agent ตอบไม่ทัน' });
+      if (out.includes('RELOADED')) {
+        empLog('engineer', 'Reload nginx', serverName + ' (config ผ่าน)');
+        logEvent('fix', 'Reload nginx ' + serverName + ' สำเร็จ');
+        smartAlert('warning', '🔧 Reload nginx: ' + serverName + ' สำเร็จ');
+        json(res, { ok: true, detail: 'nginx reload สำเร็จ — config โหลดใหม่แล้ว' });
+      } else if (out.includes('TEST_FAIL_SKIP_RELOAD')) {
+        json(res, { ok: false, error: 'config มี error — ไม่ reload (กันโฮสดับ) ต้องแก้ config ก่อน' });
+      } else {
+        json(res, { ok: false, error: 'reload ไม่สำเร็จ: ' + out.slice(0,150) });
+      }
+    })().catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
   // ===== COMMAND CENTER API =====
   if (req.method === 'GET' && url === '/api/command-center') {
     try { json(res, { success: true, data: buildCommandCenter() }); }
@@ -4564,6 +4603,74 @@ async function getCFSSLMode(domain) {
     });
     req.on('error',()=>resolve(null)); req.end();
   });
+}
+
+
+// ===== ตรวจลึก nginx (อ่านอย่างเดียว ไม่แตะอะไร) =====
+async function deepCheckNginx(serverName) {
+  const srv = PLESK_SERVERS.find(s => s.name === serverName);
+  if (!srv) return { ok: false, error: 'ไม่พบ server' };
+
+  const cmd = [
+    'echo "=NGINX_TEST="',
+    'nginx -t 2>&1 | tail -5',
+    'echo "=NGINX_RUNNING="',
+    'systemctl is-active nginx 2>/dev/null || echo inactive',
+    'echo "=NGINX_LISTEN="',
+    'ss -tlnpH 2>/dev/null | grep nginx | grep -oE ":(80|443) " | sort -u | tr "\n" " " || echo "none"',
+    'echo "=PLESK_NGINX="',
+    'cat /usr/local/psa/admin/conf/panel.ini 2>/dev/null | grep -i "nginx" | head -3 || echo "no_setting"',
+    'echo "=NGINX_ENABLED="',
+    '[ -f /etc/nginx/nginx.conf ] && echo "conf_exists" || echo "no_conf"',
+    'echo "=ANY_443="',
+    'grep -rh "listen.*443" /etc/nginx/ /var/www/vhosts/system/*/conf/ 2>/dev/null | grep -v "#" | wc -l',
+    'echo "=SW_NGINX="',
+    'ls -la /usr/sbin/nginx 2>/dev/null | grep -c nginx || echo 0',
+    'echo "=LAST_ERROR="',
+    'tail -3 /var/log/nginx/error.log 2>/dev/null | head -3 || echo "no_log"',
+    'echo "=DEEP_DONE="'
+  ].join('; ');
+
+  const cmdId = queueCommand(srv.host, cmd);
+  let out = null;
+  for (let i = 0; i < 35; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (agentResults[cmdId]) { out = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
+  }
+  if (!out) return { ok: false, error: 'agent ตอบไม่ทัน' };
+
+  const sec = (n) => { const m = out.match(new RegExp('=' + n + '=\\s*\\n([\\s\\S]*?)(?:\\n=|$)')); return m ? m[1].trim() : ''; };
+  const nginxTest = sec('NGINX_TEST');
+  const running = sec('NGINX_RUNNING');
+  const listen = sec('NGINX_LISTEN');
+  const any443 = parseInt(sec('ANY_443')) || 0;
+  const lastError = sec('LAST_ERROR');
+
+  const checks = [];
+  const testOk = nginxTest.includes('successful') || nginxTest.includes('test is successful');
+  checks.push({ name: 'nginx -t (config ถูกไหม)', ok: testOk, detail: testOk ? 'config ผ่าน' : 'config มี ERROR: ' + nginxTest.slice(0,200) });
+  checks.push({ name: 'nginx รันอยู่', ok: running.includes('active'), detail: running });
+  checks.push({ name: 'nginx ฟัง port', ok: listen.includes('443'), detail: listen.includes('none') ? 'ไม่ฟังเลย' : 'ฟัง: ' + listen });
+  checks.push({ name: 'config ที่มี listen 443', ok: any443 > 0, detail: any443 + ' จุด' });
+  if (lastError && !lastError.includes('no_log')) checks.push({ name: 'error log ล่าสุด', ok: false, detail: lastError.slice(0,200) });
+
+  // วินิจฉัยสาเหตุ + เสนอวิธีแก้
+  let cause = '', fix = '', fixAction = '';
+  if (!testOk) {
+    cause = 'nginx config มี ERROR → reload ไม่ได้ เลยไม่ฟัง 443';
+    fix = 'ต้องแก้ config ที่ error ก่อน (ดูข้อความ error ด้านบน) แล้วค่อย reload';
+    fixAction = 'none'; // ต้องดู error ก่อน ไม่ auto
+  } else if (testOk && !listen.includes('443')) {
+    cause = 'config ผ่าน (nginx -t OK) แต่ nginx ยังไม่ได้โหลด config 443 เข้าไป → แค่ reload ก็น่าจะหาย';
+    fix = 'reload nginx เพื่อให้โหลด config ใหม่ (ปลอดภัยเพราะ config ผ่านแล้ว)';
+    fixAction = 'reload-nginx'; // ปลอดภัย เพราะ nginx -t ผ่านแล้ว
+  } else if (listen.includes('443')) {
+    cause = 'nginx ฟัง 443 อยู่แล้ว — ปัญหาอาจหายแล้ว หรืออยู่ที่ firewall';
+    fix = 'ลองเช็ค firewall (port อาจถูกบล็อกจากภายนอก)';
+    fixAction = 'check-firewall';
+  }
+
+  return { ok: true, server: serverName, checks, cause, fix, fixAction, nginxTestOk: testOk, listening443: listen.includes('443') };
 }
 
 server.listen(PORT, async () => {
