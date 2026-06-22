@@ -1698,6 +1698,14 @@ async function handleRequest(req, res) {
     return;
   }
 
+
+  // ดึง nginx error เต็ม (raw)
+  if (req.method === 'GET' && url.startsWith('/api/nginx-error/')) {
+    const serverName = decodeURIComponent(url.split('/api/nginx-error/')[1]);
+    getNginxError(serverName).then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
   // ===== COMMAND CENTER API =====
   if (req.method === 'GET' && url === '/api/command-center') {
     try { json(res, { success: true, data: buildCommandCenter() }); }
@@ -4607,6 +4615,23 @@ async function getCFSSLMode(domain) {
 
 
 // ===== ตรวจลึก nginx (อ่านอย่างเดียว ไม่แตะอะไร) =====
+
+// ===== ดึง nginx error เต็มๆ (raw, อ่านอย่างเดียว) =====
+async function getNginxError(serverName) {
+  const srv = PLESK_SERVERS.find(s => s.name === serverName);
+  if (!srv) return { ok: false, error: 'ไม่พบ server' };
+  // nginx -t เต็มๆ + สถานะ service + วิธี restart ที่จะใช้
+  const cmd = 'echo "===NGINX_T_OUTPUT==="; timeout 20 nginx -t 2>&1; echo "===SERVICE_STATUS==="; systemctl status nginx 2>&1 | head -8; echo "===END===";';
+  const cmdId = queueCommand(srv.host, cmd);
+  let out = null;
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (agentResults[cmdId]) { out = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
+  }
+  if (!out) return { ok: false, error: 'agent ตอบไม่ทัน — ลองอีกครั้ง' };
+  return { ok: true, server: serverName, rawOutput: out };
+}
+
 async function deepCheckNginx(serverName) {
   const srv = PLESK_SERVERS.find(s => s.name === serverName);
   if (!srv) return { ok: false, error: 'ไม่พบ server' };
