@@ -5971,6 +5971,7 @@ async function updateLiveMetrics() {
 </script>
 <script>
 // ===== วินิจฉัยโดเมนเดี่ยว =====
+let lastDiagResult = null;
 async function runDomainDiag() {
   const input = document.getElementById('diag-domain-input');
   const btn = document.getElementById('diag-domain-btn');
@@ -5984,6 +5985,7 @@ async function runDomainDiag() {
     const res = await fetch(`${API}/api/diagnose-domain/${encodeURIComponent(domain)}`);
     const d = await res.json();
     if (!d.success) { resultEl.innerHTML = '<div style="color:var(--red);font-size:12px;padding:10px">ตรวจไม่ได้: ' + (d.error||'') + '</div>'; return; }
+    lastDiagResult = d; // เก็บไว้ให้ renderDiagFix ใช้
 
     const verdictColor = d.verdict === 'ok-origin' ? 'var(--green)' : 'var(--amber)';
     resultEl.innerHTML = `
@@ -6016,8 +6018,66 @@ function renderDiagFix(verdict, domain) {
     'dns': '🔧 วิธีแก้: ตั้ง DNS A record ใน Cloudflare ให้ชี้มา server',
     'ok-origin': '💡 origin ปกติดี ปัญหาอยู่ที่ Cloudflare — เช็ค SSL mode (ควรเป็น Full ถ้า origin มี SSL) และ proxy status'
   };
+  let html = '';
   const fix = fixes[verdict];
-  if (!fix) return '';
-  return `<div style="margin-top:12px;padding:10px 12px;background:var(--bg2);border-left:3px solid var(--teal);border-radius:4px;font-size:12px;color:var(--text);line-height:1.5">${fix}</div>`;
+  if (fix) html += `<div style="margin-top:12px;padding:10px 12px;background:var(--bg2);border-left:3px solid var(--teal);border-radius:4px;font-size:12px;color:var(--text);line-height:1.5">${fix}</div>`;
+
+  // ถ้า port 443 server ไม่ฟัง → เสนอปุ่มตรวจลึก nginx
+  if (lastDiagResult && lastDiagResult.checks) {
+    const port443Server = lastDiagResult.checks.find(c => c.name === 'Port 443 (server)');
+    const curlCheck = lastDiagResult.checks.find(c => c.name === 'ทดสอบเข้าจริง (curl)');
+    if ((port443Server && !port443Server.ok) || (curlCheck && !curlCheck.ok)) {
+      const srvCheck = lastDiagResult.checks.find(c => c.name === 'Plesk server');
+      const srvName = srvCheck ? (srvCheck.detail.match(/อยู่ (Server \d+)/)||[])[1] : null;
+      if (srvName) {
+        html += `<div style="margin-top:10px;padding:12px;background:var(--bg2);border-left:3px solid var(--amber);border-radius:4px">
+          <div style="font-size:12px;color:var(--amber);font-weight:600;margin-bottom:8px">⚠️ nginx ไม่ฟัง 443 — ต้องตรวจลึกก่อนแก้ (ปลอดภัย ไม่แตะอะไร)</div>
+          <button class="btn btn-sm btn-green" onclick="runDeepNginx('${srvName}')" id="deep-nginx-btn"><i class="ti ti-microscope"></i> ตรวจลึก nginx ${srvName}</button>
+          <div id="deep-nginx-result" style="margin-top:10px"></div>
+        </div>`;
+      }
+    }
+  }
+  return html;
+}
+
+async function runDeepNginx(serverName) {
+  const btn = document.getElementById('deep-nginx-btn');
+  const box = document.getElementById('deep-nginx-result');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังตรวจลึก...'; }
+  if (box) box.innerHTML = '<div style="font-size:12px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> ตรวจ nginx -t, listen ports, error log...</div>';
+  try {
+    const res = await fetch(`${API}/api/deep-nginx/${encodeURIComponent(serverName)}`);
+    const d = await res.json();
+    if (!d.ok) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ตรวจไม่ได้: ' + (d.error||'') + '</div>'; if(btn)btn.disabled=false; return; }
+
+    const fixBtn = d.fixAction === 'reload-nginx'
+      ? `<button class="btn btn-sm btn-green" onclick="applyNginxReload('${serverName}',this)" style="margin-top:8px"><i class="ti ti-reload"></i> Reload nginx (ปลอดภัย — config ผ่านแล้ว)</button>`
+      : d.fixAction === 'none'
+      ? `<div style="font-size:11px;color:var(--red);margin-top:8px">⚠️ config มี error — ต้องแก้ config ก่อน reload (ส่งข้อความ error ด้านบนมาให้ผมดู จะช่วยแก้)</div>`
+      : '';
+
+    box.innerHTML = `
+      <div style="background:var(--bg3);border-radius:6px;padding:12px">
+        <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
+          ${d.checks.map(ch => `<div style="display:flex;gap:8px;font-size:11px"><span>${ch.ok?'✅':'❌'}</span><span style="font-weight:600;min-width:150px">${ch.name}</span><span style="color:var(--text2);flex:1;word-break:break-all">${ch.detail}</span></div>`).join('')}
+        </div>
+        <div style="font-size:12px;color:var(--amber);padding:8px;background:var(--bg2);border-radius:4px;line-height:1.5"><b>สาเหตุ:</b> ${d.cause}<br><b>แก้:</b> ${d.fix}</div>
+        ${fixBtn}
+      </div>`;
+  } catch(e) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ผิดพลาด: ' + e.message + '</div>'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-microscope"></i> ตรวจลึก nginx อีกครั้ง'; }
+}
+
+async function applyNginxReload(serverName, btn) {
+  if (!confirm('Reload nginx บน ' + serverName + '?\n\nปลอดภัยเพราะ nginx -t ผ่านแล้ว (config ไม่มี error)\nแต่เป็นการแตะ service บนโฮส — ยืนยันไหม?')) return;
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลัง reload...'; }
+  try {
+    const res = await fetch(`${API}/api/nginx-reload/${encodeURIComponent(serverName)}`, { method: 'POST' });
+    const d = await res.json();
+    if (d.ok) { toast('Reload สำเร็จ: ' + (d.detail||''), 'success'); }
+    else toast(d.error || 'reload ไม่สำเร็จ', 'error');
+  } catch(e) { toast('ผิดพลาด: ' + e.message, 'error'); }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-reload"></i> Reload nginx'; }
 }
 </script>
