@@ -6054,7 +6054,11 @@ async function runDeepNginx(serverName) {
     const fixBtn = d.fixAction === 'reload-nginx'
       ? `<button class="btn btn-sm btn-green" onclick="applyNginxReload('${serverName}',this)" style="margin-top:8px"><i class="ti ti-reload"></i> Reload nginx (ปลอดภัย — config ผ่านแล้ว)</button>`
       : d.fixAction === 'none'
-      ? `<div style="font-size:11px;color:var(--red);margin-top:8px">⚠️ config มี error — ต้องแก้ config ก่อน reload (ส่งข้อความ error ด้านบนมาให้ผมดู จะช่วยแก้)</div>`
+      ? `<div style="margin-top:8px">
+          <div style="font-size:11px;color:var(--red);margin-bottom:6px">⚠️ config มี error — ต้องดู error เต็มก่อนแก้</div>
+          <button class="btn btn-sm" onclick="showNginxError('${serverName}',this)" id="nginx-err-btn" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(251,191,36,0.3)"><i class="ti ti-file-text"></i> ดู error เต็มๆ</button>
+          <div id="nginx-err-full" style="margin-top:8px"></div>
+        </div>`
       : '';
 
     box.innerHTML = `
@@ -6067,6 +6071,21 @@ async function runDeepNginx(serverName) {
       </div>`;
   } catch(e) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ผิดพลาด: ' + e.message + '</div>'; }
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-microscope"></i> ตรวจลึก nginx อีกครั้ง'; }
+}
+
+async function showNginxError(serverName, btn) {
+  const box = document.getElementById('nginx-err-full');
+  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังดึง error...'; }
+  if (box) box.innerHTML = '<div style="font-size:12px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> ดึงข้อความ nginx -t เต็มๆ...</div>';
+  try {
+    const res = await fetch(`${API}/api/nginx-error/${encodeURIComponent(serverName)}`);
+    const d = await res.json();
+    if (!d.ok) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ดึงไม่ได้: ' + (d.error||'') + '</div>'; if(btn)btn.disabled=false; return; }
+    box.innerHTML = `
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px">ข้อความเต็มจาก nginx -t (ก็อปส่งให้ผมดูได้):</div>
+      <pre style="background:#000;border:1px solid var(--border);border-radius:6px;padding:12px;font-size:11px;color:#4ade80;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;font-family:var(--mono)">${(d.rawOutput||'').replace(/</g,'&lt;')}</pre>`;
+  } catch(e) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ผิดพลาด: ' + e.message + '</div>'; }
+  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-text"></i> ดู error เต็มๆ อีกครั้ง'; }
 }
 
 async function applyNginxReload(serverName, btn) {
