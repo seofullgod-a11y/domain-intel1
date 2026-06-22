@@ -4613,46 +4613,36 @@ async function deepCheckNginx(serverName) {
 
   const cmd = [
     'echo "=NGINX_TEST="',
-    'nginx -t 2>&1 | tail -5',
+    'timeout 15 nginx -t 2>&1 | tail -3',
     'echo "=NGINX_RUNNING="',
     'systemctl is-active nginx 2>/dev/null || echo inactive',
     'echo "=NGINX_LISTEN="',
-    'ss -tlnpH 2>/dev/null | grep nginx | grep -oE ":(80|443) " | sort -u | tr "\n" " " || echo "none"',
-    'echo "=PLESK_NGINX="',
-    'cat /usr/local/psa/admin/conf/panel.ini 2>/dev/null | grep -i "nginx" | head -3 || echo "no_setting"',
-    'echo "=NGINX_ENABLED="',
-    '[ -f /etc/nginx/nginx.conf ] && echo "conf_exists" || echo "no_conf"',
-    'echo "=ANY_443="',
-    'grep -rh "listen.*443" /etc/nginx/ /var/www/vhosts/system/*/conf/ 2>/dev/null | grep -v "#" | wc -l',
-    'echo "=SW_NGINX="',
-    'ls -la /usr/sbin/nginx 2>/dev/null | grep -c nginx || echo 0',
+    'ss -tlnH 2>/dev/null | grep -oE ":(80|443) " | sort -u | tr "\n" " " || echo "none"',
     'echo "=LAST_ERROR="',
-    'tail -3 /var/log/nginx/error.log 2>/dev/null | head -3 || echo "no_log"',
+    'tail -3 /var/log/nginx/error.log 2>/dev/null || echo "no_log"',
     'echo "=DEEP_DONE="'
   ].join('; ');
 
   const cmdId = queueCommand(srv.host, cmd);
   let out = null;
-  for (let i = 0; i < 35; i++) {
+  for (let i = 0; i < 60; i++) {
     await new Promise(r => setTimeout(r, 1000));
     if (agentResults[cmdId]) { out = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
   }
-  if (!out) return { ok: false, error: 'agent ตอบไม่ทัน' };
+  if (!out) return { ok: false, error: 'agent ตอบไม่ทัน (nginx -t อาจใช้เวลานาน — ลองกดอีกครั้ง)' };
 
   const sec = (n) => { const m = out.match(new RegExp('=' + n + '=\\s*\\n([\\s\\S]*?)(?:\\n=|$)')); return m ? m[1].trim() : ''; };
   const nginxTest = sec('NGINX_TEST');
   const running = sec('NGINX_RUNNING');
   const listen = sec('NGINX_LISTEN');
-  const any443 = parseInt(sec('ANY_443')) || 0;
   const lastError = sec('LAST_ERROR');
 
   const checks = [];
   const testOk = nginxTest.includes('successful') || nginxTest.includes('test is successful');
-  checks.push({ name: 'nginx -t (config ถูกไหม)', ok: testOk, detail: testOk ? 'config ผ่าน' : 'config มี ERROR: ' + nginxTest.slice(0,200) });
+  checks.push({ name: 'nginx -t (config ถูกไหม)', ok: testOk, detail: testOk ? 'config ผ่าน' : 'config มี ERROR: ' + nginxTest.slice(0,250) });
   checks.push({ name: 'nginx รันอยู่', ok: running.includes('active'), detail: running });
-  checks.push({ name: 'nginx ฟัง port', ok: listen.includes('443'), detail: listen.includes('none') ? 'ไม่ฟังเลย' : 'ฟัง: ' + listen });
-  checks.push({ name: 'config ที่มี listen 443', ok: any443 > 0, detail: any443 + ' จุด' });
-  if (lastError && !lastError.includes('no_log')) checks.push({ name: 'error log ล่าสุด', ok: false, detail: lastError.slice(0,200) });
+  checks.push({ name: 'nginx ฟัง port', ok: listen.includes('443'), detail: listen.includes('none') || !listen ? 'ไม่ฟัง 443 เลย' : 'ฟัง: ' + listen });
+  if (lastError && !lastError.includes('no_log')) checks.push({ name: 'error log ล่าสุด', ok: false, detail: lastError.slice(0,250) });
 
   // วินิจฉัยสาเหตุ + เสนอวิธีแก้
   let cause = '', fix = '', fixAction = '';
