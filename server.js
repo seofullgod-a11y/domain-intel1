@@ -1676,7 +1676,7 @@ async function handleRequest(req, res) {
     if (!srv) return json(res, { ok: false, error: 'ไม่พบ server' });
     (async () => {
       // สำคัญ! เช็ค nginx -t ก่อน ถ้า fail จะไม่ reload (กันโฮสดับ)
-      const cmd = 'nginx -t 2>&1 | tail -3; echo "=RESULT="; if nginx -t 2>/dev/null; then nginx -s reload 2>&1 && echo "RELOADED" || echo "RELOAD_FAIL"; else echo "TEST_FAIL_SKIP_RELOAD"; fi; echo "=DONE="';
+      const cmd = 'export PATH=$PATH:/usr/sbin:/usr/local/sbin:/sbin; NGINX=$(command -v nginx || echo /usr/sbin/nginx); $NGINX -t 2>&1 | tail -3; echo "=RESULT="; if $NGINX -t 2>/dev/null; then $NGINX -s reload 2>&1 && echo "RELOADED" || echo "RELOAD_FAIL"; else echo "TEST_FAIL_SKIP_RELOAD"; fi; echo "=DONE="';
       const cmdId = queueCommand(srv.host, cmd);
       let out = null;
       for (let i = 0; i < 30; i++) {
@@ -1703,6 +1703,23 @@ async function handleRequest(req, res) {
   if (req.method === 'GET' && url.startsWith('/api/nginx-error/')) {
     const serverName = decodeURIComponent(url.split('/api/nginx-error/')[1]);
     getNginxError(serverName).then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
+
+  // ผู้ช่วย AI วิเคราะห์ error
+  if (req.method === 'POST' && url === '/api/ai-analyze') {
+    let body = '';
+    req.on('data', ch => body += ch);
+    req.on('end', async () => {
+      try {
+        const { errorText, context } = JSON.parse(body || '{}');
+        if (!errorText || !errorText.trim()) return json(res, { ok: false, error: 'ใส่ข้อความ error ก่อน' });
+        empLog('diagnostician', 'AI วิเคราะห์ error', errorText.slice(0, 50));
+        const result = await aiAnalyzeError(errorText, context);
+        json(res, result);
+      } catch(e) { json(res, { ok: false, error: e.message }); }
+    });
     return;
   }
 
@@ -4508,6 +4525,7 @@ async function diagnoseDomain(domain) {
     // 5. เช็คผ่าน agent: vhost, SSL, port 443 (ระดับ server + ระดับโดเมนนี้)
     try {
       const cmd = [
+        'export PATH=$PATH:/usr/sbin:/usr/local/sbin:/sbin:/usr/bin',
         'echo "=VHOST="',
         '[ -d /var/www/vhosts/' + d + ' ] && echo "yes" || echo "no"',
         'echo "=SSL="',
@@ -4620,8 +4638,8 @@ async function getCFSSLMode(domain) {
 async function getNginxError(serverName) {
   const srv = PLESK_SERVERS.find(s => s.name === serverName);
   if (!srv) return { ok: false, error: 'ไม่พบ server' };
-  // nginx -t เต็มๆ + สถานะ service + วิธี restart ที่จะใช้
-  const cmd = 'echo "===NGINX_T_OUTPUT==="; timeout 20 nginx -t 2>&1; echo "===SERVICE_STATUS==="; systemctl status nginx 2>&1 | head -8; echo "===END===";';
+  // nginx -t เต็มๆ + สถานะ service (ใช้ full path เพราะ agent PATH ไม่มี /usr/sbin)
+  const cmd = 'export PATH=$PATH:/usr/sbin:/usr/local/sbin:/sbin; NGINX=$(command -v nginx || echo /usr/sbin/nginx); echo "===NGINX_T_OUTPUT==="; timeout 20 $NGINX -t 2>&1; echo "===SERVICE_STATUS==="; systemctl status nginx 2>&1 | head -8; echo "===LISTEN==="; ss -tlnH 2>/dev/null | grep -oE ":(80|443) " | sort -u | tr "\\n" " "; echo "===END===";';
   const cmdId = queueCommand(srv.host, cmd);
   let out = null;
   for (let i = 0; i < 60; i++) {
@@ -4632,13 +4650,33 @@ async function getNginxError(serverName) {
   return { ok: true, server: serverName, rawOutput: out };
 }
 
+
+// ===== ผู้ช่วย AI วิเคราะห์ error/ปัญหา server =====
+// ผู้ใช้วาง error → Claude วิเคราะห์ + บอกวิธีแก้ (อ่านอย่างเดียว ไม่รันคำสั่งเอง เพื่อความปลอดภัย)
+async function aiAnalyzeError(errorText, context) {
+  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'ยังไม่ได้ตั้ง ANTHROPIC_API_KEY' };
+
+  const system = 'คุณคือผู้เชี่ยวชาญ Linux server, Plesk, nginx, PHP-FPM, Cloudflare ที่ช่วยดูแลระบบจัดการโดเมน 1500+ โดเมนบน 5 Plesk servers (Ubuntu + Plesk, nginx + Apache, PHP-FPM, อยู่หลัง Cloudflare บางโดเมน). ' +
+    'หน้าที่: วิเคราะห์ error หรือปัญหาที่ผู้ใช้วางมา แล้วบอก (1) สาเหตุที่แท้จริง (2) วิธีแก้เป็นขั้นตอน (3) คำสั่งที่ต้องรัน (ถ้ามี ใส่ใน code block). ' +
+    'สำคัญมาก: ระวังเรื่องความปลอดภัย — ถ้าคำสั่งเสี่ยงทำ server ดับ (เช่น restart nginx/service) ให้เตือนผู้ใช้ก่อน และแนะนำให้เช็ค nginx -t ก่อนเสมอ. ' +
+    'ตอบเป็นภาษาไทย กระชับ ชัดเจน ใช้ขั้นตอน 1-2-3. ถ้าข้อมูลไม่พอให้บอกว่าต้องดูอะไรเพิ่ม. ' +
+    'หมายเหตุสำคัญ: agent ที่รันคำสั่งมี PATH จำกัด ต้องใช้ full path เช่น /usr/sbin/nginx ไม่ใช่แค่ nginx';
+
+  const userMsg = (context ? 'บริบท: ' + context + '\n\n' : '') + 'ช่วยวิเคราะห์ปัญหานี้:\n\n' + errorText;
+
+  const result = await callClaude(system, userMsg, 1500);
+  return result;
+}
+
 async function deepCheckNginx(serverName) {
   const srv = PLESK_SERVERS.find(s => s.name === serverName);
   if (!srv) return { ok: false, error: 'ไม่พบ server' };
 
   const cmd = [
+    'export PATH=$PATH:/usr/sbin:/usr/local/sbin:/sbin',
+    'NGINX=$(command -v nginx || echo /usr/sbin/nginx)',
     'echo "=NGINX_TEST="',
-    'timeout 15 nginx -t 2>&1 | tail -3',
+    'timeout 15 $NGINX -t 2>&1 | tail -3',
     'echo "=NGINX_RUNNING="',
     'systemctl is-active nginx 2>/dev/null || echo inactive',
     'echo "=NGINX_LISTEN="',
