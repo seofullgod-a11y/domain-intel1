@@ -488,6 +488,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="showPage('events')">
         <i class="ti ti-history"></i> Event Timeline
       </div>
+      <div class="nav-item" onclick="openReport()">
+        <i class="ti ti-report-analytics"></i> Diagnostic Report
+      </div>
       <div class="nav-item" onclick="showPage('tasks')">
         <i class="ti ti-layout-kanban"></i> To-Do Board
       </div>
@@ -6152,5 +6155,86 @@ async function applyNginxReload(serverName, btn) {
     else toast(d.error || 'reload ไม่สำเร็จ', 'error');
   } catch(e) { toast('ผิดพลาด: ' + e.message, 'error'); }
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-reload"></i> Reload nginx'; }
+}
+</script>
+
+<script>
+// ===== DIAGNOSTIC REPORT PAGE (added feature) =====
+// สร้างหน้า report แบบ dynamic (ไม่ต้องแก้ HTML เดิม) แล้ว reuse ระบบ showPage
+function ensureReportPage() {
+  if (document.getElementById('page-report')) return;
+  const anchor = document.getElementById('page-events') || document.querySelector('[id^="page-"]');
+  const container = anchor ? anchor.parentElement : document.getElementById('main-app');
+  const div = document.createElement('div');
+  div.id = 'page-report';
+  div.style.display = 'none';
+  div.style.flexDirection = 'column';
+  div.style.padding = '18px';
+  div.style.gap = '12px';
+  div.style.overflow = 'auto';
+  div.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
+      '<div>' +
+        '<h2 style="margin:0;font-size:18px">🩺 Diagnostic Report</h2>' +
+        '<div style="font-size:12px;color:var(--text3,#888)">รวม error · เหตุการณ์ · งานบอท · คำสั่งที่รันบนเซิร์ฟเวอร์ · สุขภาพเครื่อง — ค่าลับถูกปิดบังแล้ว</div>' +
+      '</div>' +
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
+        '<button class="btn" onclick="loadReportPage()"><i class="ti ti-reload"></i> รีเฟรช</button>' +
+        '<button class="btn btn-green" onclick="copyReport()"><i class="ti ti-copy"></i> คัดลอกทั้งหมด</button>' +
+        '<button class="btn" onclick="downloadReport()"><i class="ti ti-download"></i> ดาวน์โหลด .txt</button>' +
+      '</div>' +
+    '</div>' +
+    '<div id="rpt-status" style="font-size:12px;color:var(--text3,#888)"></div>' +
+    '<pre id="rpt-body" style="white-space:pre-wrap;word-break:break-word;background:var(--bg2,#0f0f0f);border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:14px;font-size:12px;line-height:1.5;max-height:70vh;overflow:auto;margin:0;color:var(--text,#ddd)"></pre>';
+  container.appendChild(div);
+}
+
+function openReport() {
+  ensureReportPage();
+  showPage('report');
+  // set nav active เอง (เพราะ nav ใช้ openReport ไม่ใช่ showPage)
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if ((n.getAttribute('onclick') || '') === 'openReport()') n.classList.add('active');
+  });
+  loadReportPage();
+}
+
+let _reportText = '';
+async function loadReportPage() {
+  ensureReportPage();
+  const body = document.getElementById('rpt-body');
+  const status = document.getElementById('rpt-status');
+  if (status) status.textContent = 'กำลังโหลด...';
+  try {
+    const res = await fetch(API + '/api/report.txt');
+    _reportText = await res.text();
+    if (body) body.textContent = _reportText;
+    if (status) status.textContent = 'อัปเดตล่าสุด: ' + new Date().toLocaleString();
+  } catch (e) {
+    if (body) body.textContent = 'โหลด report ไม่ได้: ' + e.message;
+    if (status) status.textContent = '';
+  }
+}
+
+async function copyReport() {
+  const text = _reportText || (document.getElementById('rpt-body') || {}).textContent || '';
+  try {
+    await navigator.clipboard.writeText(text);
+    if (typeof toast === 'function') toast('คัดลอก report แล้ว — วางในแชทให้ Claude วิเคราะห์ได้เลย', 'success');
+  } catch (e) {
+    if (typeof toast === 'function') toast('คัดลอกไม่ได้: ' + e.message, 'error');
+  }
+}
+
+function downloadReport() {
+  const text = _reportText || (document.getElementById('rpt-body') || {}).textContent || '';
+  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'domainintel-report-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.txt';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
 }
 </script>
