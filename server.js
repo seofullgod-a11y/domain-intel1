@@ -1849,6 +1849,26 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Diagnostic Report API (added feature) — /api/report (JSON) และ /api/report.txt (plain text)
+  if (req.method === 'GET' && (url === '/api/report' || url === '/api/report.txt')) {
+    let report;
+    try { report = buildDiagnosticReport(); }
+    catch (e) { report = { generatedAt: new Date().toISOString(), error: 'สร้าง report ไม่สำเร็จ: ' + e.message }; }
+    // ปิดบังค่าลับทั้งก้อนก่อนส่งออก
+    let safe;
+    try { safe = JSON.parse(redactString(JSON.stringify(report))); }
+    catch (e) { safe = report; }
+    if (url === '/api/report.txt') {
+      cors(res);
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.writeHead(200);
+      res.end(renderReportText(safe));
+    } else {
+      json(res, { success: true, report: safe });
+    }
+    return;
+  }
+
   // Event Log API
   if (req.method === 'GET' && url.startsWith('/api/events')) {
     const u = new URL('http://x' + url);
@@ -3312,6 +3332,139 @@ function logEvent(type, message, meta) {
   eventLog.unshift(event);
   if (eventLog.length > MAX_EVENTS) eventLog.pop();
   return event;
+}
+
+// ===== DIAGNOSTIC REPORT (added feature) =====
+// เก็บ error/crash ล่าสุดไว้ใน memory (ไม่กระทบโฮส)
+const errorLog = [];
+const MAX_ERRORS = 200;
+function logError(source, err) {
+  try {
+    const entry = {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      source,
+      message: (err && err.message) ? err.message : String(err),
+      stack: (err && err.stack) ? String(err.stack).split('\n').slice(0, 6).join('\n') : '',
+      at: new Date().toISOString()
+    };
+    errorLog.unshift(entry);
+    if (errorLog.length > MAX_ERRORS) errorLog.pop();
+    try { logEvent('error', '[' + source + '] ' + entry.message); } catch (e) {}
+  } catch (e) { /* ห้าม throw ในตัว logger เอง */ }
+}
+
+// ดักจับ error ที่หลุดออกมาทั้งระบบ — log ไว้ ไม่ปล่อยให้ process ตายเงียบ
+// หมายเหตุ: ถ้าคุณรันใต้ตัว supervisor (PM2/Railway) และอยากให้ restart สะอาดเมื่อ crash จริง
+// เปลี่ยนบรรทัด uncaughtException ให้ทำ process.exit(1) หลัง log ได้
+process.on('uncaughtException', (err) => { console.error('[uncaughtException]', err); logError('uncaughtException', err); });
+process.on('unhandledRejection', (reason) => { console.error('[unhandledRejection]', reason); logError('unhandledRejection', reason); });
+
+// ปิดบังค่าลับก่อนส่งออก — token/password/apikey/refresh token ฯลฯ
+function redactString(str) {
+  if (!str) return str;
+  return String(str)
+    // ค่าลับที่อยู่ในรูป JSON "key":"value"
+    .replace(/"(pass(?:word)?|token|secret|api[_-]?key|apikey|authorization|bearer|refresh[_-]?token|client[_-]?secret|line[_-]?token|telegram[_-]?token|private[_-]?key)"\s*:\s*"[^"]*"/gi, '"$1":"***REDACTED***"')
+    // Anthropic / Google / Telegram / bearer patterns ที่โผล่ใน text
+    .replace(/sk-ant-[A-Za-z0-9_\-]{8,}/g, '***REDACTED***')
+    .replace(/GOCSPX-[A-Za-z0-9_\-]{6,}/g, '***REDACTED***')
+    .replace(/\b\d{6,}:[A-Za-z0-9_\-]{20,}\b/g, '***REDACTED***')
+    // token/hash แบบยาว
+    .replace(/\b[A-Fa-f0-9]{32,}\b/g, '***REDACTED***')
+    .replace(/\b[A-Za-z0-9+/]{40,}={0,2}\b/g, '***REDACTED***');
+}
+
+function _safe(fn, fallback) { try { return fn(); } catch (e) { return fallback; } }
+
+// รวบรวมทุกอย่างเป็น report เดียว
+function buildDiagnosticReport() {
+  const snap = (typeof gatherSystemSnapshot === 'function') ? _safe(gatherSystemSnapshot, {}) : {};
+  const warn = _safe(() => memoryDomains.filter(d => d.status === 'warn').length, 0);
+
+  // นับ event แยกตามชนิด
+  const counts = {};
+  _safe(() => eventLog.forEach(e => { counts[e.type] = (counts[e.type] || 0) + 1; }));
+
+  // event ที่เป็น "ปัญหา" เท่านั้น
+  const problemTypes = ['down', 'warning', 'error', 'slow', 'alert', 'fix'];
+  const problemEvents = _safe(() => eventLog.filter(e => problemTypes.includes(e.type)).slice(0, 80), []);
+
+  // ประวัติคำสั่งที่ถูกส่งไปรันบนเซิร์ฟเวอร์ (สำคัญมากสำหรับตรวจของแปลกปลอม)
+  const agentHistory = [];
+  _safe(() => Object.entries(agentCommands).forEach(([key, cmds]) => {
+    cmds.slice(-25).forEach(c => agentHistory.push({
+      server: key, id: c.id, cmd: c.cmd, status: c.status,
+      queuedAt: c.queuedAt, result: (c.result || '').slice(0, 300)
+    }));
+  }));
+
+  const connectivity = {
+    gsc: _safe(() => !!process.env.GSC_REFRESH_TOKEN, false),
+    pleskServers: _safe(() => PLESK_SERVERS.length, 0),
+    cloudflare: _safe(() => !!CF_API_TOKEN, false),
+    sheets: _safe(() => !!(typeof SHEET_ID !== 'undefined' && SHEET_ID), false),
+    anthropic: _safe(() => !!process.env.ANTHROPIC_API_KEY, false)
+  };
+
+  return {
+    generatedAt: new Date().toISOString(),
+    note: 'ค่าลับ (token/password/key) ถูกปิดบังเป็น ***REDACTED*** แล้ว — ปลอดภัยที่จะก็อปไปวางให้ Claude วิเคราะห์. หมายเหตุความปลอดภัย: endpoint /api/report นี้ยังไม่มี auth เหมือน endpoint อื่น ควรใส่ auth gate ตามที่คุยกันไว้',
+    meta: {
+      nodeVersion: process.version,
+      uptimeSec: Math.round(process.uptime()),
+      pid: process.pid,
+      rssMB: Math.round(process.memoryUsage().rss / 1048576)
+    },
+    summary: {
+      domains: snap.domains || {},
+      warn,
+      pleskServers: connectivity.pleskServers,
+      pendingApprovals: _safe(() => approvalQueue.filter(a => a.status === 'pending').length, 0),
+      recentErrors: errorLog.length,
+      eventCountsByType: counts
+    },
+    connectivity,
+    serverHealth: snap.serverHealth || [],
+    serverMetrics: _safe(() => Object.entries(serverMetricsCache).map(([name, v]) => ({
+      server: name, verdict: v.verdict, issues: v.issues, metrics: v.metrics, at: v.at
+    })), []),
+    recentErrors: errorLog.slice(0, 50),
+    problemEvents,
+    botActivity: _safe(() => employeeActivity.slice(0, 60), []),
+    agentCommands: agentHistory,
+    pendingApprovals: _safe(() => approvalQueue.filter(a => a.status === 'pending')
+      .map(a => ({ id: a.id, title: a.title, action: a.action, empId: a.empId, at: a.at })), [])
+  };
+}
+
+// แปลง report เป็น text อ่านง่าย (สำหรับก็อป/ดาวน์โหลด)
+function renderReportText(r) {
+  const L = [];
+  const sec = (t) => { L.push(''); L.push('===== ' + t + ' ====='); };
+  L.push('DomainIntel — Diagnostic Report');
+  L.push('Generated: ' + r.generatedAt);
+  L.push(r.note || '');
+  sec('SYSTEM');
+  L.push('node ' + (r.meta && r.meta.nodeVersion) + ' · uptime ' + (r.meta && r.meta.uptimeSec) + 's · RSS ' + (r.meta && r.meta.rssMB) + 'MB');
+  sec('SUMMARY');
+  L.push(JSON.stringify(r.summary, null, 2));
+  sec('CONNECTIVITY');
+  L.push(JSON.stringify(r.connectivity, null, 2));
+  sec('SERVER HEALTH');
+  L.push(JSON.stringify(r.serverHealth, null, 2));
+  sec('SERVER METRICS');
+  L.push(JSON.stringify(r.serverMetrics, null, 2));
+  sec('RECENT ERRORS (' + (r.recentErrors ? r.recentErrors.length : 0) + ')');
+  (r.recentErrors || []).forEach(e => L.push('[' + e.at + '] (' + e.source + ') ' + e.message + (e.stack ? '\n  ' + e.stack.replace(/\n/g, '\n  ') : '')));
+  sec('PROBLEM EVENTS (' + (r.problemEvents ? r.problemEvents.length : 0) + ')');
+  (r.problemEvents || []).forEach(e => L.push('[' + e.at + '] (' + e.type + ') ' + e.message));
+  sec('AGENT COMMANDS ON SERVERS (' + (r.agentCommands ? r.agentCommands.length : 0) + ')');
+  (r.agentCommands || []).forEach(c => L.push('[' + c.status + '] ' + c.server + ' :: ' + c.cmd + (c.result ? ' => ' + c.result : '')));
+  sec('BOT ACTIVITY (' + (r.botActivity ? r.botActivity.length : 0) + ')');
+  (r.botActivity || []).forEach(a => L.push('[' + a.at + '] ' + (a.empName || a.empId) + ': ' + a.action + (a.detail ? ' — ' + a.detail : '')));
+  sec('PENDING APPROVALS (' + (r.pendingApprovals ? r.pendingApprovals.length : 0) + ')');
+  (r.pendingApprovals || []).forEach(a => L.push('[' + a.at + '] ' + a.title + ' (' + a.action + ')'));
+  return L.join('\n');
 }
 
 // ===== HEALTH SCORE (คำนวณจากข้อมูลที่มี - read only) =====
