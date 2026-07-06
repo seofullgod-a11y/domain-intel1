@@ -2229,8 +2229,15 @@ async function proactiveMonitor() {
 🖥️ ${srv.name}: Load Average สูง <b>${load}</b>
 กำลัง Fix อัตโนมัติ...`);
           queueCommand(srv.host, 
-            'pkill -f "wp-toolkit" 2>/dev/null; pkill -f "auto-update" 2>/dev/null; ' +
-            'systemctl restart sw-engine; echo "Auto-fixed"'
+            (function(){
+              // graceful recycle php-fpm จริงของ Plesk (คลาย worker ที่ RAM บวม) — ไม่ restart กระชากทั้ง Plesk
+              var healScript = [
+                'for s in $(systemctl list-units --type=service --state=running 2>/dev/null | grep -oE "plesk-php[0-9]+-fpm" | sort -u); do systemctl reload "$s" 2>/dev/null; done',
+                'systemctl reload sw-engine 2>/dev/null || true',
+                'echo fpm-reloaded'
+              ].join('\n');
+              return 'echo ' + Buffer.from(healScript).toString('base64') + ' | base64 -d | sh';
+            })()
           );
         }
         if (disk > 80) {
@@ -4404,29 +4411,22 @@ function buildCommandCenter() {
 // ===== วินิจฉัย server: ดึงข้อมูลจริง หาสาเหตุ slowness =====
 async function diagnoseServer(srv) {
   try {
-    const cmd = [
-      'echo "=LOAD="',
-      'cat /proc/loadavg | cut -d" " -f1-3',
-      'echo "=CPU_CORES="',
-      'nproc',
-      'echo "=RAM="',
-      'free -m | grep Mem | tr -s " " | cut -d" " -f2,3,4,7',  // total used free available
-      'echo "=SWAP="',
-      'free -m | grep Swap | tr -s " " | cut -d" " -f2,3',     // total used
-      'echo "=DISK="',
-      'df -h / | tail -1 | tr -s " " | cut -d" " -f5',         // use%
-      'echo "=PHPFPM_COUNT="',
-      'ps aux | grep -c "[p]hp-fpm"',
-      'echo "=MYSQL_MEM="',
-      'ps aux | grep "[m]ysqld" | awk "{print int(\$6/1024)}" | head -1',  // MySQL RSS in MB
-      'echo "=TOP5="',
-      'ps aux --sort=-%cpu | awk "NR>1 && NR<=6 {printf \"%s|%s|%s\\n\", \$3, \$4, \$11}"',  // cpu% mem% command
-      'echo "=APACHE_CONN="',
-      'ss -tn state established 2>/dev/null | grep -c ":80\|:443" || echo 0',
-      'echo "=MYSQL_SLOW="',
-      'mysql -e "SHOW GLOBAL STATUS LIKE \"Slow_queries\";" 2>/dev/null | tail -1 | awk "{print \$2}" || echo "n/a"',
+    // สคริปต์เก็บ metric — ส่งแบบ base64 กัน quote/$ ถูก shell ชั้นกลาง expand ทิ้ง
+    // (ของเดิม TOP5/MYSQL_MEM ใช้ไม่ได้เพราะ $6/$3/$11 โดนกินหมด → awk error)
+    const diagScript = [
+      'echo "=LOAD="; cat /proc/loadavg | cut -d" " -f1-3',
+      'echo "=CPU_CORES="; nproc',
+      'echo "=RAM="; free -m | awk \'/Mem:/{print $2, $3, $4, $7}\'',
+      'echo "=SWAP="; free -m | awk \'/Swap:/{print $2, $3}\'',
+      'echo "=DISK="; df -h / | awk \'NR==2{print $5}\'',
+      'echo "=PHPFPM_COUNT="; ps aux | grep -c "[p]hp-fpm"',
+      'echo "=MYSQL_MEM="; ps aux | grep "[m]ysqld" | awk \'{print int($6/1024)}\' | head -1',
+      'echo "=TOP5="; ps aux --sort=-%cpu | awk \'NR>1 && NR<=6 {printf "%s|%s|%s\\n", $3, $4, $11}\'',
+      'echo "=APACHE_CONN="; ss -tn state established 2>/dev/null | grep -cE ":80|:443"',
+      'echo "=MYSQL_SLOW="; mysql -e "SHOW GLOBAL STATUS LIKE \'Slow_queries\';" 2>/dev/null | tail -1 | awk \'{print $2}\'',
       'echo "=DONE="'
-    ].join('; ');
+    ].join('\n');
+    const cmd = 'echo ' + Buffer.from(diagScript).toString('base64') + ' | base64 -d | sh'
 
     const cmdId = queueCommand(srv.host, cmd);
     for (let i = 0; i < 60; i++) {
