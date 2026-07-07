@@ -422,6 +422,73 @@ function checkDomain(domain) {
 }
 
 let isCheckingDomains = false;
+// ===== ISP BLOCK CHECK (added feature) =====
+// ตรวจว่าโดเมนโดนบล็อกในค่ายเน็ตไหน (DNS-based screening)
+// resolver ค่ายไหนไม่ตอบ => unknown (ไม่ฟันธงว่า blocked) · เว็บหลัง CDN ที่ IP ต่าง => ok
+const ISP_RESOLVERS = { ais:['1.1.1.1'], true:['8.8.8.8'], '3bb':['9.9.9.9'], tot:['208.67.222.222'], dtac:['1.0.0.1'] };
+const ISP_BASELINE_RESOLVERS = ['1.1.1.1','8.8.8.8'];
+const ISP_BLOCK_PAGE_IPS = new Set([]); // เติม IP หน้า "ปิดกั้นโดย กสทช." ถ้ารู้ เพื่อเพิ่มความแม่น
+const ISP_TIMEOUT_MS = 4000;
+
+function ispResolveWith(servers, domain, timeoutMs) {
+  const dnsMod = require('dns');
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (r) => { if (!done) { done = true; resolve(r); } };
+    const t = setTimeout(() => finish({ ips: [], error: 'TIMEOUT' }), timeoutMs || ISP_TIMEOUT_MS);
+    try {
+      const r = new dnsMod.Resolver();
+      r.setServers(servers);
+      r.resolve4(domain, (err, addrs) => { clearTimeout(t); finish(err ? { ips: [], error: err.code || 'ERR' } : { ips: addrs || [], error: null }); });
+    } catch (e) { clearTimeout(t); finish({ ips: [], error: 'RESOLVER_ERR' }); }
+  });
+}
+function ispClassify(baseline, isp) {
+  if (!baseline.ips.length && baseline.error) return { status:'unknown', why:'baseline resolve ไม่ได้' };
+  if (isp.error === 'TIMEOUT' || isp.error === 'ECONNREFUSED' || isp.error === 'RESOLVER_ERR')
+    return { status:'unknown', why:'resolver ค่ายนี้ไม่ตอบจากเซิร์ฟเวอร์ ('+isp.error+')' };
+  if (isp.ips.some(ip => ISP_BLOCK_PAGE_IPS.has(ip))) return { status:'blocked', why:'ชี้ไป IP หน้าปิดกั้น', confidence:'high' };
+  if (!isp.ips.length && baseline.ips.length) return { status:'blocked', why:'resolve ไม่ได้ ('+(isp.error||'empty')+') แต่ baseline ได้', confidence:'medium' };
+  const net24 = (ip) => ip.split('.').slice(0,3).join('.');
+  const baseNets = new Set(baseline.ips.map(net24));
+  if (isp.ips.some(ip => baseline.ips.includes(ip) || baseNets.has(net24(ip)))) return { status:'ok', why:'IP ตรง/subnet เดียวกับ baseline' };
+  return { status:'ok', why:'resolve ได้ IP ปกติ (ต่าง baseline — น่าจะ CDN)', confidence:'low' };
+}
+async function checkISPBlock(domain, opts) {
+  opts = opts || {};
+  const clean = String(domain).replace(/^https?:\/\//,'').replace(/\/.*$/,'').trim();
+  const baseline = await ispResolveWith(opts.baseline || ISP_BASELINE_RESOLVERS, clean);
+  const isps = {};
+  await Promise.all(Object.entries(opts.resolvers || ISP_RESOLVERS).map(async ([name, servers]) => {
+    const res = await ispResolveWith(servers, clean);
+    const cls = ispClassify(baseline, res);
+    isps[name] = { status: cls.status, why: cls.why, confidence: cls.confidence || null, ips: res.ips };
+  }));
+  const blockedIsps = Object.entries(isps).filter(([,v]) => v.status === 'blocked').map(([k]) => k);
+  return { domain: clean, baselineIps: baseline.ips, isps, blockedIsps, anyBlocked: blockedIsps.length > 0, checkedAt: new Date().toISOString() };
+}
+let ispChecking = false, lastISPCheckAt = null;
+async function checkAllISPBlocks() {
+  if (ispChecking) return; ispChecking = true;
+  try {
+    const list = memoryDomains.filter(d => d.domain);
+    const BATCH = 15;
+    for (let i = 0; i < list.length; i += BATCH) {
+      const batch = list.slice(i, i + BATCH);
+      await Promise.all(batch.map(async d => {
+        try {
+          const r = await checkISPBlock(d.domain);
+          const idx = memoryDomains.findIndex(x => x.domain === d.domain);
+          if (idx !== -1) memoryDomains[idx].ispBlock = { blockedIsps: r.blockedIsps, isps: r.isps, anyBlocked: r.anyBlocked, checkedAt: r.checkedAt };
+        } catch (e) {}
+      }));
+      await new Promise(r => setTimeout(r, 300));
+    }
+    lastISPCheckAt = new Date().toISOString();
+    try { logEvent('info', 'เช็ก ISP block ครบ ' + list.length + ' โดเมน'); } catch (e) {}
+  } finally { ispChecking = false; }
+}
+
 async function checkAllDomains() {
   if (!memoryDomains.length) return;
   if (isCheckingDomains) { console.log('[Check] already running, skip'); return; }
@@ -1846,6 +1913,28 @@ async function handleRequest(req, res) {
       const s = getAllHealthScores();
       return s.length ? Math.round(s.reduce((a,b) => a+b.score, 0) / s.length) : 0;
     })() });
+    return;
+  }
+
+  // ISP block API (added feature)
+  if (req.method === 'GET' && url.startsWith('/api/isp-check/')) {
+    const dom = decodeURIComponent(url.split('/api/isp-check/')[1] || '');
+    try { const r = await checkISPBlock(dom); json(res, { success: true, result: r }); }
+    catch (e) { json(res, { success: false, error: e.message }); }
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/isp-status') {
+    const rows = memoryDomains.filter(d => d.ispBlock).map(d => ({
+      domain: d.domain, anyBlocked: d.ispBlock.anyBlocked, blockedIsps: d.ispBlock.blockedIsps,
+      isps: d.ispBlock.isps, checkedAt: d.ispBlock.checkedAt
+    }));
+    const blocked = rows.filter(r => r.anyBlocked);
+    json(res, { success: true, lastCheckAt: lastISPCheckAt, checking: ispChecking, total: rows.length, blockedCount: blocked.length, blocked, all: rows });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/isp-check-all') {
+    checkAllISPBlocks().catch(() => {});
+    json(res, { success: true, started: true, note: 'กำลังเช็กเบื้องหลัง เรียก /api/isp-status ดูผลได้' });
     return;
   }
 
@@ -4894,6 +4983,8 @@ server.listen(PORT, async () => {
   }
 
   setInterval(checkAllDomains, CHECK_INTERVAL_MS);
+  setInterval(checkAllISPBlocks, 60 * 60 * 1000); // ISP block check ทุก 60 นาที
+  setTimeout(() => checkAllISPBlocks().catch(()=>{}), 90 * 1000); // run แรกหลัง start 90 วิ
   setInterval(() => syncPleskDomains(), PLESK_SYNC_INTERVAL_MS);
   setInterval(checkServerHealth, CHECK_INTERVAL_MS);
   setInterval(proactiveMonitor, CHECK_INTERVAL_MS); // Proactive monitor ทุก 5 นาที
