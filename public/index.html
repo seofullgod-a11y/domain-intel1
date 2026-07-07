@@ -491,6 +491,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="openReport()">
         <i class="ti ti-report-analytics"></i> Diagnostic Report
       </div>
+      <div class="nav-item" onclick="openISP()">
+        <i class="ti ti-network"></i> ISP Block Check
+      </div>
       <div class="nav-item" onclick="showPage('tasks')">
         <i class="ti ti-layout-kanban"></i> To-Do Board
       </div>
@@ -6236,5 +6239,77 @@ function downloadReport() {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+</script>
+
+<script>
+// ===== ISP BLOCK CHECK PAGE (added feature) =====
+function ensureISPPage(){
+  if(document.getElementById('page-isp')) return;
+  var anchor=document.getElementById('page-report')||document.getElementById('page-events')||document.querySelector('[id^="page-"]');
+  var container=anchor?anchor.parentElement:document.getElementById('main-app');
+  var div=document.createElement('div');
+  div.id='page-isp'; div.style.display='none'; div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
+  div.innerHTML=
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'+
+      '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-network"></i> ISP Block Check</h2>'+
+      '<div style="font-size:12px;color:var(--text3,#888)">โดเมนไหนโดนบล็อกในค่ายเน็ตไหน (AIS/True/3BB/TOT/dtac) — DNS screening</div></div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button class="btn" onclick="loadISP()"><i class="ti ti-reload"></i> รีเฟรช</button>'+
+        '<button class="btn btn-green" onclick="ispCheckAll()"><i class="ti ti-player-play"></i> เช็กทุกโดเมนเลย</button>'+
+      '</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+      '<input id="isp-one" placeholder="พิมพ์โดเมนเช็กทันที เช่น example.com" style="flex:1;min-width:220px;padding:8px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg2,#111);color:inherit">'+
+      '<button class="btn" onclick="ispCheckOne()">เช็กโดเมนนี้</button>'+
+    '</div>'+
+    '<div id="isp-status" style="font-size:12px;color:var(--text3,#888)"></div>'+
+    '<div id="isp-body"></div>';
+  container.appendChild(div);
+}
+function openISP(){ ensureISPPage(); showPage('isp');
+  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openISP()') n.classList.add('active'); });
+  loadISP();
+}
+function ispBadge(status){
+  var c = status==='blocked' ? '#e24b4a' : (status==='unknown' ? '#888' : '#2ecc71');
+  return '<span style="color:'+c+';font-weight:600">'+status+'</span>';
+}
+async function loadISP(){
+  ensureISPPage();
+  var st=document.getElementById('isp-status'), body=document.getElementById('isp-body');
+  if(st) st.textContent='กำลังโหลด...';
+  try{
+    var res=await fetch(API+'/api/isp-status'); var d=await res.json();
+    if(st) st.textContent='เช็กรอบล่าสุด: '+(d.lastCheckAt?new Date(d.lastCheckAt).toLocaleString():'ยังไม่เคยเช็ก')+' · เช็กแล้ว '+d.total+' โดเมน · โดนบล็อก '+d.blockedCount+(d.checking?' · (กำลังเช็ก...)':'');
+    if(!d.blocked || !d.blocked.length){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">ยังไม่พบโดเมนที่โดนบล็อก (หรือยังไม่ถึงรอบเช็ก — กด "เช็กทุกโดเมนเลย" ได้)</div>'; return; }
+    var isps=['ais','true','3bb','tot','dtac'];
+    var h='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">โดเมน</th>'+isps.map(function(x){return '<th style="padding:8px">'+x+'</th>';}).join('')+'<th style="padding:8px">เช็กเมื่อ</th></tr>';
+    d.blocked.forEach(function(r){
+      h+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:8px;font-weight:600">'+r.domain+'</td>';
+      isps.forEach(function(x){ var v=r.isps[x]?r.isps[x].status:'-'; h+='<td style="padding:8px">'+ispBadge(v)+'</td>'; });
+      h+='<td style="padding:8px;color:var(--text3,#888)">'+(r.checkedAt?new Date(r.checkedAt).toLocaleTimeString():'-')+'</td></tr>';
+    });
+    h+='</table>';
+    body.innerHTML=h;
+  }catch(e){ if(body) body.innerHTML='โหลดไม่ได้: '+e.message; if(st) st.textContent=''; }
+}
+async function ispCheckAll(){
+  try{ await fetch(API+'/api/isp-check-all',{method:'POST'}); if(typeof toast==='function') toast('เริ่มเช็กทุกโดเมนเบื้องหลังแล้ว รีเฟรชดูผลได้เรื่อยๆ','success'); }
+  catch(e){ if(typeof toast==='function') toast('เริ่มไม่ได้: '+e.message,'error'); }
+}
+async function ispCheckOne(){
+  var dom=(document.getElementById('isp-one')||{}).value; if(!dom) return;
+  var body=document.getElementById('isp-body'); body.innerHTML='กำลังเช็ก '+dom+'...';
+  try{
+    var res=await fetch(API+'/api/isp-check/'+encodeURIComponent(dom.trim())); var d=await res.json();
+    if(!d.success){ body.innerHTML='ผิดพลาด: '+(d.error||'?'); return; }
+    var r=d.result, isps=['ais','true','3bb','tot','dtac'];
+    var h='<div style="padding:12px;background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:8px">'+
+      '<b>'+r.domain+'</b> — baseline IP: '+(r.baselineIps.join(', ')||'-')+'<br><br>';
+    isps.forEach(function(x){ var v=r.isps[x]; h+='<div style="padding:4px 0">'+x+': '+ispBadge(v.status)+' <span style="color:var(--text3,#888)">— '+v.why+'</span></div>'; });
+    h+='</div>'; body.innerHTML=h;
+  }catch(e){ body.innerHTML='ผิดพลาด: '+e.message; }
 }
 </script>
