@@ -429,6 +429,8 @@ const ISP_RESOLVERS = { ais:['1.1.1.1'], true:['8.8.8.8'], '3bb':['9.9.9.9'], to
 const ISP_BASELINE_RESOLVERS = ['1.1.1.1','8.8.8.8'];
 const ISP_BLOCK_PAGE_IPS = new Set([]); // เติม IP หน้า "ปิดกั้นโดย กสทช." ถ้ารู้ เพื่อเพิ่มความแม่น
 const ISP_TIMEOUT_MS = 4000;
+const ISP_AGENT_KEY = process.env.ISP_AGENT_KEY || 'change-this-key'; // คีย์ให้ agent ไทยใช้ยืนยันตัว (เปลี่ยนก่อนใช้จริง)
+let lastAgentReportAt = null;
 
 function ispResolveWith(servers, domain, timeoutMs) {
   const dnsMod = require('dns');
@@ -1924,17 +1926,45 @@ async function handleRequest(req, res) {
     return;
   }
   if (req.method === 'GET' && url === '/api/isp-status') {
-    const rows = memoryDomains.filter(d => d.ispBlock).map(d => ({
-      domain: d.domain, anyBlocked: d.ispBlock.anyBlocked, blockedIsps: d.ispBlock.blockedIsps,
-      isps: d.ispBlock.isps, checkedAt: d.ispBlock.checkedAt
+    const rows = memoryDomains.filter(d => d.ispBlock || d.thAgent).map(d => ({
+      domain: d.domain,
+      anyBlocked: d.ispBlock ? d.ispBlock.anyBlocked : false,
+      blockedIsps: d.ispBlock ? d.ispBlock.blockedIsps : [],
+      isps: d.ispBlock ? d.ispBlock.isps : {},
+      thAgent: d.thAgent || null,
+      checkedAt: (d.thAgent && d.thAgent.checkedAt) || (d.ispBlock && d.ispBlock.checkedAt)
     }));
+    const thBlocked = rows.filter(r => r.thAgent && r.thAgent.status === 'blocked');
     const blocked = rows.filter(r => r.anyBlocked);
-    json(res, { success: true, lastCheckAt: lastISPCheckAt, checking: ispChecking, total: rows.length, blockedCount: blocked.length, blocked, all: rows });
+    json(res, { success: true, lastCheckAt: lastISPCheckAt, lastAgentReportAt, checking: ispChecking,
+      total: rows.length, blockedCount: blocked.length, thBlockedCount: thBlocked.length,
+      hasAgent: !!lastAgentReportAt, thBlocked, blocked, all: rows });
     return;
   }
   if (req.method === 'POST' && url === '/api/isp-check-all') {
     checkAllISPBlocks().catch(() => {});
     json(res, { success: true, started: true, note: 'กำลังเช็กเบื้องหลัง เรียก /api/isp-status ดูผลได้' });
+    return;
+  }
+
+  // ISP agent (จุดตรวจในไทย) — ต้องมี key
+  if (req.method === 'GET' && url === '/api/isp-agent/domains') {
+    const key = (rawUrl.split('key=')[1] || '').split('&')[0];
+    if (decodeURIComponent(key) !== ISP_AGENT_KEY) { cors(res); res.writeHead(403); res.end('forbidden'); return; }
+    json(res, { success: true, domains: memoryDomains.filter(d => d.domain).map(d => d.domain) });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/isp-agent/report') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { cors(res); res.writeHead(403); res.end('forbidden'); return; }
+    const isp = body.isp || 'th';
+    let n = 0;
+    (body.results || []).forEach(r => {
+      const idx = memoryDomains.findIndex(d => d.domain === r.domain);
+      if (idx !== -1) { memoryDomains[idx].thAgent = { isp, status: r.status, detail: r.detail || '', checkedAt: new Date().toISOString() }; n++; }
+    });
+    lastAgentReportAt = new Date().toISOString();
+    json(res, { success: true, updated: n });
     return;
   }
 
