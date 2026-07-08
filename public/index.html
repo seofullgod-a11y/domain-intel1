@@ -6289,8 +6289,29 @@ async function loadISP(){
   if(st) st.textContent='กำลังโหลด...';
   try{
     var res=await fetch(API+'/api/isp-status'); var d=await res.json();
-    if(st) st.textContent='เช็กรอบล่าสุด: '+(d.lastCheckAt?new Date(d.lastCheckAt).toLocaleString():'ยังไม่เคยเช็ก')+' · เช็กแล้ว '+d.total+' โดเมน · โดนบล็อก '+d.blockedCount+(d.checking?' · (กำลังเช็ก...)':'');
-    if(!d.blocked || !d.blocked.length){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">ยังไม่พบโดเมนที่โดนบล็อก (หรือยังไม่ถึงรอบเช็ก — กด "เช็กทุกโดเมนเลย" ได้)</div>'; return; }
+    var statusTxt='เช็กรอบล่าสุด(DNS): '+(d.lastCheckAt?new Date(d.lastCheckAt).toLocaleString():'ยังไม่เคยเช็ก')+' · เช็กแล้ว '+d.total+' โดเมน';
+    if(d.hasAgent){ statusTxt+=' · ✅ ผลจริงจากไทย: โดนบล็อก '+d.thBlockedCount+' โดเมน (agent รายงานล่าสุด '+new Date(d.lastAgentReportAt).toLocaleString()+')'; }
+    else { statusTxt+=' · ⚠️ ยังไม่มี agent ในไทย — ค่าที่เห็นเป็นการเดาจาก DNS ต่างประเทศ ('+d.blockedCount+' โดนบล็อก)'; }
+    if(st) st.textContent=statusTxt;
+
+    // ถ้ามี agent ไทย → โชว์ผลจริงจากไทยเป็นหลัก
+    if(d.hasAgent && d.thBlocked && d.thBlocked.length){
+      var hh='<div style="margin-bottom:8px;color:#2ecc71;font-size:13px">แสดงผลจริงจากเน็ตไทย (agent)</div>'+
+        '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+        '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">พรีวิว</th><th style="padding:8px">โดเมน</th><th style="padding:8px">สถานะจริง(ไทย)</th><th style="padding:8px">รายละเอียด</th><th style="padding:8px">เช็กเมื่อ</th></tr>';
+      d.thBlocked.forEach(function(r){
+        hh+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:8px">'+ispThumb(r.domain)+'</td>'+
+          '<td style="padding:8px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+r.domain+'</a></td>'+
+          '<td style="padding:8px">'+ispBadge(r.thAgent.status)+'</td>'+
+          '<td style="padding:8px;color:var(--text3,#888)">'+(r.thAgent.detail||'')+'</td>'+
+          '<td style="padding:8px;color:var(--text3,#888)">'+(r.thAgent.checkedAt?new Date(r.thAgent.checkedAt).toLocaleTimeString():'-')+'</td></tr>';
+      });
+      hh+='</table>';
+      body.innerHTML=hh; return;
+    }
+
+    // ยังไม่มี agent → โชว์ผลเดาจาก DNS (เหมือนเดิม พร้อมคำเตือน)
+    if(!d.blocked || !d.blocked.length){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">ยังไม่พบโดเมนที่โดนบล็อก (หรือยังไม่ถึงรอบเช็ก — กด "เช็กทุกโดเมนเลย" ได้)<br><br>💡 ตั้ง agent ในไทยเพื่อผลที่แม่นจริง</div>'; return; }
     var isps=['ais','true','3bb','tot','dtac'];
     var h='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
       '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">พรีวิว</th><th style="padding:8px">โดเมน</th>'+isps.map(function(x){return '<th style="padding:8px">'+x+'</th>';}).join('')+'<th style="padding:8px">เช็กเมื่อ</th></tr>';
