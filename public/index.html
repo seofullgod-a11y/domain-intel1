@@ -6275,6 +6275,14 @@ function ispBadge(status){
   var c = status==='blocked' ? '#e24b4a' : (status==='unknown' ? '#888' : '#2ecc71');
   return '<span style="color:'+c+';font-weight:600">'+status+'</span>';
 }
+function ispThumb(domain, w, h){
+  w=w||120; h=h||75;
+  var url='https://s.wordpress.com/mshots/v1/'+encodeURIComponent('https://'+domain)+'?w='+(w*2)+'&h='+(h*2);
+  return '<a href="https://'+domain+'" target="_blank" rel="noopener">'+
+    '<img loading="lazy" src="'+url+'" title="เปิด '+domain+'" '+
+    'style="width:'+w+'px;height:'+h+'px;object-fit:cover;border-radius:6px;border:1px solid var(--border,#2a2a2a);background:#111" '+
+    'onerror="this.style.opacity=0.3"></a>';
+}
 async function loadISP(){
   ensureISPPage();
   var st=document.getElementById('isp-status'), body=document.getElementById('isp-body');
@@ -6285,9 +6293,10 @@ async function loadISP(){
     if(!d.blocked || !d.blocked.length){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">ยังไม่พบโดเมนที่โดนบล็อก (หรือยังไม่ถึงรอบเช็ก — กด "เช็กทุกโดเมนเลย" ได้)</div>'; return; }
     var isps=['ais','true','3bb','tot','dtac'];
     var h='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
-      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">โดเมน</th>'+isps.map(function(x){return '<th style="padding:8px">'+x+'</th>';}).join('')+'<th style="padding:8px">เช็กเมื่อ</th></tr>';
+      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">พรีวิว</th><th style="padding:8px">โดเมน</th>'+isps.map(function(x){return '<th style="padding:8px">'+x+'</th>';}).join('')+'<th style="padding:8px">เช็กเมื่อ</th></tr>';
     d.blocked.forEach(function(r){
-      h+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:8px;font-weight:600">'+r.domain+'</td>';
+      h+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:8px">'+ispThumb(r.domain)+'</td>'+
+        '<td style="padding:8px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+r.domain+'</a></td>';
       isps.forEach(function(x){ var v=r.isps[x]?r.isps[x].status:'-'; h+='<td style="padding:8px">'+ispBadge(v)+'</td>'; });
       h+='<td style="padding:8px;color:var(--text3,#888)">'+(r.checkedAt?new Date(r.checkedAt).toLocaleTimeString():'-')+'</td></tr>';
     });
@@ -6307,7 +6316,8 @@ async function ispCheckOne(){
     if(!d.success){ body.innerHTML='ผิดพลาด: '+(d.error||'?'); return; }
     var r=d.result, isps=['ais','true','3bb','tot','dtac'];
     var h='<div style="padding:12px;background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:8px">'+
-      '<b>'+r.domain+'</b> — baseline IP: '+(r.baselineIps.join(', ')||'-')+'<br><br>';
+      '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">'+ispThumb(r.domain,200,125)+
+      '<div><b>'+r.domain+'</b><br>baseline IP: '+(r.baselineIps.join(', ')||'-')+'</div></div>';
     isps.forEach(function(x){ var v=r.isps[x]; h+='<div style="padding:4px 0">'+x+': '+ispBadge(v.status)+' <span style="color:var(--text3,#888)">— '+v.why+'</span></div>'; });
     h+='</div>'; body.innerHTML=h;
   }catch(e){ body.innerHTML='ผิดพลาด: '+e.message; }
