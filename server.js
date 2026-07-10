@@ -491,6 +491,44 @@ async function checkAllISPBlocks() {
   } finally { ispChecking = false; }
 }
 
+// ===== HISTORY + BACKUP DOMAIN GROUPS (added feature) =====
+const HISTORY_FILE = path.join('/tmp', 'domainintel-history.json');
+const GROUPS_FILE = path.join('/tmp', 'domainintel-groups.json');
+let statusHistory = [];
+let domainGroups = [];
+try { statusHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')) || []; } catch (e) {}
+try { domainGroups = JSON.parse(fs.readFileSync(GROUPS_FILE, 'utf8')) || []; } catch (e) {}
+function saveGroups() { try { fs.writeFileSync(GROUPS_FILE, JSON.stringify(domainGroups)); } catch (e) {} }
+function domainIsBlocked(d) {
+  if (d.ispBlock && d.ispBlock.anyBlocked) return true;
+  if (d.thAgent && d.thAgent.status === 'blocked') return true;
+  if (d.thAgents) return Object.keys(d.thAgents).some(k => d.thAgents[k].status === 'blocked');
+  return false;
+}
+function snapshotHistory() {
+  try {
+    let up = 0, down = 0, warn = 0, blocked = 0;
+    memoryDomains.forEach(d => {
+      if (d.status === 'up') up++; else if (d.status === 'down') down++; else if (d.status === 'warn') warn++;
+      if (domainIsBlocked(d)) blocked++;
+    });
+    statusHistory.push({ at: new Date().toISOString(), up, down, warn, blocked, total: memoryDomains.length });
+    if (statusHistory.length > 720) statusHistory = statusHistory.slice(-720);
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(statusHistory));
+  } catch (e) {}
+}
+// สถานะแต่ละกลุ่ม + แนะนำโดเมนที่ควรใช้ (ตัวแรกที่ up และไม่โดนบล็อก)
+function groupsWithStatus() {
+  return domainGroups.map(g => {
+    const domains = (g.domains || []).map(dom => {
+      const d = memoryDomains.find(x => x.domain === dom) || {};
+      return { domain: dom, status: d.status || 'unknown', blocked: domainIsBlocked(d) };
+    });
+    const active = domains.find(x => x.status === 'up' && !x.blocked) || null;
+    return { id: g.id, name: g.name, domains, recommended: active ? active.domain : null };
+  });
+}
+
 async function checkAllDomains() {
   if (!memoryDomains.length) return;
   if (isCheckingDomains) { console.log('[Check] already running, skip'); return; }
@@ -1926,18 +1964,26 @@ async function handleRequest(req, res) {
     return;
   }
   if (req.method === 'GET' && url === '/api/isp-status') {
-    const rows = memoryDomains.filter(d => d.ispBlock || d.thAgent).map(d => ({
-      domain: d.domain,
-      anyBlocked: d.ispBlock ? d.ispBlock.anyBlocked : false,
-      blockedIsps: d.ispBlock ? d.ispBlock.blockedIsps : [],
-      isps: d.ispBlock ? d.ispBlock.isps : {},
-      thAgent: d.thAgent || null,
-      checkedAt: (d.thAgent && d.thAgent.checkedAt) || (d.ispBlock && d.ispBlock.checkedAt)
-    }));
-    const thBlocked = rows.filter(r => r.thAgent && r.thAgent.status === 'blocked');
+    const rows = memoryDomains.filter(d => d.ispBlock || d.thAgents || d.thAgent).map(d => {
+      const agents = d.thAgents || (d.thAgent ? { th: d.thAgent } : {});
+      const blockedCarriers = Object.keys(agents).filter(k => agents[k].status === 'blocked');
+      const times = Object.keys(agents).map(k => agents[k].checkedAt).filter(Boolean).sort();
+      return {
+        domain: d.domain,
+        anyBlocked: d.ispBlock ? d.ispBlock.anyBlocked : false,
+        blockedIsps: d.ispBlock ? d.ispBlock.blockedIsps : [],
+        isps: d.ispBlock ? d.ispBlock.isps : {},
+        thAgents: agents,
+        blockedCarriers,
+        thBlocked: blockedCarriers.length > 0,
+        checkedAt: times[times.length - 1] || (d.ispBlock && d.ispBlock.checkedAt)
+      };
+    });
+    const thBlocked = rows.filter(r => r.thBlocked);
+    const carriers = Array.from(new Set(rows.reduce((acc, r) => acc.concat(Object.keys(r.thAgents)), [])));
     const blocked = rows.filter(r => r.anyBlocked);
     json(res, { success: true, lastCheckAt: lastISPCheckAt, lastAgentReportAt, checking: ispChecking,
-      total: rows.length, blockedCount: blocked.length, thBlockedCount: thBlocked.length,
+      carriers, total: rows.length, blockedCount: blocked.length, thBlockedCount: thBlocked.length,
       hasAgent: !!lastAgentReportAt, thBlocked, blocked, all: rows });
     return;
   }
@@ -1961,10 +2007,34 @@ async function handleRequest(req, res) {
     let n = 0;
     (body.results || []).forEach(r => {
       const idx = memoryDomains.findIndex(d => d.domain === r.domain);
-      if (idx !== -1) { memoryDomains[idx].thAgent = { isp, status: r.status, detail: r.detail || '', checkedAt: new Date().toISOString() }; n++; }
+      if (idx !== -1) { memoryDomains[idx].thAgents = memoryDomains[idx].thAgents || {}; memoryDomains[idx].thAgents[isp] = { status: r.status, detail: r.detail || '', checkedAt: new Date().toISOString() }; n++; }
     });
     lastAgentReportAt = new Date().toISOString();
     json(res, { success: true, updated: n });
+    return;
+  }
+
+  // History API (added feature)
+  if (req.method === 'GET' && url === '/api/history') {
+    json(res, { success: true, history: statusHistory });
+    return;
+  }
+  // Backup domain groups API (added feature)
+  if (req.method === 'GET' && url === '/api/domain-groups') {
+    json(res, { success: true, groups: groupsWithStatus() });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/domain-groups') {
+    const body = await parseBody(req);
+    if (body && Array.isArray(body.groups)) {
+      domainGroups = body.groups.map((g, i) => ({
+        id: g.id || ('g' + Date.now() + i),
+        name: String(g.name || ('กลุ่ม ' + (i + 1))),
+        domains: (g.domains || []).map(String)
+      }));
+      saveGroups();
+      json(res, { success: true, groups: groupsWithStatus() });
+    } else json(res, { success: false, error: 'ต้องมี groups เป็น array' });
     return;
   }
 
@@ -5015,6 +5085,8 @@ server.listen(PORT, async () => {
   setInterval(checkAllDomains, CHECK_INTERVAL_MS);
   setInterval(checkAllISPBlocks, 60 * 60 * 1000); // ISP block check ทุก 60 นาที
   setTimeout(() => checkAllISPBlocks().catch(()=>{}), 90 * 1000); // run แรกหลัง start 90 วิ
+  setInterval(snapshotHistory, 60 * 60 * 1000); // เก็บ snapshot สถานะทุก 1 ชม.
+  setTimeout(snapshotHistory, 120 * 1000); // snapshot แรกหลัง start 2 นาที
   setInterval(() => syncPleskDomains(), PLESK_SYNC_INTERVAL_MS);
   setInterval(checkServerHealth, CHECK_INTERVAL_MS);
   setInterval(proactiveMonitor, CHECK_INTERVAL_MS); // Proactive monitor ทุก 5 นาที
