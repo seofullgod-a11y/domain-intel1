@@ -494,6 +494,12 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="openISP()">
         <i class="ti ti-network"></i> ISP Block Check
       </div>
+      <div class="nav-item" onclick="openBackup()">
+        <i class="ti ti-switch-horizontal"></i> โดเมนสำรอง
+      </div>
+      <div class="nav-item" onclick="openHistory()">
+        <i class="ti ti-chart-line"></i> แนวโน้ม (History)
+      </div>
       <div class="nav-item" onclick="showPage('tasks')">
         <i class="ti ti-layout-kanban"></i> To-Do Board
       </div>
@@ -6294,17 +6300,21 @@ async function loadISP(){
     else { statusTxt+=' · ⚠️ ยังไม่มี agent ในไทย — ค่าที่เห็นเป็นการเดาจาก DNS ต่างประเทศ ('+d.blockedCount+' โดนบล็อก)'; }
     if(st) st.textContent=statusTxt;
 
-    // ถ้ามี agent ไทย → โชว์ผลจริงจากไทยเป็นหลัก
+    // ถ้ามี agent ไทย → โชว์ผลจริงจากไทยเป็นหลัก (แยกคอลัมน์รายค่าย)
     if(d.hasAgent && d.thBlocked && d.thBlocked.length){
-      var hh='<div style="margin-bottom:8px;color:#2ecc71;font-size:13px">แสดงผลจริงจากเน็ตไทย (agent)</div>'+
+      var carriers=(d.carriers&&d.carriers.length)?d.carriers:['th'];
+      var hh='<div style="margin-bottom:8px;color:#2ecc71;font-size:13px">แสดงผลจริงจากเน็ตไทย (agent แยกรายค่าย)</div>'+
         '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
-        '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">พรีวิว</th><th style="padding:8px">โดเมน</th><th style="padding:8px">สถานะจริง(ไทย)</th><th style="padding:8px">รายละเอียด</th><th style="padding:8px">เช็กเมื่อ</th></tr>';
+        '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">พรีวิว</th><th style="padding:8px">โดเมน</th>'+
+        carriers.map(function(c){return '<th style="padding:8px">'+c+'</th>';}).join('')+'<th style="padding:8px">เช็กเมื่อ</th></tr>';
       d.thBlocked.forEach(function(r){
         hh+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:8px">'+ispThumb(r.domain)+'</td>'+
-          '<td style="padding:8px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+r.domain+'</a></td>'+
-          '<td style="padding:8px">'+ispBadge(r.thAgent.status)+'</td>'+
-          '<td style="padding:8px;color:var(--text3,#888)">'+(r.thAgent.detail||'')+'</td>'+
-          '<td style="padding:8px;color:var(--text3,#888)">'+(r.thAgent.checkedAt?new Date(r.thAgent.checkedAt).toLocaleTimeString():'-')+'</td></tr>';
+          '<td style="padding:8px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+r.domain+'</a></td>';
+        carriers.forEach(function(c){
+          var a=r.thAgents&&r.thAgents[c];
+          hh+='<td style="padding:8px" title="'+((a&&a.detail)||'')+'">'+(a?ispBadge(a.status):'<span style="color:#555">—</span>')+'</td>';
+        });
+        hh+='<td style="padding:8px;color:var(--text3,#888)">'+(r.checkedAt?new Date(r.checkedAt).toLocaleTimeString():'-')+'</td></tr>';
       });
       hh+='</table>';
       body.innerHTML=hh; return;
@@ -6342,5 +6352,118 @@ async function ispCheckOne(){
     isps.forEach(function(x){ var v=r.isps[x]; h+='<div style="padding:4px 0">'+x+': '+ispBadge(v.status)+' <span style="color:var(--text3,#888)">— '+v.why+'</span></div>'; });
     h+='</div>'; body.innerHTML=h;
   }catch(e){ body.innerHTML='ผิดพลาด: '+e.message; }
+}
+</script>
+
+<script>
+// ===== BACKUP DOMAIN GROUPS (added feature) =====
+var _bkGroups = [];
+function ensureBackupPage(){
+  if(document.getElementById('page-backup')) return;
+  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
+  var div=document.createElement('div'); div.id='page-backup'; div.style.display='none'; div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
+  div.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'+
+    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-switch-horizontal"></i> โดเมนสำรอง (Backup Sets)</h2>'+
+    '<div style="font-size:12px;color:var(--text3,#888)">จัดกลุ่มโดเมนหลัก+สำรอง ระบบจะบอกว่าควรใช้ตัวไหน (ตัวแรกที่ยัง up และไม่โดนบล็อก)</div></div>'+
+    '<div style="display:flex;gap:8px"><button class="btn" onclick="bkAddGroup()"><i class="ti ti-plus"></i> เพิ่มกลุ่ม</button>'+
+    '<button class="btn btn-green" onclick="bkSave()"><i class="ti ti-device-floppy"></i> บันทึก</button></div></div>'+
+    '<div id="bk-note" style="font-size:12px;color:var(--text3,#888)"></div><div id="bk-body"></div>';
+  c.appendChild(div);
+}
+function openBackup(){ ensureBackupPage(); showPage('backup');
+  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openBackup()') n.classList.add('active'); });
+  loadBackup();
+}
+async function loadBackup(){
+  ensureBackupPage();
+  try{ var r=await fetch(API+'/api/domain-groups'); var d=await r.json(); _bkGroups=d.groups||[]; renderBackup(); }
+  catch(e){ document.getElementById('bk-body').innerHTML='โหลดไม่ได้: '+e.message; }
+}
+function bkStatusBadge(s,blocked){
+  var c=s==='up'?'#2ecc71':(s==='down'?'#e24b4a':(s==='warn'?'#e3b93b':'#888'));
+  return '<span style="color:'+c+'">'+s+'</span>'+(blocked?' <span style="color:#e24b4a">· บล็อก</span>':'');
+}
+function renderBackup(){
+  var body=document.getElementById('bk-body');
+  if(!_bkGroups.length){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">ยังไม่มีกลุ่ม — กด "เพิ่มกลุ่ม" เพื่อจัดโดเมนหลัก+สำรอง</div>'; return; }
+  var h='';
+  _bkGroups.forEach(function(g,gi){
+    h+='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px;margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<b>'+g.name+'</b>'+
+      '<span style="font-size:12px">แนะนำใช้: '+(g.recommended?'<b style="color:#2ecc71">'+g.recommended+'</b>':'<span style="color:#e24b4a">ไม่มีตัวที่ใช้ได้!</span>')+
+      ' <button class="btn" style="margin-left:8px" onclick="bkAddDomain('+gi+')">+ โดเมน</button>'+
+      ' <button class="btn" onclick="bkDelGroup('+gi+')">ลบกลุ่ม</button></span></div>';
+    (g.domains||[]).forEach(function(dm,di){
+      var isRec = dm.domain===g.recommended;
+      h+='<div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;'+(isRec?'background:#12351f;border:1px solid #2ecc71':'')+'">'+
+        '<span style="color:var(--text3,#888);width:70px">'+(di===0?'หลัก':'สำรอง '+di)+'</span>'+
+        '<a href="https://'+dm.domain+'" target="_blank" rel="noopener" style="color:inherit;flex:1">'+dm.domain+'</a>'+
+        '<span style="font-size:12px">'+bkStatusBadge(dm.status,dm.blocked)+'</span>'+
+        (isRec?'<span style="color:#2ecc71;font-size:12px">← ใช้ตัวนี้</span>':'')+
+        '<button class="btn" onclick="bkDelDomain('+gi+','+di+')" style="padding:2px 8px">×</button></div>';
+    });
+    h+='</div>';
+  });
+  body.innerHTML=h;
+}
+function bkAddGroup(){ var n=prompt('ชื่อกลุ่ม (เช่น แบรนด์ ORACLE):'); if(!n)return; _bkGroups.push({id:'g'+Date.now(),name:n,domains:[]}); renderBackup(); }
+function bkDelGroup(gi){ if(confirm('ลบกลุ่มนี้?')){ _bkGroups.splice(gi,1); renderBackup(); } }
+function bkAddDomain(gi){ var d=prompt('โดเมน (เรียงหลักก่อน สำรองทีหลัง):'); if(!d)return; _bkGroups[gi].domains.push({domain:d.trim().replace(/^https?:\/\//,'')}); renderBackup(); }
+function bkDelDomain(gi,di){ _bkGroups[gi].domains.splice(di,1); renderBackup(); }
+async function bkSave(){
+  var payload={groups:_bkGroups.map(function(g){ return {id:g.id,name:g.name,domains:(g.domains||[]).map(function(x){return x.domain;})}; })};
+  try{ var r=await fetch(API+'/api/domain-groups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    var d=await r.json(); if(d.success){ _bkGroups=d.groups; renderBackup(); if(typeof toast==='function') toast('บันทึกกลุ่มแล้ว','success'); } }
+  catch(e){ if(typeof toast==='function') toast('บันทึกไม่ได้: '+e.message,'error'); }
+}
+
+// ===== HISTORY / TREND (added feature) =====
+function ensureHistoryPage(){
+  if(document.getElementById('page-history')) return;
+  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
+  var div=document.createElement('div'); div.id='page-history'; div.style.display='none'; div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
+  div.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'+
+    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-chart-line"></i> แนวโน้มย้อนหลัง</h2>'+
+    '<div style="font-size:12px;color:var(--text3,#888)">Down / โดนบล็อก / Warn ตามเวลา (เก็บ snapshot ทุก 1 ชม.)</div></div>'+
+    '<button class="btn" onclick="loadHistory()"><i class="ti ti-reload"></i> รีเฟรช</button></div>'+
+    '<div id="hist-body"></div>';
+  c.appendChild(div);
+}
+function openHistory(){ ensureHistoryPage(); showPage('history');
+  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openHistory()') n.classList.add('active'); });
+  loadHistory();
+}
+async function loadHistory(){
+  ensureHistoryPage();
+  var body=document.getElementById('hist-body');
+  try{
+    var r=await fetch(API+'/api/history'); var d=await r.json(); var hist=d.history||[];
+    if(hist.length<2){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">ยังไม่มีข้อมูลพอ — ระบบเก็บ snapshot ทุก 1 ชม. รออีกสักครู่แล้วกลับมาดู</div>'; return; }
+    body.innerHTML=drawChart(hist);
+  }catch(e){ body.innerHTML='โหลดไม่ได้: '+e.message; }
+}
+function drawChart(hist){
+  var W=900,H=280,pad=34, n=hist.length;
+  var keys=[['down','#e24b4a','Down'],['blocked','#e39a3b','โดนบล็อก'],['warn','#e3d03b','Warn']];
+  var maxV=1; hist.forEach(function(p){ keys.forEach(function(k){ if(p[k[0]]>maxV)maxV=p[k[0]]; }); });
+  function x(i){ return pad+(i/(n-1))*(W-2*pad); }
+  function y(v){ return H-pad-(v/maxV)*(H-2*pad); }
+  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;background:var(--bg2,#111);border-radius:8px">';
+  svg+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" stroke="#444"/>';
+  svg+='<line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(H-pad)+'" stroke="#444"/>';
+  svg+='<text x="'+(pad+4)+'" y="'+(pad+2)+'" fill="#888" font-size="11">'+maxV+'</text>';
+  keys.forEach(function(k){
+    var pts=hist.map(function(p,i){ return x(i)+','+y(p[k[0]]||0); }).join(' ');
+    svg+='<polyline points="'+pts+'" fill="none" stroke="'+k[1]+'" stroke-width="2"/>';
+  });
+  svg+='<text x="'+pad+'" y="'+(H-8)+'" fill="#888" font-size="11">'+new Date(hist[0].at).toLocaleString()+'</text>';
+  svg+='<text x="'+(W-pad)+'" y="'+(H-8)+'" fill="#888" font-size="11" text-anchor="end">'+new Date(hist[n-1].at).toLocaleString()+'</text>';
+  svg+='</svg>';
+  var leg='<div style="display:flex;gap:18px;margin-top:8px;font-size:12px">';
+  keys.forEach(function(k){ leg+='<span style="color:'+k[1]+'">■ '+k[2]+'</span>'; });
+  var last=hist[n-1];
+  leg+='</div><div style="margin-top:10px;font-size:13px;color:var(--text3,#888)">ล่าสุด: Down '+last.down+' · โดนบล็อก '+last.blocked+' · Warn '+last.warn+' · จาก '+last.total+' โดเมน</div>';
+  return svg+leg;
 }
 </script>
