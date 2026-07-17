@@ -3088,6 +3088,7 @@ let autofixLog = [];
 async function refreshServerHealth() {
   const btn = document.getElementById('sm-refresh-btn');
   if (btn) { btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...'; btn.disabled = true; }
+  await loadAutoHealConfig();
   // Loading shown via button state only - no popup block
   
   // แสดงข้อมูลจาก allDomains ทันที ไม่รอ Agent
@@ -3299,6 +3300,9 @@ function renderServerCards(servers) {
         <button onclick="serverAction('${srv.name}','kill-heavy')" class="btn btn-sm" style="font-size:11px;background:rgba(239,68,68,0.15);color:var(--red)"><i class="ti ti-skull"></i> Kill Heavy</button>
         ${srv.suspended > 0 ? `<button onclick="unsuspendServer('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:var(--green-dim);color:var(--green)"><i class="ti ti-player-play"></i> Unsuspend ${srv.suspended}</button>` : ''}
         <button onclick="openSSHTerminal('${srv.name}','${srv.host}')" class="btn btn-sm" style="font-size:11px;background:rgba(99,102,241,0.15);color:#818cf8;border-color:rgba(99,102,241,0.3)"><i class="ti ti-terminal-2"></i> SSH Terminal</button>
+        ${ahIsOff(srv.name, srv.host)
+          ? `<button onclick="toggleAutoHeal('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:rgba(148,163,184,0.15);color:var(--text3);border-color:rgba(148,163,184,0.3)" title="Auto-heal ปิดอยู่ — กดเพื่อเปิด"><i class="ti ti-robot-off"></i> Auto-heal: ปิด</button>`
+          : `<button onclick="toggleAutoHeal('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:rgba(16,185,129,0.12);color:var(--green);border-color:rgba(16,185,129,0.3)" title="Auto-heal เปิดอยู่ — กดเพื่อปิด"><i class="ti ti-robot"></i> Auto-heal: เปิด</button>`}
       </div>
       <div id="ssh-terminal-${srv.name.replace(/\s+/g,'-')}" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -6465,5 +6469,43 @@ function drawChart(hist){
   var last=hist[n-1];
   leg+='</div><div style="margin-top:10px;font-size:13px;color:var(--text3,#888)">ล่าสุด: Down '+last.down+' · โดนบล็อก '+last.blocked+' · Warn '+last.warn+' · จาก '+last.total+' โดเมน</div>';
   return svg+leg;
+}
+</script>
+
+<script>
+// ===== AUTO-HEAL TOGGLE (added feature) =====
+window._ahDisabled = [];
+async function loadAutoHealConfig(){
+  try {
+    const r = await fetch(API + '/api/autoheal-config');
+    const d = await r.json();
+    window._ahDisabled = (d.disabled || []).map(function(x){ return String(x).trim().toLowerCase(); });
+  } catch(e) {}
+}
+function ahIsOff(name, host){
+  var l = window._ahDisabled || [];
+  return l.indexOf(String(name||'').trim().toLowerCase()) !== -1
+      || l.indexOf(String(host||'').trim().toLowerCase()) !== -1;
+}
+async function toggleAutoHeal(name){
+  var off = ahIsOff(name);
+  var msg = off
+    ? 'เปิด Auto-heal สำหรับ ' + name + ' ?\n\nระบบจะกลับมา reload PHP-FPM ให้อัตโนมัติเมื่อ Load > 15'
+    : 'ปิด Auto-heal สำหรับ ' + name + ' ?\n\nระบบจะแจ้งเตือนอย่างเดียว ไม่แตะเซิร์ฟเวอร์ให้';
+  if (!confirm(msg)) return;
+  try {
+    var r = await fetch(API + '/api/autoheal-toggle', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ server: name, disabled: !off })
+    });
+    var d = await r.json();
+    if (d.success) {
+      window._ahDisabled = (d.list || []).map(function(x){ return String(x).trim().toLowerCase(); });
+      if (typeof toast === 'function') toast('Auto-heal ' + (d.disabled ? 'ปิด' : 'เปิด') + ' สำหรับ ' + name + ' แล้ว', 'success');
+      if (typeof renderServerCards === 'function' && window._pleskServers) refreshServerHealth();
+    } else if (typeof toast === 'function') toast('ทำไม่ได้: ' + (d.error||'?'), 'error');
+  } catch(e) {
+    if (typeof toast === 'function') toast('ทำไม่ได้: ' + e.message, 'error');
+  }
 }
 </script>
