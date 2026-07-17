@@ -1956,6 +1956,31 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Auto-heal toggle API (added feature)
+  if (req.method === 'GET' && url === '/api/autoheal-config') {
+    json(res, {
+      success: true,
+      disabled: autoHealDisabledList,
+      servers: PLESK_SERVERS.map(s => ({ name: s.name, host: s.host, autoHealDisabled: autoHealDisabledFor(s) }))
+    });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/autoheal-toggle') {
+    const body = await parseBody(req);
+    const name = String((body && body.server) || '').trim();
+    if (!name) { json(res, { success: false, error: 'ต้องระบุ server' }); return; }
+    const want = !!(body && body.disabled);
+    const cur = isAutoHealDisabled(name);
+    if (want && !cur) autoHealDisabledList.push(name);
+    if (!want && cur) autoHealDisabledList = autoHealDisabledList.filter(
+      x => String(x).trim().toLowerCase() !== name.toLowerCase()
+    );
+    saveAutoHealList();
+    try { logEvent('info', 'Auto-heal ' + (want ? 'ปิด' : 'เปิด') + ' สำหรับ ' + name); } catch (e) {}
+    json(res, { success: true, server: name, disabled: want, list: autoHealDisabledList });
+    return;
+  }
+
   // ISP block API (added feature)
   if (req.method === 'GET' && url.startsWith('/api/isp-check/')) {
     const dom = decodeURIComponent(url.split('/api/isp-check/')[1] || '');
@@ -2398,6 +2423,30 @@ async function handleRequest(req, res) {
 // ===== START =====
 const server = http.createServer(handleRequest);
 
+// ===== AUTO-HEAL DISABLE LIST (added feature) =====
+// ปิด auto-heal รายเครื่อง ตั้งผ่าน env: AUTOHEAL_DISABLED="Server 5"
+// ใส่ได้ทั้งชื่อ (Server 5) หรือ IP/host คั่นด้วยคอมมา เช่น "Server 5,167.71.x.x"
+const AUTOHEAL_FILE = path.join('/tmp', 'domainintel-autoheal.json');
+// ค่าเริ่มต้นจาก env (ถ้าตั้งไว้) — แล้วทับด้วยค่าที่กดในแดชบอร์ด (ถ้ามี)
+let autoHealDisabledList = (process.env.AUTOHEAL_DISABLED || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+try {
+  const saved = JSON.parse(fs.readFileSync(AUTOHEAL_FILE, 'utf8'));
+  if (Array.isArray(saved)) autoHealDisabledList = saved;
+} catch (e) {}
+function saveAutoHealList() {
+  try { fs.writeFileSync(AUTOHEAL_FILE, JSON.stringify(autoHealDisabledList)); } catch (e) {}
+}
+function isAutoHealDisabled(nameOrHost) {
+  if (!autoHealDisabledList.length || !nameOrHost) return false;
+  const v = String(nameOrHost).trim().toLowerCase();
+  return autoHealDisabledList.some(x => String(x).trim().toLowerCase() === v);
+}
+function autoHealDisabledFor(srv) {
+  if (!srv) return false;
+  return isAutoHealDisabled(srv.name) || isAutoHealDisabled(srv.host);
+}
+
 // ===== PROACTIVE MONITOR =====
 async function proactiveMonitor() {
   try { empLog('diagnostician', 'ตรวจสุขภาพระบบ', 'proactive scan'); } catch(e){}
@@ -2413,7 +2462,12 @@ async function proactiveMonitor() {
         const load = parseFloat((output.match(/LOAD:([\d.]+)/) || [])[1] || 0);
         const disk = parseInt((output.match(/DISK:(\d+)/) || [])[1] || 0);
         
-        if (load > 15) {
+        if (load > 15 && autoHealDisabledFor(srv)) {
+          // auto-heal ถูกปิดไว้สำหรับเครื่องนี้ → แจ้งเตือนอย่างเดียว ไม่แตะเซิร์ฟเวอร์
+          smartAlert('warning', `⚠️ Proactive Alert
+🖥️ ${srv.name}: Load Average สูง <b>${load}</b>
+🚫 Auto-heal ปิดไว้สำหรับเครื่องนี้ — ไม่ได้ Fix ให้ (ตรวจเอง)`);
+        } else if (load > 15) {
           smartAlert('warning', `⚠️ Proactive Alert
 🖥️ ${srv.name}: Load Average สูง <b>${load}</b>
 กำลัง Fix อัตโนมัติ...`);
@@ -4507,7 +4561,8 @@ async function runAutoFixCycle() {
     // 1. โดเมน down → Engineer auto-heal (ปลอดภัย: ใช้ autoFix เดิม)
     const downDomains = memoryDomains.filter(d =>
       d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer
-    ).slice(0, 10); // ทีละไม่เกิน 10
+      && !isAutoHealDisabled(d.pleskServer) && !isAutoHealDisabled(d.pleskHost)
+    ).slice(0, 10); // ทีละไม่เกิน 10 (ข้ามเครื่องที่ปิด auto-heal ไว้)
 
     if (downDomains.length > 0) {
       setEmployeeWorking('engineer', 'กู้โดเมน down ' + downDomains.length + ' โดเมน', 30000);
