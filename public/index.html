@@ -500,6 +500,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="openHistory()">
         <i class="ti ti-chart-line"></i> แนวโน้ม (History)
       </div>
+      <div class="nav-item" onclick="openIncidents()">
+        <i class="ti ti-alert-triangle"></i> ประวัติดับ (Incidents)
+      </div>
       <div class="nav-item" onclick="showPage('tasks')">
         <i class="ti ti-layout-kanban"></i> To-Do Board
       </div>
@@ -6507,5 +6510,176 @@ async function toggleAutoHeal(name){
   } catch(e) {
     if (typeof toast === 'function') toast('ทำไม่ได้: ' + e.message, 'error');
   }
+}
+</script>
+
+<script>
+// ===== DOMAIN INCIDENT HISTORY PAGE (added feature) =====
+function ensureIncPage(){
+  if(document.getElementById('page-incidents')) return;
+  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
+  var div=document.createElement('div'); div.id='page-incidents'; div.style.display='none';
+  div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
+  div.innerHTML=
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'+
+      '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-alert-triangle"></i> ประวัติดับ/ผิดปกติ 24 ชม.ล่าสุด</h2>'+
+      '<div style="font-size:12px;color:var(--text3,#888)">โดเมนไหนดับกี่ครั้ง · ดับเพราะโฮสหรือเพราะเว็บเอง · อยู่เครื่องไหน</div></div>'+
+      '<div style="display:flex;gap:8px">'+
+        '<input id="inc-search" placeholder="ค้นหาโดเมน..." oninput="renderInc()" style="padding:8px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg2,#111);color:inherit">'+
+        '<button class="btn" onclick="loadIncidents()"><i class="ti ti-reload"></i> รีเฟรช</button>'+
+      '</div>'+
+    '</div>'+
+    '<div id="inc-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px"></div>'+
+    '<div id="inc-watch"></div>'+
+    '<div id="inc-servers"></div>'+
+    '<div id="inc-body"></div>'+
+    '<div id="inc-note" style="font-size:11px;color:var(--text3,#888)"></div>';
+  c.appendChild(div);
+}
+function openIncidents(){ ensureIncPage(); showPage('incidents');
+  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openIncidents()') n.classList.add('active'); });
+  loadIncidents();
+}
+var _incData=null;
+async function loadIncidents(){
+  ensureIncPage();
+  var body=document.getElementById('inc-body'); body.innerHTML='กำลังโหลด...';
+  try{
+    var r=await fetch(API+'/api/incidents'); _incData=await r.json();
+    try { var w=await fetch(API+'/api/watchlist'); _wlData=await w.json(); } catch(e){ _wlData=null; }
+    renderInc();
+    document.getElementById('inc-note').textContent='หมายเหตุ: '+(_incData.note||'');
+  }catch(e){ body.innerHTML='โหลดไม่ได้: '+e.message; }
+}
+function incCard(label,val,color){
+  return '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
+    '<div style="font-size:22px;font-weight:800;color:'+color+'">'+val+'</div>'+
+    '<div style="font-size:11px;color:var(--text3,#888)">'+label+'</div></div>';
+}
+var _wlData=null;
+function renderWatch(){
+  var el=document.getElementById('inc-watch'); if(!el) return;
+  var w=_wlData||{domains:[]};
+  var list=(w.domains||[]);
+  el.innerHTML='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:12px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
+    '<div><b style="font-size:13px">⚡ เช็กถี่ทุก 1 นาที</b> <span style="color:var(--text3,#888);font-size:11px">'+
+      '— โดเมนในลิสต์นี้จับ "ดับแป๊บเดียว" ได้ (ที่เหลือเช็กทุก 5 นาที) · '+list.length+'/'+(w.max||50)+' โดเมน'+
+      (w.lastCheckAt?' · ล่าสุด '+new Date(w.lastCheckAt).toLocaleTimeString():'')+'</span></div>'+
+    '<button class="btn" style="padding:2px 10px;font-size:11px" onclick="wlAdd()">+ เพิ่มโดเมน</button></div>'+
+    (list.length?'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">'+list.map(function(x){
+      return '<span style="background:rgba(59,154,227,0.12);border:1px solid rgba(59,154,227,0.3);color:#3b9ae3;padding:2px 8px;border-radius:12px;font-size:11px">'+x+
+        ' <span style="cursor:pointer;color:var(--text3,#888)" onclick="wlToggle(\''+x+'\')">×</span></span>';
+    }).join('')+'</div>':'<div style="margin-top:8px;color:var(--text3,#888);font-size:12px">ยังไม่มีโดเมน — เพิ่มเว็บหลักที่คุณแก้บ่อย จะได้เห็นตอนมันสะดุด</div>')+
+    '</div>';
+}
+async function wlSave(domains){
+  try{
+    var r=await fetch(API+'/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domains:domains})});
+    var d=await r.json();
+    if(d.success){ _wlData=_wlData||{}; _wlData.domains=d.domains; renderWatch(); loadIncidents(); if(typeof toast==='function') toast('บันทึกแล้ว','success'); }
+  }catch(e){ if(typeof toast==='function') toast('บันทึกไม่ได้: '+e.message,'error'); }
+}
+function wlAdd(){
+  var v=prompt('โดเมนที่อยากเช็กทุก 1 นาที (เช่น example.com):'); if(!v) return;
+  var list=((_wlData||{}).domains||[]).slice();
+  v=v.trim().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
+  if(list.indexOf(v)===-1) list.push(v);
+  wlSave(list);
+}
+function wlToggle(dom){
+  var list=((_wlData||{}).domains||[]).slice();
+  var i=list.indexOf(dom);
+  if(i===-1) list.push(dom); else list.splice(i,1);
+  wlSave(list);
+}
+function renderInc(){
+  if(!_incData) return;
+  renderWatch();
+  var d=_incData;
+  var totDown=0, totWarn=0;
+  (d.domains||[]).forEach(function(x){ totDown+=(x.downCount||0); totWarn+=(x.warnCount||0); });
+  document.getElementById('inc-cards').innerHTML=
+    incCard('ดับ เข้าไม่ได้ (24 ชม.)', totDown, '#e24b4a')+
+    incCard('ผิดปกติ warn (24 ชม.)', totWarn, '#e3b93b')+
+    incCard('ยังมีปัญหาตอนนี้', d.stillDown, d.stillDown?'#e24b4a':'#2ecc71')+
+    incCard('โดเมนที่กระทบ', (d.domains||[]).length, '#e3b93b')+
+    incCard('เครื่องที่กระทบ', (d.servers||[]).length, '#e3b93b');
+
+  var sh='';
+  if((d.servers||[]).length){
+    sh='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
+      '<div style="font-weight:700;margin-bottom:8px;font-size:14px">สรุปรายเครื่อง</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">เครื่อง</th><th style="padding:6px">ครั้งที่ดับ</th><th style="padding:6px">โดเมนที่กระทบ</th><th style="padding:6px">เหตุที่มาจากโฮส</th></tr>';
+    d.servers.forEach(function(s){
+      sh+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:6px;font-weight:600">'+s.server+'</td>'+
+        '<td style="padding:6px">'+s.incidents+'</td><td style="padding:6px">'+s.domains+'</td>'+
+        '<td style="padding:6px">'+(s.hostEvents?'<span style="color:#e24b4a;font-weight:600">'+s.hostEvents+'</span>':'<span style="color:var(--text3,#888)">0</span>')+'</td></tr>';
+    });
+    sh+='</table></div>';
+  }
+  document.getElementById('inc-servers').innerHTML=sh;
+
+  var q=((document.getElementById('inc-search')||{}).value||'').trim().toLowerCase();
+  var rows=(d.domains||[]).filter(function(r){ return !q || r.domain.toLowerCase().indexOf(q)!==-1; });
+  var body=document.getElementById('inc-body');
+  if(!rows.length){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">'+(q?'ไม่พบโดเมนที่ค้นหา':'ยังไม่มีโดเมนดับใน 24 ชม.ที่ผ่านมา 🎉')+'</div>'; return; }
+  var h='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+    '<tr style="text-align:left;color:var(--text3,#888)">'+
+    '<th style="padding:8px">โดเมน</th><th style="padding:8px">เครื่อง</th>'+
+    '<th style="padding:8px">ดับ (เข้าไม่ได้)</th><th style="padding:8px">ผิดปกติ (warn)</th>'+
+    '<th style="padding:8px">สาเหตุ</th><th style="padding:8px">อาการล่าสุด</th><th style="padding:8px">รวมเวลา</th><th style="padding:8px"></th></tr>';
+  rows.forEach(function(r){
+    var cause='';
+    if(r.hostCause && r.domainCause) cause='<span style="color:#e24b4a">โฮส '+r.hostCause+'</span> · <span style="color:#e3b93b">เว็บ '+r.domainCause+'</span>';
+    else if(r.hostCause) cause='<span style="color:#e24b4a;font-weight:600">โฮสมีปัญหา</span>';
+    else if(r.domainCause) cause='<span style="color:#e3b93b;font-weight:600">เฉพาะเว็บนี้</span>';
+    else cause='<span style="color:var(--text3,#888)">-</span>';
+    var badges='';
+    if(r.onWatchlist) badges+=' <span title="เช็กทุก 1 นาที" style="color:#3b9ae3;font-size:10px">⚡1น.</span>';
+    if((r.thBlockedCarriers||[]).length) badges+=' <span title="โดนบล็อกในเน็ตไทย: '+r.thBlockedCarriers.join(', ')+'" style="color:#e39a3b;font-size:10px">🇹🇭บล็อก</span>';
+    h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(r.stillDown?';background:rgba(226,75,74,0.08)':'')+'">'+
+      '<td style="padding:8px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+r.domain+'</a>'+
+        (r.stillDown?' <span style="color:#e24b4a;font-size:11px">● ยังมีปัญหา</span>':'')+badges+'</td>'+
+      '<td style="padding:8px">'+(r.server||'<span style="color:var(--text3,#888)">ไม่ทราบ</span>')+'</td>'+
+      '<td style="padding:8px;font-weight:700;color:'+(r.downCount>=3?'#e24b4a':(r.downCount?'inherit':'var(--text3,#888)'))+'">'+(r.downCount||0)+'</td>'+
+      '<td style="padding:8px;font-weight:700;color:'+(r.warnCount?'#e3b93b':'var(--text3,#888)')+'">'+(r.warnCount||0)+'</td>'+
+      '<td style="padding:8px">'+cause+'</td>'+
+      '<td style="padding:8px;color:var(--text3,#888)">'+(r.lastError||'-')+(r.lastCode?' ('+r.lastCode+')':'')+'</td>'+
+      '<td style="padding:8px">'+(r.totalMin?r.totalMin+' นาที':'-')+'</td>'+
+      '<td style="padding:8px;white-space:nowrap"><button class="btn" style="padding:2px 8px;font-size:11px" onclick="incDetail(\''+r.domain+'\')">ประวัติ</button> '+
+        '<button class="btn" style="padding:2px 8px;font-size:11px" onclick="wlToggle(\''+r.domain+'\')" title="'+(r.onWatchlist?'เอาออกจากการเช็กทุก 1 นาที':'เพิ่มเข้าการเช็กทุก 1 นาที')+'">'+(r.onWatchlist?'−1น.':'+1น.')+'</button></td></tr>';
+  });
+  h+='</table>';
+  body.innerHTML=h;
+}
+async function incDetail(dom){
+  var body=document.getElementById('inc-body'); body.innerHTML='กำลังโหลดประวัติ '+dom+'...';
+  try{
+    var r=await fetch(API+'/api/incidents/'+encodeURIComponent(dom)); var d=await r.json();
+    var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<div><b style="font-size:15px">'+d.domain+'</b> <span style="color:var(--text3,#888);font-size:12px">· เครื่อง: '+(d.server||'ไม่ทราบ')+' · ตอนนี้: '+(d.currentStatus||'?')+'</span></div>'+
+      '<button class="btn" style="padding:2px 10px;font-size:12px" onclick="renderInc()">← กลับ</button></div>';
+    if(!(d.incidents||[]).length){ h+='<div style="color:var(--text3,#888)">ยังไม่มีประวัติดับ</div>'; }
+    else{
+      h+='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+        '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">เริ่มดับ</th><th style="padding:6px">กลับมา</th><th style="padding:6px">นาน</th><th style="padding:6px">สาเหตุ</th><th style="padding:6px">Error</th></tr>';
+      d.incidents.forEach(function(i){
+        var cz=i.cause==='host'?'<span style="color:#e24b4a">โฮส'+(i.batchSize?' ('+i.batchSize+' โดเมนพร้อมกัน)':'')+'</span>'
+              :i.cause==='domain'?'<span style="color:#e3b93b">เฉพาะเว็บนี้</span>':'<span style="color:var(--text3,#888)">-</span>';
+        cz=(i.kind==='warn'?'<span style="color:#e3b93b">⚠️ warn</span> · ':'<span style="color:#e24b4a">🔴 ดับ</span> · ')+cz;
+        h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
+          '<td style="padding:6px">'+new Date(i.startAt).toLocaleString()+'</td>'+
+          '<td style="padding:6px">'+(i.endAt?new Date(i.endAt).toLocaleString():'<span style="color:#e24b4a">ยังดับอยู่</span>')+'</td>'+
+          '<td style="padding:6px">'+(i.durationMin?i.durationMin+' นาที':'-')+'</td>'+
+          '<td style="padding:6px">'+cz+'</td>'+
+          '<td style="padding:6px;color:var(--text3,#888)">'+(i.error||'-')+(i.statusCode?' ('+i.statusCode+')':'')+'</td></tr>';
+      });
+      h+='</table>';
+    }
+    h+='</div>'; body.innerHTML=h;
+  }catch(e){ body.innerHTML='โหลดไม่ได้: '+e.message; }
 }
 </script>
