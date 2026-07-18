@@ -46,6 +46,27 @@ const CHECK_INTERVAL_MS = 5 * 60 * 1000; // เช็คทุก 5 นาที
 const PLESK_SYNC_INTERVAL_MS = 1 * 60 * 60 * 1000; // Sync Plesk ทุก 1 ชั่วโมง
 const CF_DOWN_CODES = new Set([521, 522, 523, 524, 525, 526, 530]);
 const CF_WARN_CODES = new Set([520, 527, 528, 529]);
+// [เพิ่มความแม่น] คำที่บ่งบอกว่าเว็บพังจริง แม้ HTTP จะตอบ 200
+const WP_FATAL_MARKERS = [
+  'Error establishing a database connection',
+  'There has been a critical error on this website',
+  'There has been a critical error on your website',
+  'Fatal error:',
+  'Parse error:',
+  'Cannot modify header information'
+];
+// หน้า challenge ของ Cloudflare = แค่กัน bot เว็บยังปกติ (ห้ามนับเป็นพัง)
+const CF_CHALLENGE_MARKERS = [
+  'Just a moment', 'Checking your browser', 'Attention Required', 'cf-browser-verification',
+  'Enable JavaScript and cookies to continue', 'challenge-platform'
+];
+// หน้าบล็อกการเข้าถึงจากปลั๊กอิน/ไฟร์วอลล์ = ผิดปกติจริง
+const BLOCKPAGE_MARKERS = [
+  'restricted by the administrator',
+  'Your access to this site has been limited',
+  'blocked by the administrator',
+  'Access Denied'
+];
 
 // In-memory cache (Google Sheets เป็น persistent storage)
 let memoryDomains = [];
@@ -334,7 +355,7 @@ function getErrorLabel(code, errMsg) {
   return errMsg || null;
 }
 
-function checkDomain(domain) {
+function checkDomainOnce(domain, useHttps) {
   return new Promise(resolve => {
     const clean = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
     const start = Date.now();
@@ -345,7 +366,8 @@ function checkDomain(domain) {
       'Connection': 'keep-alive',
       'Cache-Control': 'no-cache',
     };
-    const req = https.get(`https://${clean}`, { timeout: 12000, headers, rejectUnauthorized: false }, res => {
+    const mod = useHttps ? https : http;
+    const req = mod.get(`${useHttps ? 'https' : 'http'}://${clean}`, { timeout: 12000, headers, rejectUnauthorized: false }, res => {
       const responseTime = Date.now() - start;
       const code = res.statusCode;
       const cfRay = res.headers['cf-ray'];
@@ -354,7 +376,7 @@ function checkDomain(domain) {
 
       // อ่าน body เล็กน้อยเพื่อตรวจ error page จาก Cloudflare
       let body = '';
-      res.on('data', chunk => { if (body.length < 2000) body += chunk.toString(); });
+      res.on('data', chunk => { if (body.length < 6000) body += chunk.toString(); });
       res.on('end', () => {
         // Railway proxy block
         if (denyReason) {
@@ -390,14 +412,28 @@ function checkDomain(domain) {
           status = 'warn';
           errorLabel = getErrorLabel(code);
         }
-        // 403 = up (บล็อก bot แต่เว็บทำงาน)
-        else if (code === 403) {
-          status = 'up';
-          errorLabel = 'HTTP 403 (bot blocked)';
+        // WordPress พังจริง แม้ตอบ 200 (DB ล่ม / fatal error)
+        else if (WP_FATAL_MARKERS.some(m => body.includes(m))) {
+          status = 'down';
+          errorLabel = body.includes('database') ? 'WordPress: ต่อ DB ไม่ได้' : 'WordPress: critical error';
         }
-        // 404 = up (เว็บทำงานแต่ไม่พบหน้า)
+        // 403 — ต้องแยกว่า "โดนบล็อกจริง" หรือแค่ "CF กัน bot" (เว็บยังปกติ)
+        else if (code === 403) {
+          if (CF_CHALLENGE_MARKERS.some(m => body.includes(m))) {
+            status = 'up';
+            errorLabel = 'HTTP 403 (Cloudflare กัน bot — เว็บปกติ)';
+          } else if (BLOCKPAGE_MARKERS.some(m => body.includes(m))) {
+            status = 'warn';
+            errorLabel = 'HTTP 403 — โดนบล็อกการเข้าถึง (ปลั๊กอิน/ไฟร์วอลล์)';
+          } else {
+            status = 'warn';
+            errorLabel = 'HTTP 403 — เข้าถึงไม่ได้';
+          }
+        }
+        // 404 หน้าแรก = ผิดปกติ (เว็บทำงานแต่หน้าแรกหาย)
         else if (code === 404) {
-          status = 'up';
+          status = 'warn';
+          errorLabel = 'HTTP 404 — ไม่พบหน้าแรก';
         }
         // 200-399 = up
         else if (code >= 200 && code < 400) {
@@ -419,6 +455,19 @@ function checkDomain(domain) {
       resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: 12000, checkedAt: new Date().toISOString(), error: 'Connection timeout' });
     });
   });
+}
+
+// ยิง HTTPS ก่อน — ถ้าเชื่อมต่อไม่ติดเลย (statusCode 0) ค่อย fallback ไป HTTP
+// เว็บที่เข้าได้เฉพาะ HTTP = SSL มีปัญหา => นับเป็น warn (ไม่ใช่ up เฉยๆ)
+async function checkDomain(domain) {
+  const r = await checkDomainOnce(domain, true);
+  if (r.statusCode !== 0 || r.status === 'unknown') return r; // ได้ response แล้ว
+  const r2 = await checkDomainOnce(domain, false);
+  if (r2.statusCode !== 0) {
+    if (r2.status === 'up') { r2.status = 'warn'; r2.error = 'เข้าได้ทาง HTTP เท่านั้น — HTTPS/SSL มีปัญหา'; }
+    return r2;
+  }
+  return r; // ทั้ง HTTPS และ HTTP ไม่ติด = down จริง
 }
 
 let isCheckingDomains = false;
@@ -551,6 +600,7 @@ async function checkAllDomains() {
   console.log(`[Check] ${checkable.length} domains (ข้าม GSC-only ${memoryDomains.length - checkable.length})...`);
   const BATCH = 10; // ลดจาก 20 เป็น 10 เพื่อลด memory
   let downCount = 0;
+  const cycleNewIncidents = []; // incident ใหม่ในรอบนี้ (classify ตอนจบรอบ)
   try {
     for (let i = 0; i < checkable.length; i += BATCH) {
       const batch = checkable.slice(i, i + BATCH);
@@ -560,6 +610,8 @@ async function checkAllDomains() {
         if (idx === -1) continue;
         const prev = memoryDomains[idx].status;
         Object.assign(memoryDomains[idx], r);
+        // incident history (added feature) — ครอบคลุมทั้ง down และ warn
+        trackIncident(memoryDomains[idx], prev, r, cycleNewIncidents);
       // Track performance
       if (r.responseTime && r.status === 'up') trackPerformance(r.domain, r.responseTime);
         // Track SLA uptime
@@ -574,6 +626,8 @@ async function checkAllDomains() {
       }
     }
     await saveToSheets(memoryDomains);
+    // สรุปสาเหตุ incident ของรอบนี้
+    try { if (cycleNewIncidents.length) classifyIncidents(cycleNewIncidents); saveIncidents(); } catch (e) {}
     console.log(`[Check] done — down: ${downCount}`);
   } catch(e) {
     console.error('[Check] error:', e.message);
@@ -1981,6 +2035,77 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Watchlist API (added feature) — โดเมนที่เช็กถี่ทุก 1 นาที
+  if (req.method === 'GET' && url === '/api/watchlist') {
+    json(res, { success: true, domains: watchList, max: WATCHLIST_MAX, intervalSec: 60, lastCheckAt: lastWatchAt });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/watchlist') {
+    const body = await parseBody(req);
+    if (!body || !Array.isArray(body.domains)) { json(res, { success: false, error: 'ต้องมี domains เป็น array' }); return; }
+    watchList = body.domains.map(x => String(x).trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '')).filter(Boolean).slice(0, WATCHLIST_MAX);
+    saveWatchList();
+    checkWatchList().catch(() => {});
+    json(res, { success: true, domains: watchList });
+    return;
+  }
+
+  // Domain incident history API (added feature)
+  if (req.method === 'GET' && url === '/api/incidents') {
+    const days = 1;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const recent = incidents.filter(i => (i.startAt || '') >= since);
+    const byDomain = {};
+    recent.forEach(i => {
+      let b = byDomain[i.domain];
+      if (!b) {
+        const dm = memoryDomains.find(x => x.domain === i.domain) || {};
+        const ag = dm.thAgents || {};
+        b = byDomain[i.domain] = {
+          domain: i.domain, server: i.server, count: 0, downCount: 0, warnCount: 0, totalMin: 0,
+          hostCause: 0, domainCause: 0, lastError: null, lastAt: null, lastCode: 0, stillDown: false,
+          onWatchlist: watchList.indexOf(i.domain) !== -1,
+          thBlockedCarriers: Object.keys(ag).filter(k => ag[k].status === 'blocked')
+        };
+      }
+      b.count++;
+      if (i.kind === 'warn') b.warnCount++; else b.downCount++;
+      b.totalMin += (i.durationMin || 0);
+      if (i.cause === 'host') b.hostCause++; else if (i.cause === 'domain') b.domainCause++;
+      if (!b.lastAt || i.startAt > b.lastAt) { b.lastAt = i.startAt; b.lastError = i.error; b.lastCode = i.statusCode; }
+      if (!i.endAt) b.stillDown = true;
+    });
+    const rows = Object.keys(byDomain).map(k => byDomain[k]).sort((a, b) => b.count - a.count);
+    const byServer = {};
+    recent.forEach(i => {
+      const k = i.server || '(ไม่ทราบ)';
+      if (!byServer[k]) byServer[k] = { server: k, incidents: 0, domains: {}, hostEvents: 0 };
+      byServer[k].incidents++;
+      byServer[k].domains[i.domain] = 1;
+      if (i.cause === 'host') byServer[k].hostEvents++;
+    });
+    const serverRows = Object.keys(byServer).map(k => ({
+      server: k, incidents: byServer[k].incidents,
+      domains: Object.keys(byServer[k].domains).length,
+      hostEvents: byServer[k].hostEvents
+    })).sort((a, b) => b.incidents - a.incidents);
+    json(res, {
+      success: true, since, totalIncidents: recent.length,
+      stillDown: rows.filter(r => r.stillDown).length,
+      domains: rows, servers: serverRows,
+      note: 'สาเหตุ "โฮส" = มีโดเมน >= ' + HOST_ISSUE_THRESHOLD + ' ตัวบนเครื่องเดียวกันดับพร้อมกันในรอบเช็กเดียว (เป็นการอนุมาน ไม่ใช่คำยืนยัน)'
+    });
+    return;
+  }
+  if (req.method === 'GET' && url.startsWith('/api/incidents/')) {
+    const dom = decodeURIComponent(url.split('/api/incidents/')[1] || '');
+    const list = incidents.filter(i => i.domain === dom).slice(-100).reverse();
+    const d = memoryDomains.find(x => x.domain === dom) || {};
+    const srv = d.pleskServer || (list.find(i => i.server) || {}).server || null;
+    json(res, { success: true, domain: dom, server: srv, currentStatus: d.status || 'unknown', incidents: list });
+    return;
+  }
+
   // ISP block API (added feature)
   if (req.method === 'GET' && url.startsWith('/api/isp-check/')) {
     const dom = decodeURIComponent(url.split('/api/isp-check/')[1] || '');
@@ -2423,6 +2548,121 @@ async function handleRequest(req, res) {
 // ===== START =====
 const server = http.createServer(handleRequest);
 
+// ===== DOMAIN INCIDENT HISTORY (added feature) =====
+// บันทึกทุกครั้งที่โดเมน "ดับ" (up->down) และตอนกลับมา (down->up)
+// แยกสาเหตุ: ถ้าหลายโดเมนบนเครื่องเดียวกันดับพร้อมกันในรอบเดียว => น่าจะเป็นที่โฮส
+const INCIDENTS_FILE = path.join('/tmp', 'domainintel-incidents.json');
+const HOST_ISSUE_THRESHOLD = 3; // ดับพร้อมกันกี่โดเมนบนเครื่องเดียว ถึงนับว่าเป็นที่โฮส
+let incidents = [];
+try { incidents = JSON.parse(fs.readFileSync(INCIDENTS_FILE, 'utf8')) || []; } catch (e) {}
+function saveIncidents() {
+  try {
+    if (incidents.length > 3000) incidents = incidents.slice(-3000);
+    fs.writeFileSync(INCIDENTS_FILE, JSON.stringify(incidents));
+  } catch (e) {}
+}
+function findOpenIncident(domain) {
+  for (let i = incidents.length - 1; i >= 0; i--) {
+    if (incidents[i].domain === domain && !incidents[i].endAt) return incidents[i];
+  }
+  return null;
+}
+function openIncident(d, r) {
+  if (findOpenIncident(d.domain)) return null; // ยังดับค้างอยู่ ไม่นับซ้ำ
+  const inc = {
+    id: 'inc' + Date.now() + Math.random().toString(36).slice(2, 6),
+    domain: d.domain,
+    server: d.pleskServer || null,
+    kind: r.status === 'warn' ? 'warn' : 'down', // down = เข้าไม่ได้เลย · warn = เข้าได้แต่ผิดปกติ
+    startAt: new Date().toISOString(),
+    endAt: null,
+    durationMin: null,
+    statusCode: r.statusCode || 0,
+    error: r.error || 'ไม่ทราบสาเหตุ',
+    cause: 'unknown'
+  };
+  incidents.push(inc);
+  return inc;
+}
+function closeIncident(domain) {
+  const inc = findOpenIncident(domain);
+  if (!inc) return;
+  inc.endAt = new Date().toISOString();
+  inc.durationMin = Math.max(1, Math.round((new Date(inc.endAt) - new Date(inc.startAt)) / 60000));
+}
+function classifyIncidents(newIncs) {
+  const byServer = {};
+  newIncs.forEach(inc => {
+    // แยกตามเครื่อง + ชนิดอาการ (ไม่เอา down กับ warn มาปนกันนับ)
+    const k = (inc.server || '(ไม่ทราบเครื่อง)') + '||' + (inc.kind || 'down');
+    (byServer[k] = byServer[k] || []).push(inc);
+  });
+  Object.keys(byServer).forEach(key => {
+    const srv = key.split('||')[0];
+    const list = byServer[key];
+    const isHost = list.length >= HOST_ISSUE_THRESHOLD && srv !== '(ไม่ทราบเครื่อง)';
+    list.forEach(inc => { inc.cause = isHost ? 'host' : 'domain'; inc.batchSize = list.length; });
+    if (isHost) {
+      try { logEvent('warning', 'โดเมน ' + list.length + ' ตัวบน ' + srv + ' ดับพร้อมกัน — น่าจะเป็นปัญหาที่โฮส'); } catch (e) {}
+      try { smartAlert('warning', '⚠️ โดเมน <b>' + list.length + '</b> ตัวบน <b>' + srv + '</b> ดับพร้อมกัน\nน่าจะเป็นปัญหาที่โฮส ไม่ใช่ที่เว็บ'); } catch (e) {}
+    }
+  });
+}
+
+// ตัวกลางบันทึก incident — ใช้ทั้งรอบเช็กปกติ (5 นาที) และ watchlist (1 นาที)
+function trackIncident(d, prev, r, arr) {
+  try {
+    const badPrev = (prev === 'down' || prev === 'warn');
+    const badNow = (r.status === 'down' || r.status === 'warn');
+    if (!badPrev && badNow) {
+      const inc = openIncident(d, r);
+      if (inc && arr) arr.push(inc);
+      return inc;
+    }
+    if (badPrev && r.status === 'up') { closeIncident(d.domain); return null; }
+    if (badPrev && badNow) {
+      // ยังมีปัญหาอยู่ — อัปเดตอาการล่าสุด (เช่น warn ลามเป็น down)
+      const open = findOpenIncident(d.domain);
+      if (open) {
+        open.kind = (r.status === 'warn') ? 'warn' : 'down';
+        if (r.statusCode) open.statusCode = r.statusCode;
+        if (r.error) open.error = r.error;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+// ===== WATCHLIST — เช็กถี่ทุก 1 นาที เฉพาะโดเมนสำคัญ (จับการดับสั้นๆ) =====
+const WATCHLIST_FILE = path.join('/tmp', 'domainintel-watchlist.json');
+const WATCHLIST_MAX = 50;
+let watchList = [];
+try { watchList = JSON.parse(fs.readFileSync(WATCHLIST_FILE, 'utf8')) || []; } catch (e) {}
+function saveWatchList() { try { fs.writeFileSync(WATCHLIST_FILE, JSON.stringify(watchList)); } catch (e) {} }
+let watchChecking = false, lastWatchAt = null;
+async function checkWatchList() {
+  if (watchChecking || !watchList.length) return;
+  watchChecking = true;
+  try {
+    const arr = [];
+    const list = watchList.slice(0, WATCHLIST_MAX);
+    for (let i = 0; i < list.length; i += 5) {
+      const batch = list.slice(i, i + 5);
+      await Promise.all(batch.map(async dom => {
+        const idx = memoryDomains.findIndex(d => d.domain === dom);
+        if (idx === -1) return;
+        const prev = memoryDomains[idx].status;
+        const r = await checkDomain(dom);
+        Object.assign(memoryDomains[idx], r);
+        trackIncident(memoryDomains[idx], prev, r, arr);
+      }));
+    }
+    if (arr.length) classifyIncidents(arr);
+    saveIncidents();
+    lastWatchAt = new Date().toISOString();
+  } catch (e) {} finally { watchChecking = false; }
+}
+
 // ===== AUTO-HEAL DISABLE LIST (added feature) =====
 // ปิด auto-heal รายเครื่อง ตั้งผ่าน env: AUTOHEAL_DISABLED="Server 5"
 // ใส่ได้ทั้งชื่อ (Server 5) หรือ IP/host คั่นด้วยคอมมา เช่น "Server 5,167.71.x.x"
@@ -2535,45 +2775,8 @@ async function smartStatusCheck() {
   await saveToSheets(memoryDomains);
 }
 
-async function checkDomain(domain) {
-  const startTime = Date.now();
-  const checkedAt = new Date().toISOString();
-  
-  // Try HTTPS first, then HTTP fallback
-  const tryRequest = (useHttps) => new Promise(resolve => {
-    const mod = useHttps ? https : http;
-    const port = useHttps ? 443 : 80;
-    const options = {
-      hostname: domain, port, path: '/', method: 'HEAD',
-      timeout: 8000, rejectUnauthorized: false,
-      headers: { 'User-Agent': 'Mozilla/5.0', 'Host': domain }
-    };
-    const req = mod.request(options, res => {
-      res.resume();
-      const rt = Date.now() - startTime;
-      const status = res.statusCode < 500 ? 'up' : 'down';
-      resolve({ ok: true, domain, status, statusCode: res.statusCode, responseTime: rt, error: null, checkedAt });
-    });
-    req.on('error', (e) => resolve({ ok: false, error: e.message.slice(0,50) }));
-    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'Timeout' }); });
-    req.end();
-  });
-
-  // Try HTTPS
-  const httpsResult = await tryRequest(true);
-  if (httpsResult.ok) return httpsResult;
-  
-  // Fallback to HTTP
-  const httpResult = await tryRequest(false);
-  if (httpResult.ok) return httpResult;
-  
-  // Both failed
-  return { 
-    domain, status: 'down', statusCode: 0, 
-    error: httpsResult.error || httpResult.error || 'Connection failed',
-    responseTime: Date.now() - startTime, checkedAt 
-  };
-}
+// [แก้บั๊ก] checkDomain ตัว HEAD เดิมถูกลบออก — มันประกาศทีหลังเลยไปทับตัวที่ฉลาดกว่า
+// (ตัวจริงอยู่ด้านบน: GET + อ่าน body + จับ Cloudflare/WordPress error)
 
 // ===== DOMAIN DIAGNOSIS =====
 const diagnosisCache = {};
@@ -5141,6 +5344,7 @@ server.listen(PORT, async () => {
   setInterval(checkAllISPBlocks, 60 * 60 * 1000); // ISP block check ทุก 60 นาที
   setTimeout(() => checkAllISPBlocks().catch(()=>{}), 90 * 1000); // run แรกหลัง start 90 วิ
   setInterval(snapshotHistory, 60 * 60 * 1000); // เก็บ snapshot สถานะทุก 1 ชม.
+  setInterval(checkWatchList, 60 * 1000); // watchlist: เช็กโดเมนสำคัญทุก 1 นาที
   setTimeout(snapshotHistory, 120 * 1000); // snapshot แรกหลัง start 2 นาที
   setInterval(() => syncPleskDomains(), PLESK_SYNC_INTERVAL_MS);
   setInterval(checkServerHealth, CHECK_INTERVAL_MS);
