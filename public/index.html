@@ -6531,7 +6531,7 @@ function ensureIncPage(){
     '</div>'+
     '<div id="inc-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px"></div>'+
     '<div id="inc-watch"></div>'+
-    '<div id="inc-servers"></div>'+
+    '<div id="inc-servers"></div>'+'<div id="inc-hogs"></div>'+
     '<div id="inc-body"></div>'+
     '<div id="inc-note" style="font-size:11px;color:var(--text3,#888)"></div>';
   c.appendChild(div);
@@ -6596,6 +6596,7 @@ function wlToggle(dom){
 function renderInc(){
   if(!_incData) return;
   renderWatch();
+  loadHogs();
   var d=_incData;
   var totDown=0, totWarn=0;
   (d.domains||[]).forEach(function(x){ totDown+=(x.downCount||0); totWarn+=(x.warnCount||0); });
@@ -6681,5 +6682,75 @@ async function incDetail(dom){
     }
     h+='</div>'; body.innerHTML=h;
   }catch(e){ body.innerHTML='โหลดไม่ได้: '+e.message; }
+}
+</script>
+
+<script>
+// ===== RESOURCE HOG ANALYSIS (added feature) =====
+async function loadHogs(){
+  var el=document.getElementById('inc-hogs'); if(!el) return;
+  try{
+    var r=await fetch(API+'/api/server-hogs'); var d=await r.json();
+    if(!d.success){ el.innerHTML=''; return; }
+    var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px;margin-top:4px">'+
+      '<div style="font-weight:700;font-size:14px;margin-bottom:4px">🔎 โดเมนที่น่าสงสัยว่าทำโฮสแย่ (7 วัน)</div>'+
+      '<div style="font-size:11px;color:var(--text3,#888);margin-bottom:10px">ดูจาก "ดับเป็นตัวแรกๆ ตอนโฮสเริ่มมีปัญหา ซ้ำๆ" — เป็นการชี้เป้า ไม่ใช่หลักฐาน กดปุ่มท้ายแถวเพื่อวัดจริงจากในเครื่อง</div>';
+    if(!(d.suspects||[]).length){
+      h+='<div style="color:var(--text3,#888);font-size:13px">ยังไม่มีข้อมูลพอ — ต้องมี "เหตุการณ์โฮสแย่" (หลายโดเมนดับพร้อมกัน) เกิดขึ้นก่อน ระบบถึงจะชี้ผู้ต้องสงสัยได้</div></div>';
+      el.innerHTML=h; return;
+    }
+    h+='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">อันดับ</th><th style="padding:6px">โดเมน</th><th style="padding:6px">เครื่อง</th>'+
+      '<th style="padding:6px">คะแนนสงสัย</th><th style="padding:6px">ดับเป็นตัวแรก</th><th style="padding:6px">ในเหตุโฮสแย่</th><th style="padding:6px"></th></tr>';
+    d.suspects.forEach(function(s,i){
+      var danger=i===0&&s.firstToFail>0;
+      h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(danger?';background:rgba(226,75,74,0.08)':'')+'">'+
+        '<td style="padding:6px;font-weight:700">'+(i+1)+(danger?' 🔴':'')+'</td>'+
+        '<td style="padding:6px;font-weight:600"><a href="https://'+s.domain+'" target="_blank" rel="noopener" style="color:inherit">'+s.domain+'</a></td>'+
+        '<td style="padding:6px">'+s.server+'</td>'+
+        '<td style="padding:6px;font-weight:700;color:'+(s.points>=10?'#e24b4a':(s.points>=5?'#e3b93b':'inherit'))+'">'+s.points+'</td>'+
+        '<td style="padding:6px">'+(s.firstToFail?'<span style="color:#e24b4a;font-weight:600">'+s.firstToFail+' ครั้ง</span>':'-')+'</td>'+
+        '<td style="padding:6px">'+s.hostEventCount+'</td>'+
+        '<td style="padding:6px"><button class="btn" style="padding:2px 8px;font-size:11px" onclick="showHogCmd(\''+s.domain+'\',\''+(s.server||'')+'\')">วัดจริง →</button></td></tr>';
+    });
+    h+='</table></div>';
+    el.innerHTML=h;
+  }catch(e){ el.innerHTML=''; }
+}
+
+// ระดับ B (B2): สร้างคำสั่งวัดจริงให้ก็อปไปรันบนเครื่อง แล้ววางผลกลับมาให้แปล
+function showHogCmd(domain, server){
+  var cmds=
+'# ===== วัดทรัพยากรจริงของ '+domain+' บน '+(server||'เครื่องนี้')+' =====\n'+
+'# 1) PHP-FPM: worker ของโดเมนนี้ใช้ไปกี่ตัว (เต็ม pool = แย่งทรัพยากร)\n'+
+'grep -E "pm.max_children|pm =" /opt/plesk/php/*/etc/php-fpm.d/'+domain+'.conf 2>/dev/null\n'+
+'ps aux | grep "'+domain+'" | grep -v grep | wc -l\n\n'+
+'# 2) request ที่ถล่มเว็บนี้ 1 ชม.ล่าสุด (bot ยิงเยอะ = กินทรัพยากร)\n'+
+'tail -5000 /var/www/vhosts/'+domain+'/logs/proxy_access_log 2>/dev/null | awk \'{print $1}\' | sort | uniq -c | sort -rn | head -10\n\n'+
+'# 3) MySQL: query ของ DB นี้ที่ค้างนาน\n'+
+'MYSQL_PWD=$(cat /etc/psa/.psa.shadow 2>/dev/null) mysql -uadmin -e "SELECT db,time,state,LEFT(info,60) FROM information_schema.processlist WHERE command!=\'Sleep\' AND time>2 ORDER BY time DESC LIMIT 15;" 2>/dev/null\n\n'+
+'# 4) CPU/RAM ต่อ process ของโดเมนนี้ ณ ตอนนี้\n'+
+'ps aux --sort=-%cpu | grep "'+domain+'" | grep -v grep | head -8';
+
+  var box=document.getElementById('inc-body');
+  box.innerHTML='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+    '<b style="font-size:14px">วัดทรัพยากรจริง: '+domain+'</b>'+
+    '<button class="btn" style="padding:2px 10px;font-size:12px" onclick="renderInc()">← กลับ</button></div>'+
+    '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">ก็อปคำสั่งชุดนี้ไปรันบน '+(server||'เครื่องนั้น')+' (SSH) — เป็นคำสั่ง<b>อ่านอย่างเดียว</b> ไม่แก้อะไร แล้วดูผล:</div>'+
+    '<textarea readonly onclick="this.select()" style="width:100%;height:230px;background:#0a0a0a;color:#8fd98f;border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:10px;font-family:monospace;font-size:12px;white-space:pre">'+cmds.replace(/</g,'&lt;')+'</textarea>'+
+    '<div style="margin-top:10px;font-size:12px;color:var(--text3,#888)">'+
+    '<b>อ่านผลยังไง:</b><br>'+
+    '• ข้อ 1: ถ้า worker ใช้เต็ม max_children บ่อย = โดเมนนี้แย่ง PHP pool<br>'+
+    '• ข้อ 2: ถ้ามี IP ไหนยิงเป็นพัน = โดนบอทถล่ม (ตัวการจริงคือบอท ไม่ใช่เว็บ)<br>'+
+    '• ข้อ 3: ถ้า DB นี้มี query ค้างนานๆ = query หนัก/ปลั๊กอินมีปัญหา<br>'+
+    '• ข้อ 4: %CPU/%MEM สูงต่อเนื่อง = โดเมนนี้กินจริง</div>'+
+    '<div style="margin-top:10px"><button class="btn" onclick="copyHogCmd(this)"><i class="ti ti-copy"></i> คัดลอกคำสั่ง</button></div></div>';
+  window._lastHogCmd=cmds;
+}
+function copyHogCmd(btn){
+  if(navigator.clipboard) navigator.clipboard.writeText(window._lastHogCmd||'');
+  btn.innerHTML='<i class="ti ti-check"></i> คัดลอกแล้ว';
+  setTimeout(function(){ btn.innerHTML='<i class="ti ti-copy"></i> คัดลอกคำสั่ง'; },1500);
 }
 </script>
