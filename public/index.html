@@ -6731,6 +6731,13 @@ async function loadHogs(){
       '<th style="padding:6px">คะแนนสงสัย</th><th style="padding:6px">ดับเป็นตัวแรก</th><th style="padding:6px">ในเหตุโฮสแย่</th><th style="padding:6px"></th></tr>';
     d.suspects.forEach(function(s,i){
       var danger=i===0&&s.firstToFail>0;
+      var measured='<span style="color:var(--text3,#888)">ยังไม่วัด</span>';
+      if(s.measuredPhpfpm){
+        var p=s.measuredPhpfpm;
+        var col=(p.pct>=100?'#e24b4a':p.pct>=80?'#e3b93b':'#2ecc71');
+        measured='<span style="color:'+col+';font-weight:600" title="PHP-FPM worker ที่ใช้จริง">'+p.active+'/'+(p.max||'?')+(p.pct!=null?' ('+p.pct+'%)':'')+'</span>';
+        if(s.measuredHot&&s.measuredHot.topIpHits>1000) measured+=' <span title="โดน IP เดียวยิงหนัก" style="color:#e39a3b;font-size:10px">🤖'+s.measuredHot.topIp+'</span>';
+      }
       h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(danger?';background:rgba(226,75,74,0.08)':'')+'">'+
         '<td style="padding:6px;font-weight:700">'+(i+1)+(danger?' 🔴':'')+'</td>'+
         '<td style="padding:6px;font-weight:600"><a href="https://'+s.domain+'" target="_blank" rel="noopener" style="color:inherit">'+s.domain+'</a></td>'+
@@ -6738,9 +6745,15 @@ async function loadHogs(){
         '<td style="padding:6px;font-weight:700;color:'+(s.points>=10?'#e24b4a':(s.points>=5?'#e3b93b':'inherit'))+'">'+s.points+'</td>'+
         '<td style="padding:6px">'+(s.firstToFail?'<span style="color:#e24b4a;font-weight:600">'+s.firstToFail+' ครั้ง</span>':'-')+'</td>'+
         '<td style="padding:6px">'+s.hostEventCount+'</td>'+
-        '<td style="padding:6px"><button class="btn" style="padding:2px 8px;font-size:11px" onclick="showHogCmd(\''+s.domain+'\',\''+(s.server||'')+'\')">วัดจริง →</button></td></tr>';
+        '<td style="padding:6px">'+measured+'</td>'+
+        '<td style="padding:6px;white-space:nowrap"><button class="btn" style="padding:2px 8px;font-size:11px" onclick="measureNow(\''+(s.server||'')+'\')" title="ให้ระบบวัดทรัพยากรจริงจากในเครื่องเดี๋ยวนี้">⚡ วัดจริง</button> '+
+        '<button class="btn" style="padding:2px 8px;font-size:11px" onclick="showHogCmd(\''+s.domain+'\',\''+(s.server||'')+'\')">คำสั่ง</button></td></tr>';
     });
-    h+='</table></div>';
+    h+='</table>';
+    h=h.replace('<th style="padding:6px">ในเหตุโฮสแย่</th><th style="padding:6px"></th>',
+                '<th style="padding:6px">ในเหตุโฮสแย่</th><th style="padding:6px">วัดจริง (worker)</th><th style="padding:6px"></th>');
+    var rsAt=(d.suspects[0]&&d.suspects[0].measuredAt)?(' · วัดล่าสุด '+new Date(d.suspects[0].measuredAt).toLocaleTimeString()):'';
+    h+='<div style="font-size:11px;color:var(--text3,#888);margin-top:6px">⚡ = ให้ระบบเข้าไปวัด worker/IP/MySQL จริง (อ่านอย่างเดียว) · วัดเครื่องที่มีปัญหาอัตโนมัติทุก 30 นาทีอยู่แล้ว'+rsAt+'</div></div>';
     el.innerHTML=h;
   }catch(e){ el.innerHTML=''; }
 }
@@ -6779,5 +6792,29 @@ function copyHogCmd(btn){
   if(navigator.clipboard) navigator.clipboard.writeText(window._lastHogCmd||'');
   btn.innerHTML='<i class="ti ti-check"></i> คัดลอกแล้ว';
   setTimeout(function(){ btn.innerHTML='<i class="ti ti-copy"></i> คัดลอกคำสั่ง'; },1500);
+}
+</script>
+<script>
+// ===== B1 MEASURE NOW (added feature) =====
+window._measureKey=null;
+async function measureNow(server){
+  if(!server){ if(typeof toast==='function')toast('ไม่รู้ว่าเครื่องไหน','error'); return; }
+  if(!window._measureKey){
+    window._measureKey=prompt('ใส่ ISP_AGENT_KEY (คีย์เดียวกับที่ตั้งใน Railway) เพื่อสั่งวัดทรัพยากรจริง:');
+    if(!window._measureKey) return;
+  }
+  if(typeof toast==='function')toast('กำลังวัด '+server+' ... (ประมาณ 10-30 วิ)','info');
+  try{
+    var r=await fetch(API+'/api/server-resources/measure',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._measureKey,server:server})});
+    var d=await r.json();
+    if(r.status===403){ window._measureKey=null; if(typeof toast==='function')toast('คีย์ผิด ลองใหม่','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast('วัดไม่ได้: '+(d.error||'?'),'error'); return; }
+    var top=(d.phpfpm||[])[0];
+    var msg='วัดเสร็จ';
+    if(top) msg+=' — '+top.domain+' worker '+top.active+'/'+(top.max||'?')+(top.pct!=null?' ('+top.pct+'%)':'');
+    if(typeof toast==='function')toast(msg,'success');
+    loadIncidents();
+  }catch(e){ if(typeof toast==='function')toast('วัดไม่ได้: '+e.message,'error'); }
 }
 </script>
