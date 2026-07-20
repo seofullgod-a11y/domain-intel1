@@ -6701,22 +6701,27 @@ async function loadHogs(){
       '<div style="display:flex;gap:6px">'+tabBtn(1,'1 ชม.')+tabBtn(24,'24 ชม.')+tabBtn(168,'7 วัน')+'</div></div>';
 
     // ===== ตาราง 1: โดเมนที่ดับทั้งหมดในช่วงนี้ (ไม่ต้องรอโฮสแย่) =====
-    h+='<div style="font-weight:600;font-size:13px;margin-bottom:6px">โดเมนที่ดับ/ผิดปกติในช่วงนี้ ('+(d.allDomains||[]).length+' โดเมน · '+d.totalIncidents+' ครั้ง)</div>';
-    if(!(d.allDomains||[]).length){
+    h+='<div style="font-weight:600;font-size:13px;margin-bottom:6px">โดเมนที่ดับบ่อยสุด — Top '+(d.topN||5)+' ต่อเครื่อง (จากทั้งหมด '+(d.allDomains||[]).length+' โดเมน · '+d.totalIncidents+' ครั้ง)</div>';
+    if(!(d.topPerServer||[]).length){
       h+='<div style="color:var(--green,#2ecc71);font-size:13px;padding:6px 0">ไม่มีโดเมนดับในช่วงนี้ 🎉</div>';
     } else {
-      h+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">'+
-        '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">โดเมน</th><th style="padding:6px">เครื่อง</th><th style="padding:6px">ดับ</th><th style="padding:6px">warn</th><th style="padding:6px">รวมเวลา</th><th style="padding:6px">อาการล่าสุด</th></tr>';
-      d.allDomains.forEach(function(a){
-        h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(a.stillDown?';background:rgba(226,75,74,0.08)':'')+'">'+
-          '<td style="padding:6px;font-weight:600"><a href="https://'+a.domain+'" target="_blank" rel="noopener" style="color:inherit">'+a.domain+'</a>'+(a.stillDown?' <span style="color:#e24b4a;font-size:10px">●</span>':'')+'</td>'+
-          '<td style="padding:6px">'+(a.server||'-')+'</td>'+
-          '<td style="padding:6px;font-weight:700;color:'+(a.downCount?'#e24b4a':'var(--text3,#888)')+'">'+a.downCount+'</td>'+
-          '<td style="padding:6px;color:'+(a.warnCount?'#e3b93b':'var(--text3,#888)')+'">'+a.warnCount+'</td>'+
-          '<td style="padding:6px">'+(a.totalMin?a.totalMin+' น.':'-')+'</td>'+
-          '<td style="padding:6px;color:var(--text3,#888)">'+(a.lastError||'-')+'</td></tr>';
+      d.topPerServer.forEach(function(g){
+        var hidden=g.total-g.shown;
+        h+='<div style="margin-bottom:14px">'+
+          '<div style="font-weight:700;font-size:13px;color:var(--blue,#3b82f6);margin-bottom:4px">🖥️ '+g.server+
+            ' <span style="font-weight:400;color:var(--text3,#888);font-size:11px">— โชว์ '+g.shown+' โดเมนที่ดับบ่อยสุด'+(hidden>0?(' (ซ่อนอีก '+hidden+' โดเมน)'):'')+'</span></div>'+
+          '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
+          '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">โดเมน</th><th style="padding:6px">ดับ</th><th style="padding:6px">warn</th><th style="padding:6px">รวมเวลา</th><th style="padding:6px">อาการล่าสุด</th></tr>';
+        g.domains.forEach(function(a){
+          h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(a.stillDown?';background:rgba(226,75,74,0.08)':'')+'">'+
+            '<td style="padding:6px;font-weight:600"><a href="https://'+a.domain+'" target="_blank" rel="noopener" style="color:inherit">'+a.domain+'</a>'+(a.stillDown?' <span style="color:#e24b4a;font-size:10px">●</span>':'')+'</td>'+
+            '<td style="padding:6px;font-weight:700;color:'+(a.downCount?'#e24b4a':'var(--text3,#888)')+'">'+a.downCount+'</td>'+
+            '<td style="padding:6px;color:'+(a.warnCount?'#e3b93b':'var(--text3,#888)')+'">'+a.warnCount+'</td>'+
+            '<td style="padding:6px">'+(a.totalMin?a.totalMin+' น.':'-')+'</td>'+
+            '<td style="padding:6px;color:var(--text3,#888)">'+(a.lastError||'-')+'</td></tr>';
+        });
+        h+='</table></div>';
       });
-      h+='</table>';
     }
 
     // ===== ตาราง 2: ผู้ต้องสงสัยเป็นตัวการ (เฉพาะตอนมีเหตุการณ์โฮสแย่) =====
