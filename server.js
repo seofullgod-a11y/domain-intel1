@@ -2253,6 +2253,21 @@ async function handleRequest(req, res) {
     const allDomains = Object.keys(allMap).map(k => allMap[k])
       .sort((a, b) => (b.downCount + b.warnCount) - (a.downCount + a.warnCount) || b.totalMin - a.totalMin);
 
+    // จัดกลุ่มตามเครื่อง แล้วเอา Top N ที่ดับบ่อยสุดต่อเครื่อง (default 5) — กันตารางล้น
+    let topN = parseInt((q.split('top=')[1] || '').split('&')[0], 10);
+    if (!topN || topN < 1) topN = 5;
+    const perServerMap = {};
+    allDomains.forEach(d => {
+      const k = d.server || '(ไม่ทราบเครื่อง)';
+      (perServerMap[k] = perServerMap[k] || []).push(d);
+    });
+    const topPerServer = Object.keys(perServerMap).sort().map(srv => ({
+      server: srv,
+      total: perServerMap[srv].length,               // มีทั้งหมดกี่โดเมนบนเครื่องนี้
+      shown: Math.min(topN, perServerMap[srv].length),
+      domains: perServerMap[srv].slice(0, topN)       // เอาแค่ Top N (เรียงดับบ่อยสุดมาก่อนแล้ว)
+    }));
+
     // แนบผลวัดจริง (B1) ให้ suspect + all ที่มีข้อมูล
     function attachMeasured(rows) {
       rows.forEach(r => {
@@ -2266,13 +2281,15 @@ async function handleRequest(req, res) {
       });
     }
     attachMeasured(suspects);
+    topPerServer.forEach(g => attachMeasured(g.domains));
 
     json(res, {
-      success: true, since, hours, server: wantServer || null,
+      success: true, since, hours, topN, server: wantServer || null,
       totalIncidents: recent.length,
       servers: serverSummary,
       resourceStats,
       suspects,
+      topPerServer,
       allDomains,
       note: 'ระดับ A: อนุมานจากประวัติดับ — "ดับเป็นตัวแรกตอนโฮสเริ่มแย่ซ้ำๆ" = น่าสงสัยว่าเป็นตัวแย่งทรัพยากร ไม่ใช่หลักฐานยืนยัน ต้องวัดจากในเครื่อง (ระดับ B) เพื่อฟันธง'
     });
