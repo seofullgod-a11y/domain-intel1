@@ -2039,8 +2039,9 @@ async function handleRequest(req, res) {
   if (req.method === 'GET' && url.startsWith('/api/server-hogs')) {
     const q = rawUrl.split('?')[1] || '';
     const wantServer = decodeURIComponent((q.split('server=')[1] || '').split('&')[0] || '');
-    const days = 7;
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    let hours = parseInt((q.split('hours=')[1] || '').split('&')[0], 10);
+    if (!hours || hours < 1) hours = 168; // default 7 วัน
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
     const recent = incidents.filter(i => (i.startAt || '') >= since && i.server);
 
     // จัดกลุ่มเป็น "เหตุการณ์โฮสแย่" = incident ที่ cause=host เกิดใกล้กัน (ภายใน 6 นาที) บนเครื่องเดียว
@@ -2090,10 +2091,27 @@ async function handleRequest(req, res) {
       .map(srv => ({ server: srv, hostEvents: hostEvents[srv].length }))
       .sort((a, b) => b.hostEvents - a.hostEvents);
 
+    // โดเมนที่ดับ "ทั้งหมด" ในช่วงเวลานี้ (ไม่ต้องรอเหตุการณ์โฮสแย่) — เรียงตามจำนวนครั้ง
+    const allMap = {};
+    recent.forEach(i => {
+      if (wantServer && i.server !== wantServer) return;
+      let a = allMap[i.domain];
+      if (!a) a = allMap[i.domain] = { domain: i.domain, server: i.server, downCount: 0, warnCount: 0, totalMin: 0, hostCause: 0, lastAt: null, lastError: null, stillDown: false };
+      if (i.kind === 'warn') a.warnCount++; else a.downCount++;
+      a.totalMin += (i.durationMin || 0);
+      if (i.cause === 'host') a.hostCause++;
+      if (!a.lastAt || i.startAt > a.lastAt) { a.lastAt = i.startAt; a.lastError = i.error; }
+      if (!i.endAt) a.stillDown = true;
+    });
+    const allDomains = Object.keys(allMap).map(k => allMap[k])
+      .sort((a, b) => (b.downCount + b.warnCount) - (a.downCount + a.warnCount) || b.totalMin - a.totalMin);
+
     json(res, {
-      success: true, since, server: wantServer || null,
+      success: true, since, hours, server: wantServer || null,
+      totalIncidents: recent.length,
       servers: serverSummary,
       suspects,
+      allDomains,
       note: 'ระดับ A: อนุมานจากประวัติดับ — "ดับเป็นตัวแรกตอนโฮสเริ่มแย่ซ้ำๆ" = น่าสงสัยว่าเป็นตัวแย่งทรัพยากร ไม่ใช่หลักฐานยืนยัน ต้องวัดจากในเครื่อง (ระดับ B) เพื่อฟันธง'
     });
     return;
