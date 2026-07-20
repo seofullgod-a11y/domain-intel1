@@ -1187,6 +1187,127 @@ async function runOnServer(serverName, command) {
   throw new Error('Agent timeout');
 }
 
+// ===== RESOURCE MEASUREMENT (ระดับ B1 — วัดจริงจากในเครื่องอัตโนมัติ) =====
+// ใช้ช่อง agent เดิม (runOnServer) รันคำสั่ง "อ่านอย่างเดียว" วัดว่าโดเมนไหนแย่งทรัพยากรจริง
+const RESOURCE_FILE = path.join('/tmp', 'domainintel-resources.json');
+let resourceStats = {}; // { serverName: { at, phpfpm:[{domain,active,max,pct}], mysql:[...], hotDomains:[...], load } }
+try { resourceStats = JSON.parse(fs.readFileSync(RESOURCE_FILE, 'utf8')) || {}; } catch (e) {}
+function saveResourceStats() { try { fs.writeFileSync(RESOURCE_FILE, JSON.stringify(resourceStats)); } catch (e) {} }
+
+// สร้างสคริปต์วัด (read-only) — รับรายชื่อโดเมนที่อยากดู access log เจาะจง
+function buildMeasureScript(focusDomains) {
+  const list = (focusDomains || []).filter(Boolean).slice(0, 15)
+    .map(d => d.replace(/[^a-zA-Z0-9.\-]/g, '')).join(' ');
+  return [
+    'echo "===PHPFPM_ACTIVE==="',
+    // นับ worker ที่กำลังทำงานจริง ต่อ pool (pool = โดเมน บน Plesk)
+    "ps -eo args 2>/dev/null | awk '/php-fpm: pool /{print $NF}' | sort | uniq -c | sort -rn | head -30",
+    'echo "===PHPFPM_MAX==="',
+    // เพดาน max_children ต่อ pool
+    "grep -h -E '^\\s*pm.max_children' /opt/plesk/php/*/etc/php-fpm.d/*.conf 2>/dev/null > /dev/null; " +
+    "for f in /opt/plesk/php/*/etc/php-fpm.d/*.conf; do [ -f \"$f\" ] || continue; " +
+    "d=$(basename \"$f\" .conf); m=$(grep -E '^\\s*pm.max_children' \"$f\" 2>/dev/null | head -1 | grep -oE '[0-9]+'); " +
+    "[ -n \"$m\" ] && echo \"$m $d\"; done | head -60",
+    'echo "===MYSQL==="',
+    // query ที่ค้างนานเกิน 2 วิ (ไม่ใช่ Sleep) — บอก DB ไหนหนัก
+    "MYSQL_PWD=$(cat /etc/psa/.psa.shadow 2>/dev/null) mysql -uadmin -N -e " +
+    "\"SELECT CONCAT(db,'|',time,'|',LEFT(REPLACE(state,'|',' '),20)) FROM information_schema.processlist " +
+    "WHERE command!='Sleep' AND time>2 ORDER BY time DESC LIMIT 15;\" 2>/dev/null",
+    'echo "===HOT==="',
+    // เฉพาะโดเมนที่โฟกัส: นับ request 1 ชม.ล่าสุด + IP ที่ยิงเยอะสุด
+    list ? ('for d in ' + list + '; do ' +
+      'L="/var/www/vhosts/$d/logs/proxy_access_log"; [ -f "$L" ] || continue; ' +
+      'C=$(tail -20000 "$L" 2>/dev/null | wc -l); ' +
+      'TOP=$(tail -20000 "$L" 2>/dev/null | awk \'{print $1}\' | sort | uniq -c | sort -rn | head -1); ' +
+      'echo "$d|$C|$TOP"; done') : 'echo ""',
+    'echo "===LOAD==="',
+    "uptime | awk -F'load average:' '{print $2}' | tr -d ' '",
+    'echo "===END==="'
+  ].join('\n');
+}
+
+function parseMeasureOutput(raw) {
+  const out = { phpfpm: [], mysql: [], hotDomains: [], load: null };
+  if (!raw) return out;
+  const sec = {};
+  let cur = null;
+  raw.split('\n').forEach(line => {
+    const m = line.match(/^===([A-Z_]+)===$/);
+    if (m) { cur = m[1]; sec[cur] = []; return; }
+    if (cur) sec[cur].push(line);
+  });
+  // จับคู่ active vs max ต่อโดเมน
+  const active = {}, max = {};
+  (sec.PHPFPM_ACTIVE || []).forEach(l => {
+    const mm = l.trim().match(/^(\d+)\s+(\S+)$/);
+    if (mm) active[mm[2]] = parseInt(mm[1], 10);
+  });
+  (sec.PHPFPM_MAX || []).forEach(l => {
+    const mm = l.trim().match(/^(\d+)\s+(\S+)$/);
+    if (mm) max[mm[2]] = parseInt(mm[1], 10);
+  });
+  Object.keys(active).forEach(dom => {
+    const a = active[dom], mx = max[dom] || null;
+    out.phpfpm.push({ domain: dom, active: a, max: mx, pct: mx ? Math.round(a / mx * 100) : null });
+  });
+  out.phpfpm.sort((x, y) => (y.pct || 0) - (x.pct || 0) || y.active - x.active);
+  (sec.MYSQL || []).forEach(l => {
+    const p = l.split('|');
+    if (p.length >= 2 && p[0]) out.mysql.push({ db: p[0], time: parseInt(p[1], 10) || 0, state: p[2] || '' });
+  });
+  (sec.HOT || []).forEach(l => {
+    const p = l.split('|');
+    if (p.length >= 2 && p[0]) {
+      const top = (p[2] || '').trim().match(/^(\d+)\s+(\S+)/);
+      out.hotDomains.push({ domain: p[0], requests: parseInt(p[1], 10) || 0,
+        topIp: top ? top[2] : null, topIpHits: top ? parseInt(top[1], 10) : 0 });
+    }
+  });
+  out.hotDomains.sort((x, y) => y.requests - x.requests);
+  if ((sec.LOAD || []).length) out.load = (sec.LOAD[0] || '').trim();
+  return out;
+}
+
+let measuring = {}; // server -> bool กันวัดซ้อน
+async function measureServer(serverName, focusDomains) {
+  if (measuring[serverName]) return { success: false, error: 'กำลังวัดอยู่' };
+  measuring[serverName] = true;
+  try {
+    const script = buildMeasureScript(focusDomains);
+    const result = await runOnServer(serverName, script);
+    const parsed = parseMeasureOutput(result.output || '');
+    resourceStats[serverName] = { at: new Date().toISOString(), ...parsed };
+    saveResourceStats();
+    return { success: true, server: serverName, ...parsed };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally { measuring[serverName] = false; }
+}
+
+// หาโดเมนที่ควรเพ่งเล็งบนเครื่องหนึ่ง (จาก incident 24 ชม.) เพื่อส่งให้ measureServer โฟกัส
+function focusDomainsFor(serverName) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const set = {};
+  incidents.filter(i => i.server === serverName && (i.startAt || '') >= since)
+    .forEach(i => { set[i.domain] = (set[i.domain] || 0) + 1; });
+  return Object.keys(set).sort((a, b) => set[b] - set[a]).slice(0, 15);
+}
+
+// ตัววัดอัตโนมัติ: ทุก 30 นาที วัดเครื่องที่มี incident ใน 24 ชม.ล่าสุด
+let autoMeasureRunning = false;
+async function autoMeasureLoop() {
+  if (autoMeasureRunning) return;
+  autoMeasureRunning = true;
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const servers = [...new Set(incidents.filter(i => (i.startAt || '') >= since && i.server).map(i => i.server))];
+    for (const srv of servers) {
+      try { await measureServer(srv, focusDomainsFor(srv)); } catch (e) {}
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  } catch (e) {} finally { autoMeasureRunning = false; }
+}
+
 async function handleRequest(req, res) {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
   const url = req.url.split('?')[0];
@@ -2035,6 +2156,32 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Resource measurement (ระดับ B1) — อ่านผลวัดล่าสุด
+  if (req.method === 'GET' && url === '/api/server-resources') {
+    const q = rawUrl.split('?')[1] || '';
+    const want = decodeURIComponent((q.split('server=')[1] || '').split('&')[0] || '');
+    if (want) {
+      json(res, { success: true, server: want, data: resourceStats[want] || null });
+    } else {
+      json(res, { success: true, all: resourceStats });
+    }
+    return;
+  }
+  // สั่งวัดเดี๋ยวนี้ (ต้องมีคีย์ — เพราะทำให้เครื่องรันคำสั่ง)
+  if (req.method === 'POST' && url === '/api/server-resources/measure') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) {
+      json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง (ISP_AGENT_KEY) — กันการสั่งรันคำสั่งมั่ว' }, 403);
+      return;
+    }
+    const serverName = String(body.server || '').trim();
+    if (!serverName) { json(res, { success: false, error: 'ต้องระบุ server' }); return; }
+    const focus = Array.isArray(body.domains) && body.domains.length ? body.domains : focusDomainsFor(serverName);
+    const r = await measureServer(serverName, focus);
+    json(res, r);
+    return;
+  }
+
   // Resource-hog analysis (ระดับ A) — หาโดเมนที่น่าจะทำโฮสแย่ จาก incident ที่เก็บไว้
   if (req.method === 'GET' && url.startsWith('/api/server-hogs')) {
     const q = rawUrl.split('?')[1] || '';
@@ -2106,10 +2253,25 @@ async function handleRequest(req, res) {
     const allDomains = Object.keys(allMap).map(k => allMap[k])
       .sort((a, b) => (b.downCount + b.warnCount) - (a.downCount + a.warnCount) || b.totalMin - a.totalMin);
 
+    // แนบผลวัดจริง (B1) ให้ suspect + all ที่มีข้อมูล
+    function attachMeasured(rows) {
+      rows.forEach(r => {
+        const rs = resourceStats[r.server];
+        if (!rs) return;
+        const fp = (rs.phpfpm || []).find(p => p.domain === r.domain);
+        const hot = (rs.hotDomains || []).find(h => h.domain === r.domain);
+        if (fp) r.measuredPhpfpm = fp;      // {active,max,pct}
+        if (hot) r.measuredHot = hot;        // {requests,topIp,topIpHits}
+        r.measuredAt = rs.at;
+      });
+    }
+    attachMeasured(suspects);
+
     json(res, {
       success: true, since, hours, server: wantServer || null,
       totalIncidents: recent.length,
       servers: serverSummary,
+      resourceStats,
       suspects,
       allDomains,
       note: 'ระดับ A: อนุมานจากประวัติดับ — "ดับเป็นตัวแรกตอนโฮสเริ่มแย่ซ้ำๆ" = น่าสงสัยว่าเป็นตัวแย่งทรัพยากร ไม่ใช่หลักฐานยืนยัน ต้องวัดจากในเครื่อง (ระดับ B) เพื่อฟันธง'
@@ -5427,6 +5589,7 @@ server.listen(PORT, async () => {
   setTimeout(() => checkAllISPBlocks().catch(()=>{}), 90 * 1000); // run แรกหลัง start 90 วิ
   setInterval(snapshotHistory, 60 * 60 * 1000); // เก็บ snapshot สถานะทุก 1 ชม.
   setInterval(checkWatchList, 60 * 1000); // watchlist: เช็กโดเมนสำคัญทุก 1 นาที
+  setInterval(autoMeasureLoop, 30 * 60 * 1000); // B1: วัดทรัพยากรจริงเครื่องที่มีปัญหา ทุก 30 นาที
   setTimeout(snapshotHistory, 120 * 1000); // snapshot แรกหลัง start 2 นาที
   setInterval(() => syncPleskDomains(), PLESK_SYNC_INTERVAL_MS);
   setInterval(checkServerHealth, CHECK_INTERVAL_MS);
