@@ -2035,6 +2035,70 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Resource-hog analysis (ระดับ A) — หาโดเมนที่น่าจะทำโฮสแย่ จาก incident ที่เก็บไว้
+  if (req.method === 'GET' && url.startsWith('/api/server-hogs')) {
+    const q = rawUrl.split('?')[1] || '';
+    const wantServer = decodeURIComponent((q.split('server=')[1] || '').split('&')[0] || '');
+    const days = 7;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const recent = incidents.filter(i => (i.startAt || '') >= since && i.server);
+
+    // จัดกลุ่มเป็น "เหตุการณ์โฮสแย่" = incident ที่ cause=host เกิดใกล้กัน (ภายใน 6 นาที) บนเครื่องเดียว
+    const hostEvents = {}; // server -> [ {at, domains:Set} ]
+    recent.filter(i => i.cause === 'host').forEach(i => {
+      const t = new Date(i.startAt).getTime();
+      const arr = hostEvents[i.server] = hostEvents[i.server] || [];
+      let ev = arr.find(e => Math.abs(e.at - t) <= 6 * 60 * 1000);
+      if (!ev) { ev = { at: t, order: [] }; arr.push(ev); }
+      if (ev.order.indexOf(i.domain) === -1) ev.order.push(i.domain); // ลำดับที่ดับ (ดับก่อน = น่าสงสัยกว่า)
+    });
+
+    // ให้คะแนนต่อโดเมน: ยิ่งดับ "ก่อน" ในเหตุการณ์โฮสแย่ + ดับบ่อย = คะแนนสูง (น่าสงสัยเป็นตัวการ)
+    const score = {}; // domain -> { domain, server, hostEventCount, firstToFail, totalDown, totalWarn, lastAt }
+    function get(dom, srv) {
+      return score[dom] = score[dom] || { domain: dom, server: srv, hostEventCount: 0, firstToFail: 0, totalDown: 0, totalWarn: 0, lastAt: null, points: 0 };
+    }
+    Object.keys(hostEvents).forEach(srv => {
+      if (wantServer && srv !== wantServer) return;
+      hostEvents[srv].forEach(ev => {
+        ev.order.forEach((dom, idx) => {
+          const s = get(dom, srv);
+          s.hostEventCount++;
+          // ดับเป็นตัวแรกๆ ในเหตุการณ์ = น่าสงสัยว่าเป็นตัวจุดชนวน
+          if (idx === 0) { s.firstToFail++; s.points += 5; }
+          else if (idx === 1) s.points += 2;
+          else s.points += 1;
+        });
+      });
+    });
+    // รวมความถี่ดับทั้งหมด (นอกเหตุการณ์โฮสด้วย)
+    recent.forEach(i => {
+      if (wantServer && i.server !== wantServer) return;
+      const s = score[i.domain]; if (!s) return;
+      if (i.kind === 'warn') s.totalWarn++; else s.totalDown++;
+      if (!s.lastAt || i.startAt > s.lastAt) s.lastAt = i.startAt;
+    });
+
+    const suspects = Object.keys(score).map(k => score[k])
+      .filter(s => s.hostEventCount > 0)
+      .sort((a, b) => b.points - a.points || b.firstToFail - a.firstToFail)
+      .slice(0, 20);
+
+    // สรุปรายเครื่อง: มีกี่เหตุการณ์โฮสแย่ ใน 7 วัน
+    const serverSummary = Object.keys(hostEvents)
+      .filter(srv => !wantServer || srv === wantServer)
+      .map(srv => ({ server: srv, hostEvents: hostEvents[srv].length }))
+      .sort((a, b) => b.hostEvents - a.hostEvents);
+
+    json(res, {
+      success: true, since, server: wantServer || null,
+      servers: serverSummary,
+      suspects,
+      note: 'ระดับ A: อนุมานจากประวัติดับ — "ดับเป็นตัวแรกตอนโฮสเริ่มแย่ซ้ำๆ" = น่าสงสัยว่าเป็นตัวแย่งทรัพยากร ไม่ใช่หลักฐานยืนยัน ต้องวัดจากในเครื่อง (ระดับ B) เพื่อฟันธง'
+    });
+    return;
+  }
+
   // Watchlist API (added feature) — โดเมนที่เช็กถี่ทุก 1 นาที
   if (req.method === 'GET' && url === '/api/watchlist') {
     json(res, { success: true, domains: watchList, max: WATCHLIST_MAX, intervalSec: 60, lastCheckAt: lastWatchAt });
