@@ -6687,16 +6687,43 @@ async function incDetail(dom){
 
 <script>
 // ===== RESOURCE HOG ANALYSIS (added feature) =====
+var _hogHours=168;
+function setHogHours(h){ _hogHours=h; loadHogs(); }
 async function loadHogs(){
   var el=document.getElementById('inc-hogs'); if(!el) return;
   try{
-    var r=await fetch(API+'/api/server-hogs'); var d=await r.json();
+    var r=await fetch(API+'/api/server-hogs?hours='+_hogHours); var d=await r.json();
     if(!d.success){ el.innerHTML=''; return; }
+    function tabBtn(h,label){ return '<button class="btn" onclick="setHogHours('+h+')" style="padding:3px 12px;font-size:12px;'+(_hogHours===h?'background:var(--blue,#3b82f6);color:#fff;border-color:var(--blue,#3b82f6)':'')+'">'+label+'</button>'; }
     var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px;margin-top:4px">'+
-      '<div style="font-weight:700;font-size:14px;margin-bottom:4px">🔎 โดเมนที่น่าสงสัยว่าทำโฮสแย่ (7 วัน)</div>'+
-      '<div style="font-size:11px;color:var(--text3,#888);margin-bottom:10px">ดูจาก "ดับเป็นตัวแรกๆ ตอนโฮสเริ่มมีปัญหา ซ้ำๆ" — เป็นการชี้เป้า ไม่ใช่หลักฐาน กดปุ่มท้ายแถวเพื่อวัดจริงจากในเครื่อง</div>';
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">'+
+      '<div style="font-weight:700;font-size:14px">🔎 วิเคราะห์โดเมนที่ทำโฮสแย่</div>'+
+      '<div style="display:flex;gap:6px">'+tabBtn(1,'1 ชม.')+tabBtn(24,'24 ชม.')+tabBtn(168,'7 วัน')+'</div></div>';
+
+    // ===== ตาราง 1: โดเมนที่ดับทั้งหมดในช่วงนี้ (ไม่ต้องรอโฮสแย่) =====
+    h+='<div style="font-weight:600;font-size:13px;margin-bottom:6px">โดเมนที่ดับ/ผิดปกติในช่วงนี้ ('+(d.allDomains||[]).length+' โดเมน · '+d.totalIncidents+' ครั้ง)</div>';
+    if(!(d.allDomains||[]).length){
+      h+='<div style="color:var(--green,#2ecc71);font-size:13px;padding:6px 0">ไม่มีโดเมนดับในช่วงนี้ 🎉</div>';
+    } else {
+      h+='<table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:16px">'+
+        '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">โดเมน</th><th style="padding:6px">เครื่อง</th><th style="padding:6px">ดับ</th><th style="padding:6px">warn</th><th style="padding:6px">รวมเวลา</th><th style="padding:6px">อาการล่าสุด</th></tr>';
+      d.allDomains.forEach(function(a){
+        h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(a.stillDown?';background:rgba(226,75,74,0.08)':'')+'">'+
+          '<td style="padding:6px;font-weight:600"><a href="https://'+a.domain+'" target="_blank" rel="noopener" style="color:inherit">'+a.domain+'</a>'+(a.stillDown?' <span style="color:#e24b4a;font-size:10px">●</span>':'')+'</td>'+
+          '<td style="padding:6px">'+(a.server||'-')+'</td>'+
+          '<td style="padding:6px;font-weight:700;color:'+(a.downCount?'#e24b4a':'var(--text3,#888)')+'">'+a.downCount+'</td>'+
+          '<td style="padding:6px;color:'+(a.warnCount?'#e3b93b':'var(--text3,#888)')+'">'+a.warnCount+'</td>'+
+          '<td style="padding:6px">'+(a.totalMin?a.totalMin+' น.':'-')+'</td>'+
+          '<td style="padding:6px;color:var(--text3,#888)">'+(a.lastError||'-')+'</td></tr>';
+      });
+      h+='</table>';
+    }
+
+    // ===== ตาราง 2: ผู้ต้องสงสัยเป็นตัวการ (เฉพาะตอนมีเหตุการณ์โฮสแย่) =====
+    h+='<div style="font-weight:600;font-size:13px;margin-bottom:4px">ผู้ต้องสงสัยว่าเป็น "ตัวจุดชนวน"</div>'+
+      '<div style="font-size:11px;color:var(--text3,#888);margin-bottom:8px">ดูจาก "ดับเป็นตัวแรกๆ ตอนโฮสเริ่มแย่ ซ้ำๆ" — ชี้เป้าเท่านั้น กด "วัดจริง" เพื่อยืนยันจากในเครื่อง</div>';
     if(!(d.suspects||[]).length){
-      h+='<div style="color:var(--text3,#888);font-size:13px">ยังไม่มีข้อมูลพอ — ต้องมี "เหตุการณ์โฮสแย่" (หลายโดเมนดับพร้อมกัน) เกิดขึ้นก่อน ระบบถึงจะชี้ผู้ต้องสงสัยได้</div></div>';
+      h+='<div style="color:var(--text3,#888);font-size:13px">ยังไม่มี "เหตุการณ์โฮสแย่" (หลายโดเมนดับพร้อมกัน) ในช่วงนี้ — ยังชี้ตัวจุดชนวนไม่ได้ (ดูตารางด้านบนแทน)</div></div>';
       el.innerHTML=h; return;
     }
     h+='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
