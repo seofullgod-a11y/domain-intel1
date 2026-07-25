@@ -503,6 +503,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="openIncidents()">
         <i class="ti ti-alert-triangle"></i> ประวัติดับ (Incidents)
       </div>
+      <div class="nav-item" onclick="openWpAdmin()">
+        <i class="ti ti-lock-open"></i> เปิด/ปิด wp-admin
+      </div>
       <div class="nav-item" onclick="showPage('tasks')">
         <i class="ti ti-layout-kanban"></i> To-Do Board
       </div>
@@ -6821,5 +6824,119 @@ async function measureNow(server){
     if(typeof toast==='function')toast(msg,'success');
     loadIncidents();
   }catch(e){ if(typeof toast==='function')toast('วัดไม่ได้: '+e.message,'error'); }
+}
+</script>
+<script>
+// ===== WP-ADMIN TOGGLE PAGE (added feature) =====
+window._wpKey = null;
+window._wpDomains = [];
+window._wpServers = [];
+function wpEnsurePage(){
+  if(document.getElementById('page-wpadmin')) return;
+  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
+  var div=document.createElement('div'); div.id='page-wpadmin'; div.style.display='none';
+  div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='14px'; div.style.overflow='auto';
+  div.innerHTML=
+    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-lock-open"></i> เปิด/ปิด wp-admin</h2>'+
+    '<div style="font-size:12px;color:var(--text3,#888)">เปิดให้เข้าหลังบ้าน (wp-login) รายโดเมน — ระบบ configtest ก่อนทุกครั้ง ถ้า config ผิดจะ rollback อัตโนมัติ ไม่ทำเว็บพัง</div></div>'+
+    '<div style="background:rgba(227,154,59,0.1);border:1px solid rgba(227,154,59,0.3);border-radius:8px;padding:10px;font-size:12px;color:#e3b93b">'+
+      '⚠️ เว็บที่เปิด wp-admin ควรมี Cloudflare Managed Challenge กันบอทด้วย ไม่งั้นบอทจะยิงกลับมาที่เว็บนั้น</div>'+
+    '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
+      '<div style="font-weight:700;font-size:14px;margin-bottom:8px">เปิด wp-admin ให้โดเมน</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+        '<input id="wp-search" list="wp-domlist" placeholder="พิมพ์ชื่อโดเมน เช่น sum888th.com" oninput="wpOnPick()" '+
+          'style="flex:1;min-width:240px;padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit">'+
+        '<datalist id="wp-domlist"></datalist>'+
+        '<span id="wp-srv" style="font-size:12px;color:var(--text3,#888)"></span>'+
+        '<button class="btn" style="background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="wpSet(true)">🔓 เปิด wp-admin</button>'+
+        '<button class="btn" style="background:rgba(226,75,74,0.12);color:#e24b4a;border-color:rgba(226,75,74,0.3)" onclick="wpSet(false)">🔒 ปิด (บล็อก)</button>'+
+      '</div></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center">'+
+      '<div style="font-weight:700;font-size:14px">สถานะแต่ละเครื่อง</div>'+
+      '<button class="btn" onclick="wpLoadAll()"><i class="ti ti-reload"></i> โหลดสถานะ</button></div>'+
+    '<div id="wp-servers" style="display:flex;flex-direction:column;gap:10px"></div>';
+  c.appendChild(div);
+}
+function openWpAdmin(){ wpEnsurePage(); showPage('wpadmin');
+  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openWpAdmin()') n.classList.add('active'); });
+  wpInit();
+}
+async function wpInit(){
+  try{
+    var r=await fetch(API+'/api/wpadmin/domains'); var d=await r.json();
+    window._wpDomains=d.domains||[]; window._wpServers=d.servers||[];
+    var dl=document.getElementById('wp-domlist');
+    if(dl) dl.innerHTML=window._wpDomains.slice(0,2000).map(function(x){return '<option value="'+x.domain+'">';}).join('');
+  }catch(e){}
+  wpLoadAll();
+}
+function wpOnPick(){
+  var v=(document.getElementById('wp-search').value||'').trim().toLowerCase();
+  var hit=window._wpDomains.find(function(x){return x.domain===v;});
+  document.getElementById('wp-srv').textContent = hit ? ('→ อยู่ '+hit.server) : '';
+}
+function wpNeedKey(){
+  if(!window._wpKey){
+    window._wpKey=prompt('ใส่ ISP_AGENT_KEY (คีย์เดียวกับที่ตั้งใน Railway):');
+  }
+  return window._wpKey;
+}
+async function wpSet(open){
+  var v=(document.getElementById('wp-search').value||'').trim().toLowerCase();
+  if(!v){ if(typeof toast==='function')toast('พิมพ์ชื่อโดเมนก่อน','error'); return; }
+  var hit=window._wpDomains.find(function(x){return x.domain===v;});
+  var server=hit?hit.server:'';
+  if(!wpNeedKey()) return;
+  if(typeof toast==='function')toast((open?'กำลังเปิด ':'กำลังปิด ')+v+' ...','info');
+  try{
+    var r=await fetch(API+'/api/wpadmin/set',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,domain:v,server:server,open:open})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด ลองใหม่','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast('ทำไม่ได้: '+(d.error||'?'),'error'); return; }
+    if(typeof toast==='function')toast((open?'🔓 เปิด ':'🔒 ปิด ')+v+' ('+d.server+') แล้ว','success');
+    wpLoadOne(d.server);
+  }catch(e){ if(typeof toast==='function')toast('ทำไม่ได้: '+e.message,'error'); }
+}
+async function wpLoadAll(){
+  var box=document.getElementById('wp-servers'); if(!box) return;
+  box.innerHTML='';
+  (window._wpServers.length?window._wpServers:['Server 1','Server 2','Server 3','Server 4','Server 5']).forEach(function(s){
+    var el=document.createElement('div'); el.id='wpsrv-'+s.replace(/\s+/g,'_');
+    el.style.cssText='background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:12px';
+    el.innerHTML='<b>'+s+'</b> <span style="color:var(--text3,#888);font-size:12px">— กำลังโหลด...</span>';
+    box.appendChild(el);
+    wpLoadOne(s);
+  });
+}
+async function wpLoadOne(server){
+  var el=document.getElementById('wpsrv-'+server.replace(/\s+/g,'_')); if(!el) return;
+  try{
+    var r=await fetch(API+'/api/wpadmin/status?server='+encodeURIComponent(server));
+    var d=await r.json();
+    if(!d.success){ el.innerHTML='<b>'+server+'</b> <span style="color:#e24b4a;font-size:12px">— '+(d.error||'อ่านไม่ได้ (agent ไม่ตอบ?)')+'</span>'; return; }
+    if(d.apache===false){ el.innerHTML='<b>'+server+'</b> <span style="color:var(--text3,#888);font-size:12px">— ไม่ใช่ Apache (ฟีเจอร์นี้ข้าม)</span>'; return; }
+    var open=(d.openDomains||[]);
+    var head='<b>'+server+'</b> <span style="font-size:12px;color:'+(d.blockOn?'#2ecc71':'var(--text3,#888)')+'">— บล็อก wp-login: '+(d.blockOn?'เปิดอยู่ 🔒':'ปิด (ไม่ได้กัน)')+'</span>';
+    if(!open.length){ el.innerHTML=head+'<div style="font-size:12px;color:var(--text3,#888);margin-top:6px">ยังไม่มีโดเมนที่เปิด wp-admin (ทุกเว็บถูกบล็อก)</div>'; return; }
+    var chips=open.map(function(dom){
+      return '<span style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:var(--green,#2ecc71);padding:3px 8px;border-radius:12px;font-size:12px;margin:2px;display:inline-block">🔓 '+dom+
+        ' <span style="cursor:pointer;color:var(--text3,#888)" title="ปิดกลับ" onclick="wpQuickClose(\''+dom+'\',\''+server+'\')">✕</span></span>';
+    }).join(' ');
+    el.innerHTML=head+'<div style="margin-top:8px">เปิด wp-admin อยู่ '+open.length+' โดเมน:</div><div style="margin-top:4px">'+chips+'</div>';
+  }catch(e){ el.innerHTML='<b>'+server+'</b> <span style="color:#e24b4a;font-size:12px">— '+e.message+'</span>'; }
+}
+async function wpQuickClose(domain, server){
+  if(!wpNeedKey()) return;
+  if(!confirm('ปิด wp-admin (บล็อกกลับ) ให้ '+domain+' ?')) return;
+  try{
+    var r=await fetch(API+'/api/wpadmin/set',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,domain:domain,server:server,open:false})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast('ทำไม่ได้: '+(d.error||'?'),'error'); return; }
+    if(typeof toast==='function')toast('🔒 ปิด '+domain+' แล้ว','success');
+    wpLoadOne(server);
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
 }
 </script>
