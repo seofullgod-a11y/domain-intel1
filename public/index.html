@@ -6850,7 +6850,18 @@ function wpEnsurePage(){
         '<span id="wp-srv" style="font-size:12px;color:var(--text3,#888)"></span>'+
         '<button class="btn" style="background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="wpSet(true)">🔓 เปิด wp-admin</button>'+
         '<button class="btn" style="background:rgba(226,75,74,0.12);color:#e24b4a;border-color:rgba(226,75,74,0.3)" onclick="wpSet(false)">🔒 ปิด (บล็อก)</button>'+
+        '<button class="btn" style="background:rgba(245,130,32,0.13);color:#f58220;border-color:rgba(245,130,32,0.3)" onclick="cfDomain(true)" title="ตั้ง Cloudflare Managed Challenge กันบอทให้โดเมนนี้">☁️ ตั้ง CF กันบอท</button>'+
       '</div></div>'+
+    '<div id="cf-bulk-card" style="background:var(--bg2,#111);border:1px solid rgba(245,130,32,0.3);border-radius:10px;padding:14px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
+        '<div><b style="font-size:14px">☁️ Cloudflare กันบอท — ทั้งหมดรวดเดียว</b>'+
+        '<div style="font-size:11px;color:var(--text3,#888)">ตั้ง Managed Challenge ที่ wp-login + block xmlrpc ให้ทุกโดเมนใน Cloudflare (เก็บ rule เดิมของคุณไว้)</div></div>'+
+        '<div style="display:flex;gap:8px">'+
+          '<button class="btn" style="background:rgba(245,130,32,0.15);color:#f58220;border-color:rgba(245,130,32,0.3)" onclick="cfBulk(true)">☁️ ตั้งทั้งหมด</button>'+
+          '<button class="btn" onclick="cfBulk(false)" title="ถอด rule ที่ระบบตั้งออกทั้งหมด">ถอดทั้งหมด</button>'+
+        '</div></div>'+
+      '<div id="cf-bulk-progress" style="margin-top:8px;font-size:12px;color:var(--text3,#888)"></div>'+
+    '</div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center">'+
       '<div style="font-weight:700;font-size:14px">สถานะแต่ละเครื่อง</div>'+
       '<button class="btn" onclick="wpLoadAll()"><i class="ti ti-reload"></i> โหลดสถานะ</button></div>'+
@@ -6960,5 +6971,59 @@ async function wpQuickClose(domain, server){
     if(typeof toast==='function')toast('🔒 ปิด '+domain+' แล้ว','success');
     wpLoadOne(server);
   }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+</script>
+<script>
+// ===== CLOUDFLARE CONTROL (added feature) =====
+async function cfDomain(enable){
+  var v=(document.getElementById('wp-search').value||'').trim().toLowerCase();
+  if(!v){ if(typeof toast==='function')toast('พิมพ์ชื่อโดเมนก่อน','error'); return; }
+  if(!wpNeedKey()) return;
+  if(typeof toast==='function')toast('กำลังตั้ง Cloudflare ให้ '+v+' ...','info');
+  try{
+    var r=await fetch(API+'/api/cloudflare/domain',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,domain:v,enable:enable})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast('CF ทำไม่ได้: '+(d.error||'?'),'error'); return; }
+    if(typeof toast==='function')toast('☁️ ตั้ง Cloudflare กันบอทให้ '+v+' (zone '+(d.zone||v)+') แล้ว','success');
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+var _cfPoll=null;
+async function cfBulk(enable){
+  if(!wpNeedKey()) return;
+  var msg=enable?'ตั้ง Cloudflare กันบอทให้ทุกโดเมน?\n\nจะไล่ตั้ง Managed Challenge + block xmlrpc ทีละเว็บ (rule เดิมของคุณไม่หาย)'
+                :'ถอด Cloudflare rule ที่ระบบตั้ง ออกจากทุกโดเมน?';
+  if(!confirm(msg)) return;
+  try{
+    var r=await fetch(API+'/api/cloudflare/bulk',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,enable:enable})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast(d.error||'เริ่มไม่ได้','error'); return; }
+    if(typeof toast==='function')toast('เริ่มตั้ง Cloudflare '+d.total+' โดเมน...','info');
+    cfPollStatus();
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+async function cfPollStatus(){
+  if(_cfPoll) clearInterval(_cfPoll);
+  var box=document.getElementById('cf-bulk-progress');
+  async function tick(){
+    try{
+      var r=await fetch(API+'/api/cloudflare/bulk-status'); var d=await r.json();
+      if(!box) return;
+      var pct=d.total?Math.round(d.done/d.total*100):0;
+      var bar='<div style="background:#222;border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#f58220;height:100%;width:'+pct+'%"></div></div>';
+      var line='ทำไป '+d.done+'/'+d.total+' — สำเร็จ '+d.ok+' · ล้มเหลว '+d.failed+(d.running?' (กำลังทำ...)':' ✅ เสร็จแล้ว');
+      var fails='';
+      if(d.failures&&d.failures.length){
+        fails='<div style="margin-top:6px;color:#e24b4a">ที่ล้มเหลว ('+d.failed+'):</div><div style="max-height:120px;overflow:auto;font-size:11px;color:var(--text3,#888)">'+
+          d.failures.map(function(f){return '• '+f.domain+': '+f.error;}).join('<br>')+'</div>';
+      }
+      box.innerHTML=bar+line+fails;
+      if(!d.running){ clearInterval(_cfPoll); _cfPoll=null; }
+    }catch(e){}
+  }
+  tick(); _cfPoll=setInterval(tick,1500);
 }
 </script>
