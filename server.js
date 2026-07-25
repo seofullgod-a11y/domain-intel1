@@ -1252,6 +1252,38 @@ async function cfPutRules(zoneId, rules) {
   return cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_firewall_custom/entrypoint',
     { method: 'PUT', body: { rules } });
 }
+// cache สถานะ CF ต่อโดเมน — กันยิง CF ซ้ำทุกครั้ง (เก็บ /tmp, refresh ได้)
+const CF_STATUS_FILE = path.join('/tmp', 'domainintel-cfstatus.json');
+let cfStatusCache = {}; // { domain: { hasZone, hasRule, zone, at } }
+try { cfStatusCache = JSON.parse(fs.readFileSync(CF_STATUS_FILE, 'utf8')) || {}; } catch (e) {}
+function saveCfStatus() { try { fs.writeFileSync(CF_STATUS_FILE, JSON.stringify(cfStatusCache)); } catch (e) {} }
+async function cfCheckDomain(domain) {
+  const zone = await cfFindZone(domain);
+  if (!zone) { const s = { hasZone: false, hasRule: false, zone: null, at: Date.now() }; cfStatusCache[domain] = s; return s; }
+  let hasRule = false;
+  try {
+    const rules = await cfGetEntrypoint(zone.id);
+    const ours = new Set(cfRules().map(r => r.description));
+    hasRule = rules.some(r => ours.has(r.description));
+  } catch (e) {}
+  const s = { hasZone: true, hasRule, zone: zone.name, at: Date.now() };
+  cfStatusCache[domain] = s;
+  return s;
+}
+let cfScan = { running: false, total: 0, done: 0 };
+async function cfScanAll(domains) {
+  if (cfScan.running) return;
+  cfScan = { running: true, total: domains.length, done: 0 };
+  for (const dom of domains) {
+    try { await cfCheckDomain(dom); } catch (e) {}
+    cfScan.done++;
+    if (cfScan.done % 25 === 0) saveCfStatus();
+    await new Promise(r => setTimeout(r, 200));
+  }
+  saveCfStatus();
+  cfScan.running = false;
+}
+
 // ใส่ rule (merge ไม่ลบของเดิม) หรือถอด rule ของระบบออก
 async function cfApplyDomain(domain, enable) {
   const zone = await cfFindZone(domain);
@@ -1269,6 +1301,7 @@ async function cfApplyDomain(domain, enable) {
       merged = kept; // ถอดเฉพาะของเรา
     }
     await cfPutRules(zone.id, merged);
+    cfStatusCache[domain] = { hasZone: true, hasRule: enable, zone: zone.name, at: Date.now() };
     return { domain, ok: true, zone: zone.name, enabled: enable };
   } catch (e) {
     return { domain, ok: false, error: e.message };
@@ -2338,6 +2371,30 @@ async function handleRequest(req, res) {
     saveAutoHealList();
     try { logEvent('info', 'Auto-heal ' + (want ? 'ปิด' : 'เปิด') + ' สำหรับ ' + name); } catch (e) {}
     json(res, { success: true, server: name, disabled: want, list: autoHealDisabledList });
+    return;
+  }
+
+  // สถานะ CF ต่อโดเมน (จาก cache) + รายชื่อโดเมนพร้อมเครื่อง
+  if (req.method === 'GET' && url === '/api/cloudflare/domains-status') {
+    const list = [...new Set(memoryDomains.map(d => d.domain).filter(Boolean))];
+    const rows = list.map(dom => {
+      const d = memoryDomains.find(x => x.domain === dom) || {};
+      const s = cfStatusCache[dom] || null;
+      return { domain: dom, server: d.pleskServer || null,
+        hasZone: s ? s.hasZone : null, hasRule: s ? s.hasRule : null, checkedAt: s ? s.at : null };
+    });
+    json(res, { success: true, domains: rows, scan: cfScan, lastScanCount: Object.keys(cfStatusCache).length });
+    return;
+  }
+  // สแกนสถานะ CF ทุกโดเมน (background) — ต้องมี key
+  if (req.method === 'POST' && url === '/api/cloudflare/scan') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (cfScan.running) { json(res, { success: false, error: 'กำลังสแกนอยู่แล้ว' }); return; }
+    const list = [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
+    cfScanAll(list).catch(() => { cfScan.running = false; });
+    json(res, { success: true, started: true, total: list.length });
     return;
   }
 
