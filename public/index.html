@@ -6917,14 +6917,36 @@ async function wpLoadOne(server){
     if(!d.success){ el.innerHTML='<b>'+server+'</b> <span style="color:#e24b4a;font-size:12px">— '+(d.error||'อ่านไม่ได้ (agent ไม่ตอบ?)')+'</span>'; return; }
     if(d.apache===false){ el.innerHTML='<b>'+server+'</b> <span style="color:var(--text3,#888);font-size:12px">— ไม่ใช่ Apache (ฟีเจอร์นี้ข้าม)</span>'; return; }
     var open=(d.openDomains||[]);
-    var head='<b>'+server+'</b> <span style="font-size:12px;color:'+(d.blockOn?'#2ecc71':'var(--text3,#888)')+'">— บล็อก wp-login: '+(d.blockOn?'เปิดอยู่ 🔒':'ปิด (ไม่ได้กัน)')+'</span>';
-    if(!open.length){ el.innerHTML=head+'<div style="font-size:12px;color:var(--text3,#888);margin-top:6px">ยังไม่มีโดเมนที่เปิด wp-admin (ทุกเว็บถูกบล็อก)</div>'; return; }
+    var blockBtn = d.blockOn
+      ? '<button class="btn" style="padding:3px 10px;font-size:11px;background:rgba(148,163,184,0.15);color:var(--text3,#888);border-color:rgba(148,163,184,0.3)" onclick="wpBlock(\''+server+'\',false)" title="ถอดบล็อก wp-login ออกทั้งเครื่อง (บอทเข้าได้อีก)">หยุดกันบอท</button>'
+      : '<button class="btn" style="padding:3px 10px;font-size:11px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="wpBlock(\''+server+'\',true)" title="เปิดบล็อก wp-login ทั้งเครื่อง กันบอทยิงรหัส">🛡️ เปิดกันบอท</button>';
+    var head='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
+      '<div><b>'+server+'</b> <span style="font-size:12px;color:'+(d.blockOn?'#2ecc71':'#e3b93b')+'">— บล็อก wp-login: '+(d.blockOn?'เปิดอยู่ 🔒':'ปิด (ไม่ได้กัน ⚠️)')+'</span></div>'+
+      blockBtn+'</div>';
+    if(!open.length){ el.innerHTML=head+'<div style="font-size:12px;color:var(--text3,#888);margin-top:6px">'+(d.blockOn?'ทุกเว็บถูกบล็อก wp-admin (ยังไม่เปิดให้เว็บไหน)':'เครื่องนี้ยังไม่ได้กันบอท — กด "เปิดกันบอท" เพื่อบล็อก wp-login')+'</div>'; return; }
     var chips=open.map(function(dom){
       return '<span style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:var(--green,#2ecc71);padding:3px 8px;border-radius:12px;font-size:12px;margin:2px;display:inline-block">🔓 '+dom+
         ' <span style="cursor:pointer;color:var(--text3,#888)" title="ปิดกลับ" onclick="wpQuickClose(\''+dom+'\',\''+server+'\')">✕</span></span>';
     }).join(' ');
-    el.innerHTML=head+'<div style="margin-top:8px">เปิด wp-admin อยู่ '+open.length+' โดเมน:</div><div style="margin-top:4px">'+chips+'</div>';
+    el.innerHTML=head+'<div style="margin-top:8px;font-size:12px">🔓 เปิด wp-admin อยู่ '+open.length+' โดเมน (ที่เหลือบนเครื่องถูกบล็อก):</div><div style="margin-top:4px">'+chips+'</div>';
   }catch(e){ el.innerHTML='<b>'+server+'</b> <span style="color:#e24b4a;font-size:12px">— '+e.message+'</span>'; }
+}
+async function wpBlock(server, enable){
+  if(!wpNeedKey()) return;
+  var msg = enable
+    ? 'เปิดกันบอท (บล็อก wp-login) ทั้งเครื่อง '+server+' ?\n\nทุกเว็บบนเครื่องนี้จะเข้า wp-admin ไม่ได้ ยกเว้นเว็บที่คุณเปิดไว้'
+    : 'หยุดกันบอท '+server+' ?\n\n⚠️ ถอดบล็อกออกทั้งเครื่อง — บอทจะยิง wp-login ได้อีก อาจทำเครื่องล่ม';
+  if(!confirm(msg)) return;
+  if(typeof toast==='function')toast((enable?'กำลังเปิดกันบอท ':'กำลังหยุดกันบอท ')+server+' ...','info');
+  try{
+    var r=await fetch(API+'/api/wpadmin/block',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,server:server,enable:enable})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast('ทำไม่ได้: '+(d.error||'?'),'error'); return; }
+    if(typeof toast==='function')toast((enable?'🛡️ เปิดกันบอท ':'หยุดกันบอท ')+server+' แล้ว','success');
+    wpLoadOne(server);
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
 }
 async function wpQuickClose(domain, server){
   if(!wpNeedKey()) return;
