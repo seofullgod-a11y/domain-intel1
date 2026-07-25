@@ -1198,20 +1198,32 @@ function cfRules() {
     { description: CF_TAG + ' block xmlrpc', expression: '(http.request.uri.path contains "/xmlrpc.php")', action: 'block' }
   ];
 }
-async function cfApi(path, opts) {
+function cfApi(path, opts) {
   opts = opts || {};
-  const r = await fetch(CF_API + path, {
-    method: opts.method || 'GET',
-    headers: { 'Authorization': 'Bearer ' + CF_TOKEN, 'Content-Type': 'application/json' },
-    body: opts.body ? JSON.stringify(opts.body) : undefined
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(CF_API + path); } catch (e) { return reject(new Error('URL ไม่ถูกต้อง')); }
+    const payload = opts.body ? JSON.stringify(opts.body) : null;
+    const headers = { 'Authorization': 'Bearer ' + CF_TOKEN, 'Content-Type': 'application/json' };
+    if (payload) headers['Content-Length'] = Buffer.byteLength(payload);
+    const req = https.request(u, { method: opts.method || 'GET', headers, timeout: 15000 }, (res) => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        let j;
+        try { j = JSON.parse(data); } catch (e) { return reject(new Error('CF ตอบไม่ใช่ JSON (HTTP ' + res.statusCode + ')')); }
+        if (!j.success) {
+          const msg = (j.errors || []).map(e => e.message).join('; ') || ('HTTP ' + res.statusCode);
+          const err = new Error(msg); err.cfErrors = j.errors; return reject(err);
+        }
+        resolve(j);
+      });
+    });
+    req.on('error', e => reject(new Error(e.message)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('CF timeout')); });
+    if (payload) req.write(payload);
+    req.end();
   });
-  let j;
-  try { j = await r.json(); } catch (e) { throw new Error('CF ตอบไม่ใช่ JSON (HTTP ' + r.status + ')'); }
-  if (!j.success) {
-    const msg = (j.errors || []).map(e => e.message).join('; ') || ('HTTP ' + r.status);
-    const err = new Error(msg); err.cfErrors = j.errors; throw err;
-  }
-  return j;
 }
 // หา zone id จากชื่อโดเมน (รองรับ subdomain — ตัดเหลือ root)
 async function cfFindZone(domain) {
