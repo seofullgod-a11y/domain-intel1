@@ -1237,6 +1237,39 @@ function buildWpadminToggleCmd(domain, open) {
   ].join('\n');
 }
 
+// เปิด/หยุด "บล็อกทั้งเครื่อง" — enable=true สร้างบล็อก (เก็บ list เดิมที่เปิดไว้), enable=false ถอดออกหมด
+function buildWpadminBlockCmd(enable) {
+  if (!enable) {
+    return [
+      'CONF=/etc/httpd/conf.d/zzz-emergency.conf',
+      'if ! command -v apachectl >/dev/null 2>&1; then echo "RESULT:NOT_APACHE"; exit 0; fi',
+      'rm -f "$CONF"',
+      'if apachectl configtest >/dev/null 2>&1; then systemctl reload httpd && echo "RESULT:OK"; else echo "RESULT:CONFIGTEST_FAILED"; fi'
+    ].join('\n');
+  }
+  return [
+    'set -e',
+    'CONF=/etc/httpd/conf.d/zzz-emergency.conf',
+    'LIST=/etc/httpd/conf.d/.wpadmin-open.list',
+    'if ! command -v apachectl >/dev/null 2>&1; then echo "RESULT:NOT_APACHE"; exit 0; fi',
+    'touch "$LIST"',
+    // ถ้ามี conf เดิมที่เปิดบางโดเมนไว้ ให้ seed list ไว้ก่อน จะได้ไม่ลืม
+    'if [ ! -s "$LIST" ] && [ -f "$CONF" ]; then sed -n \'s/.*(?!\\([^)]*\\)).*/\\1/p\' "$CONF" 2>/dev/null | tr \'|\' \'\\n\' | sed \'s#/$##; s#\\\\##g\' | grep . > "$LIST" || true; fi',
+    'OPEN=$(sort -u "$LIST" | grep . | sed \'s/\\./\\\\./g; s#$#/#\' | paste -sd\'|\' - || true)',
+    'if [ -n "$OPEN" ]; then LA="(?!$OPEN)"; else LA=""; fi',
+    '[ -f "$CONF" ] && cp -f "$CONF" "$CONF.bak" || true',
+    'cat > "$CONF" <<DICONF',
+    '<DirectoryMatch "^/var/www/vhosts/${LA}[^/]+/httpdocs">',
+    '    <FilesMatch "^(wp-login|xmlrpc)\\.php\\$">',
+    '        Require all denied',
+    '    </FilesMatch>',
+    '</DirectoryMatch>',
+    'DICONF',
+    'if apachectl configtest >/dev/null 2>&1; then systemctl reload httpd && echo "RESULT:OK"; else [ -f "$CONF.bak" ] && mv -f "$CONF.bak" "$CONF" || rm -f "$CONF"; systemctl reload httpd >/dev/null 2>&1 || true; echo "RESULT:CONFIGTEST_FAILED"; fi',
+    'rm -f "$CONF.bak" 2>/dev/null || true'
+  ].join('\n');
+}
+
 function parseWpadminStatus(raw) {
   const out = { apache: null, blockOn: null, openDomains: [] };
   if (!raw) return out;
@@ -2242,6 +2275,30 @@ async function handleRequest(req, res) {
     json(res, { success: true, domains: list, servers: PLESK_SERVERS.map(s => s.name) });
     return;
   }
+  // เปิด/หยุด "บล็อกทั้งเครื่อง" (ต้องมี key)
+  if (req.method === 'POST' && url === '/api/wpadmin/block') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) {
+      json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง (ISP_AGENT_KEY)' }, 403);
+      return;
+    }
+    const serverName = String(body.server || '').trim();
+    const enable = !!body.enable;
+    if (!serverName) { json(res, { success: false, error: 'ต้องระบุ server' }); return; }
+    try {
+      const r = await runOnServer(serverName, buildWpadminBlockCmd(enable));
+      const outp = (r.output || '').trim();
+      if (/RESULT:NOT_APACHE/.test(outp)) { json(res, { success: false, server: serverName, error: 'เครื่องนี้ไม่ใช่ Apache' }); return; }
+      if (/RESULT:CONFIGTEST_FAILED/.test(outp)) { json(res, { success: false, server: serverName, error: 'config ไม่ผ่าน — rollback แล้ว เว็บไม่พัง' }); return; }
+      if (!/RESULT:OK/.test(outp)) { json(res, { success: false, server: serverName, error: 'agent ตอบไม่ชัด: ' + outp.slice(0,100) }); return; }
+      try { logEvent('info', (enable ? 'เปิดกันบอท (บล็อก wp-login) ทั้งเครื่อง ' : 'หยุดกันบอท ') + serverName); } catch (e) {}
+      json(res, { success: true, server: serverName, enable });
+    } catch (e) {
+      json(res, { success: false, server: serverName, error: e.message });
+    }
+    return;
+  }
+
   // เปิด/ปิด wp-admin ของ 1 โดเมน (ต้องมี key — เพราะสั่งเครื่อง reload apache)
   if (req.method === 'POST' && url === '/api/wpadmin/set') {
     const body = await parseBody(req);
