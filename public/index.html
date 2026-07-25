@@ -6865,10 +6865,23 @@ function wpEnsurePage(){
     '<div style="display:flex;justify-content:space-between;align-items:center">'+
       '<div style="font-weight:700;font-size:14px">สถานะแต่ละเครื่อง</div>'+
       '<button class="btn" onclick="wpLoadAll()"><i class="ti ti-reload"></i> โหลดสถานะ</button></div>'+
-    '<div id="wp-servers" style="display:flex;flex-direction:column;gap:10px"></div>';
+    '<div id="wp-servers" style="display:flex;flex-direction:column;gap:10px"></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:8px">'+
+      '<div><b style="font-size:14px">รายชื่อโดเมน + สถานะ Cloudflare</b>'+
+        '<div style="font-size:11px;color:var(--text3,#888)">🟢 มี CF กันบอทแล้ว = เปิด wp-admin ได้ปลอดภัย · 🟡 มีใน CF แต่ยังไม่ตั้ง · ⚪ ไม่มีใน Cloudflare</div></div>'+
+      '<div style="display:flex;gap:8px;align-items:center">'+
+        '<input id="cfq" placeholder="ค้นหา..." oninput="cfRenderList()" style="padding:7px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit">'+
+        '<select id="cffilter" onchange="cfRenderList()" style="padding:7px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit">'+
+          '<option value="all">ทั้งหมด</option><option value="ready">🟢 พร้อมเปิด (มี CF)</option>'+
+          '<option value="norule">🟡 มี CF ยังไม่ตั้ง</option><option value="nozone">⚪ ไม่มีใน CF</option></select>'+
+        '<button class="btn" onclick="cfScan()"><i class="ti ti-radar"></i> สแกน CF</button>'+
+      '</div></div>'+
+    '<div id="cf-scan-progress" style="font-size:12px;color:var(--text3,#888)"></div>'+
+    '<div id="cf-domain-list"></div>';
   c.appendChild(div);
 }
 function openWpAdmin(){ wpEnsurePage(); showPage('wpadmin');
+  setTimeout(cfLoadStatus,300);
   document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openWpAdmin()') n.classList.add('active'); });
   wpInit();
 }
@@ -7025,5 +7038,103 @@ async function cfPollStatus(){
     }catch(e){}
   }
   tick(); _cfPoll=setInterval(tick,1500);
+}
+</script>
+<script>
+// ===== CLOUDFLARE DOMAIN STATUS LIST (added feature) =====
+window._cfStatusRows = [];
+var _cfScanPoll = null;
+async function cfLoadStatus(){
+  try{
+    var r=await fetch(API+'/api/cloudflare/domains-status'); var d=await r.json();
+    window._cfStatusRows=d.domains||[];
+    cfRenderList();
+    if(d.scan&&d.scan.running) cfPollScan();
+    var box=document.getElementById('cf-scan-progress');
+    if(box&&d.lastScanCount===0) box.innerHTML='ยังไม่เคยสแกน — กด "สแกน CF" เพื่อเช็คว่าโดเมนไหนมี Cloudflare แล้ว';
+  }catch(e){}
+}
+function cfBadge(row){
+  if(row.hasZone===null) return '<span style="color:var(--text3,#888);font-size:11px">⚪ ยังไม่ได้สแกน</span>';
+  if(!row.hasZone) return '<span style="color:var(--text3,#888);font-size:11px">⚪ ไม่มีใน Cloudflare</span>';
+  if(row.hasRule) return '<span style="color:var(--green,#2ecc71);font-size:11px;font-weight:600">🟢 มี CF กันบอทแล้ว</span>';
+  return '<span style="color:#e3b93b;font-size:11px">🟡 มีใน CF (ยังไม่ตั้งกันบอท)</span>';
+}
+function cfRenderList(){
+  var el=document.getElementById('cf-domain-list'); if(!el) return;
+  var q=((document.getElementById('cfq')||{}).value||'').trim().toLowerCase();
+  var f=(document.getElementById('cffilter')||{}).value||'all';
+  var rows=window._cfStatusRows.filter(function(r){
+    if(q && r.domain.toLowerCase().indexOf(q)===-1) return false;
+    if(f==='ready') return r.hasRule===true;
+    if(f==='norule') return r.hasZone===true && r.hasRule===false;
+    if(f==='nozone') return r.hasZone===false;
+    return true;
+  });
+  var ready=window._cfStatusRows.filter(function(r){return r.hasRule===true;}).length;
+  var norule=window._cfStatusRows.filter(function(r){return r.hasZone===true&&r.hasRule===false;}).length;
+  var nozone=window._cfStatusRows.filter(function(r){return r.hasZone===false;}).length;
+  var head='<div style="font-size:12px;color:var(--text3,#888);margin:6px 0">🟢 พร้อมเปิด '+ready+' · 🟡 มี CF ยังไม่ตั้ง '+norule+' · ⚪ ไม่มีใน CF '+nozone+' (แสดง '+rows.length+')</div>';
+  if(!rows.length){ el.innerHTML=head+'<div style="color:var(--text3,#888);padding:10px">ไม่พบโดเมน</div>'; return; }
+  var h='<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="text-align:left;color:var(--text3,#888)">'+
+    '<th style="padding:6px">โดเมน</th><th style="padding:6px">เครื่อง</th><th style="padding:6px">สถานะ Cloudflare</th><th style="padding:6px">wp-admin</th></tr>';
+  rows.slice(0,400).forEach(function(r){
+    var act;
+    if(r.hasRule){
+      act='<button class="btn" style="padding:2px 10px;font-size:11px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="cfRowOpen(\''+r.domain+'\',\''+(r.server||'')+'\')">🔓 เปิด wp-admin</button>';
+    } else if(r.hasZone){
+      act='<button class="btn" style="padding:2px 10px;font-size:11px;background:rgba(245,130,32,0.13);color:#f58220;border-color:rgba(245,130,32,0.3)" onclick="cfRowSetCf(\''+r.domain+'\')">☁️ ตั้ง CF ก่อน</button>';
+    } else {
+      act='<span style="color:var(--text3,#888);font-size:11px" title="โดเมนนี้ไม่ได้อยู่ใน Cloudflare — เปิด wp-admin จะไม่มีอะไรกันบอท">— เพิ่มเข้า CF ก่อน</span>';
+    }
+    h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
+      '<td style="padding:6px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit">'+r.domain+'</a></td>'+
+      '<td style="padding:6px">'+(r.server||'-')+'</td>'+
+      '<td style="padding:6px">'+cfBadge(r)+'</td>'+
+      '<td style="padding:6px">'+act+'</td></tr>';
+  });
+  h+='</table>';
+  if(rows.length>400) h+='<div style="font-size:11px;color:var(--text3,#888);margin-top:6px">แสดง 400 แรก — ใช้ช่องค้นหา/ตัวกรองเพื่อดูตัวอื่น</div>';
+  el.innerHTML=head+h;
+}
+async function cfScan(){
+  if(!wpNeedKey()) return;
+  try{
+    var r=await fetch(API+'/api/cloudflare/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:window._wpKey})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast(d.error||'สแกนไม่ได้','error'); return; }
+    if(typeof toast==='function')toast('เริ่มสแกน '+d.total+' โดเมน...','info');
+    cfPollScan();
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+function cfPollScan(){
+  if(_cfScanPoll) clearInterval(_cfScanPoll);
+  var box=document.getElementById('cf-scan-progress');
+  async function tick(){
+    try{
+      var r=await fetch(API+'/api/cloudflare/domains-status'); var d=await r.json();
+      window._cfStatusRows=d.domains||[];
+      var sc=d.scan||{};
+      if(box){
+        if(sc.running){ var pct=sc.total?Math.round(sc.done/sc.total*100):0;
+          box.innerHTML='กำลังสแกน '+sc.done+'/'+sc.total+' ('+pct+'%)...';
+        } else { box.innerHTML='สแกนเสร็จแล้ว ✅'; }
+      }
+      cfRenderList();
+      if(!sc.running){ clearInterval(_cfScanPoll); _cfScanPoll=null; }
+    }catch(e){}
+  }
+  tick(); _cfScanPoll=setInterval(tick,2000);
+}
+async function cfRowOpen(domain, server){
+  document.getElementById('wp-search').value=domain;
+  wpOnPick();
+  await wpSet(true);
+}
+async function cfRowSetCf(domain){
+  document.getElementById('wp-search').value=domain;
+  await cfDomain(true);
+  setTimeout(function(){ cfLoadStatus(); },1500);
 }
 </script>
