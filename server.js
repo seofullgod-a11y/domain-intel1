@@ -1187,6 +1187,70 @@ async function runOnServer(serverName, command) {
   throw new Error('Agent timeout');
 }
 
+// ===== WP-ADMIN TOGGLE (added feature) — เปิด/ปิด wp-login รายโดเมน จากแดชบอร์ด =====
+// ปลอดภัย: ทุกคำสั่งจะ apachectl configtest ก่อน reload — ถ้า config ผิด rollback อัตโนมัติ
+// source of truth = ไฟล์ .wpadmin-open.list บนเครื่อง (ระบบอ่านของเดิมก่อนแก้ ไม่ลืมเว็บที่เปิดไว้)
+function validDomainName(d) {
+  return typeof d === 'string' && /^[a-z0-9.-]{3,253}$/i.test(d) && !d.includes('..') && !/^[.-]|[.-]$/.test(d);
+}
+
+// สคริปต์ (read-only) อ่านสถานะ wp-admin ของเครื่อง
+function buildWpadminStatusCmd() {
+  return [
+    'CONF=/etc/httpd/conf.d/zzz-emergency.conf',
+    'LIST=/etc/httpd/conf.d/.wpadmin-open.list',
+    'if command -v apachectl >/dev/null 2>&1; then echo "APACHE:yes"; else echo "APACHE:no"; fi',
+    'if [ -f "$CONF" ]; then echo "BLOCK:on"; else echo "BLOCK:off"; fi',
+    // เผื่อยังไม่มี list แต่มี conf เดิมที่เปิดบางโดเมนไว้ → ดึงจาก conf มาโชว์
+    'if [ ! -f "$LIST" ] && [ -f "$CONF" ]; then sed -n \'s/.*(?!\\([^)]*\\)).*/\\1/p\' "$CONF" 2>/dev/null | tr \'|\' \'\\n\' | sed \'s#/$##; s#\\\\##g\' | grep . ; else [ -f "$LIST" ] && sort -u "$LIST"; fi'
+  ].join('\n');
+}
+
+// สคริปต์เปิด/ปิด 1 โดเมน — domain ต้องผ่าน validDomainName มาแล้วเท่านั้น
+function buildWpadminToggleCmd(domain, open) {
+  const action = open ? 'add' : 'remove';
+  return [
+    'set -e',
+    'CONF=/etc/httpd/conf.d/zzz-emergency.conf',
+    'LIST=/etc/httpd/conf.d/.wpadmin-open.list',
+    'if ! command -v apachectl >/dev/null 2>&1; then echo "RESULT:NOT_APACHE"; exit 0; fi',
+    'touch "$LIST"',
+    // seed list จาก conf เดิม (กันลืมโดเมนที่เปิดไว้ก่อนใช้ระบบนี้)
+    'if [ ! -s "$LIST" ] && [ -f "$CONF" ]; then sed -n \'s/.*(?!\\([^)]*\\)).*/\\1/p\' "$CONF" 2>/dev/null | tr \'|\' \'\\n\' | sed \'s#/$##; s#\\\\##g\' | grep . > "$LIST" || true; fi',
+    'DOM="' + domain + '"',
+    action === 'add'
+      ? 'grep -qxF "$DOM" "$LIST" || echo "$DOM" >> "$LIST"'
+      : 'grep -vxF "$DOM" "$LIST" > "$LIST.tmp" 2>/dev/null || true; mv -f "$LIST.tmp" "$LIST" 2>/dev/null || true',
+    // สร้าง negative-lookahead จาก list
+    'OPEN=$(sort -u "$LIST" | grep . | sed \'s/\\./\\\\./g; s#$#/#\' | paste -sd\'|\' - || true)',
+    'if [ -n "$OPEN" ]; then LA="(?!$OPEN)"; else LA=""; fi',
+    '[ -f "$CONF" ] && cp -f "$CONF" "$CONF.bak" || true',
+    'cat > "$CONF" <<DICONF',
+    '<DirectoryMatch "^/var/www/vhosts/${LA}[^/]+/httpdocs">',
+    '    <FilesMatch "^(wp-login|xmlrpc)\\.php\\$">',
+    '        Require all denied',
+    '    </FilesMatch>',
+    '</DirectoryMatch>',
+    'DICONF',
+    'if apachectl configtest >/dev/null 2>&1; then systemctl reload httpd && echo "RESULT:OK"; else [ -f "$CONF.bak" ] && mv -f "$CONF.bak" "$CONF" || rm -f "$CONF"; systemctl reload httpd >/dev/null 2>&1 || true; echo "RESULT:CONFIGTEST_FAILED"; fi',
+    'rm -f "$CONF.bak" 2>/dev/null || true'
+  ].join('\n');
+}
+
+function parseWpadminStatus(raw) {
+  const out = { apache: null, blockOn: null, openDomains: [] };
+  if (!raw) return out;
+  raw.split('\n').forEach(line => {
+    const t = line.trim();
+    if (t === 'APACHE:yes') out.apache = true;
+    else if (t === 'APACHE:no') out.apache = false;
+    else if (t === 'BLOCK:on') out.blockOn = true;
+    else if (t === 'BLOCK:off') out.blockOn = false;
+    else if (t && !t.startsWith('APACHE:') && !t.startsWith('BLOCK:') && validDomainName(t)) out.openDomains.push(t);
+  });
+  return out;
+}
+
 // ===== RESOURCE MEASUREMENT (ระดับ B1 — วัดจริงจากในเครื่องอัตโนมัติ) =====
 // ใช้ช่อง agent เดิม (runOnServer) รันคำสั่ง "อ่านอย่างเดียว" วัดว่าโดเมนไหนแย่งทรัพยากรจริง
 const RESOURCE_FILE = path.join('/tmp', 'domainintel-resources.json');
@@ -2153,6 +2217,62 @@ async function handleRequest(req, res) {
     saveAutoHealList();
     try { logEvent('info', 'Auto-heal ' + (want ? 'ปิด' : 'เปิด') + ' สำหรับ ' + name); } catch (e) {}
     json(res, { success: true, server: name, disabled: want, list: autoHealDisabledList });
+    return;
+  }
+
+  // WP-Admin toggle API (added feature)
+  if (req.method === 'GET' && url === '/api/wpadmin/status') {
+    const q = rawUrl.split('?')[1] || '';
+    const want = decodeURIComponent((q.split('server=')[1] || '').split('&')[0] || '');
+    if (!want) { json(res, { success: false, error: 'ต้องระบุ server' }); return; }
+    try {
+      const r = await runOnServer(want, buildWpadminStatusCmd());
+      const st = parseWpadminStatus(r.output || '');
+      json(res, { success: true, server: want, ...st });
+    } catch (e) {
+      json(res, { success: false, server: want, error: e.message });
+    }
+    return;
+  }
+  // รายชื่อโดเมนทั้งหมด + เครื่องที่อยู่ (ให้ frontend ค้นหา)
+  if (req.method === 'GET' && url === '/api/wpadmin/domains') {
+    const list = memoryDomains
+      .filter(d => d.pleskServer)
+      .map(d => ({ domain: d.domain, server: d.pleskServer }));
+    json(res, { success: true, domains: list, servers: PLESK_SERVERS.map(s => s.name) });
+    return;
+  }
+  // เปิด/ปิด wp-admin ของ 1 โดเมน (ต้องมี key — เพราะสั่งเครื่อง reload apache)
+  if (req.method === 'POST' && url === '/api/wpadmin/set') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) {
+      json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง (ISP_AGENT_KEY)' }, 403);
+      return;
+    }
+    const domain = String(body.domain || '').trim().toLowerCase();
+    const open = !!body.open;
+    if (!validDomainName(domain)) { json(res, { success: false, error: 'ชื่อโดเมนไม่ถูกต้อง' }); return; }
+    // หาว่าโดเมนอยู่เครื่องไหน (จาก body.server ถ้าส่งมา ไม่งั้นหาจาก memoryDomains)
+    let serverName = String(body.server || '').trim();
+    if (!serverName) {
+      const d = memoryDomains.find(x => x.domain === domain);
+      serverName = d && d.pleskServer ? d.pleskServer : '';
+    }
+    if (!serverName) { json(res, { success: false, error: 'หาไม่เจอว่าโดเมนนี้อยู่เครื่องไหน — ระบุ server มาด้วย' }); return; }
+    try {
+      const r = await runOnServer(serverName, buildWpadminToggleCmd(domain, open));
+      const outp = (r.output || '').trim();
+      const okMatch = /RESULT:OK/.test(outp);
+      const failCfg = /RESULT:CONFIGTEST_FAILED/.test(outp);
+      const notApache = /RESULT:NOT_APACHE/.test(outp);
+      if (notApache) { json(res, { success: false, server: serverName, error: 'เครื่องนี้ไม่ใช่ Apache — ฟีเจอร์นี้ใช้กับ Apache เท่านั้น' }); return; }
+      if (failCfg) { json(res, { success: false, server: serverName, error: 'config ตรวจแล้วไม่ผ่าน — ระบบ rollback กลับอันเดิมให้แล้ว เว็บไม่พัง' }); return; }
+      if (!okMatch) { json(res, { success: false, server: serverName, error: 'agent ตอบกลับไม่ชัดเจน: ' + outp.slice(0, 100) }); return; }
+      try { logEvent('info', (open ? 'เปิด' : 'ปิด') + ' wp-admin: ' + domain + ' (' + serverName + ')'); } catch (e) {}
+      json(res, { success: true, domain, server: serverName, open });
+    } catch (e) {
+      json(res, { success: false, server: serverName, error: e.message });
+    }
     return;
   }
 
