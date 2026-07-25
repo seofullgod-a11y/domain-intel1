@@ -1187,6 +1187,82 @@ async function runOnServer(serverName, command) {
   throw new Error('Agent timeout');
 }
 
+// ===== CLOUDFLARE MANAGED CHALLENGE (added feature) — ตั้ง WAF กัน wp-login ผ่าน CF API =====
+const CF_API = 'https://api.cloudflare.com/client/v4';
+const CF_TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
+const CF_TAG = '[auto-waf]';
+let cfBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, failures: [] }; // ป้ายระบุ rule ที่ระบบสร้าง (ไม่ยุ่งกับ rule ที่ผู้ใช้ตั้งเอง)
+function cfRules() {
+  return [
+    { description: CF_TAG + ' challenge wp-login', expression: '(http.request.uri.path contains "/wp-login.php")', action: 'managed_challenge' },
+    { description: CF_TAG + ' block xmlrpc', expression: '(http.request.uri.path contains "/xmlrpc.php")', action: 'block' }
+  ];
+}
+async function cfApi(path, opts) {
+  opts = opts || {};
+  const r = await fetch(CF_API + path, {
+    method: opts.method || 'GET',
+    headers: { 'Authorization': 'Bearer ' + CF_TOKEN, 'Content-Type': 'application/json' },
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  });
+  let j;
+  try { j = await r.json(); } catch (e) { throw new Error('CF ตอบไม่ใช่ JSON (HTTP ' + r.status + ')'); }
+  if (!j.success) {
+    const msg = (j.errors || []).map(e => e.message).join('; ') || ('HTTP ' + r.status);
+    const err = new Error(msg); err.cfErrors = j.errors; throw err;
+  }
+  return j;
+}
+// หา zone id จากชื่อโดเมน (รองรับ subdomain — ตัดเหลือ root)
+async function cfFindZone(domain) {
+  const root = domain.replace(/^www\./, '');
+  let j = await cfApi('/zones?name=' + encodeURIComponent(root));
+  if (j.result && j.result.length) return j.result[0];
+  // ลองตัด subdomain ทีละชั้น (a.b.co.th -> b.co.th ...)
+  const parts = root.split('.');
+  for (let i = 1; i < parts.length - 1; i++) {
+    const cand = parts.slice(i).join('.');
+    j = await cfApi('/zones?name=' + encodeURIComponent(cand));
+    if (j.result && j.result.length) return j.result[0];
+  }
+  return null;
+}
+async function cfGetEntrypoint(zoneId) {
+  try {
+    const j = await cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_firewall_custom/entrypoint');
+    return j.result.rules || [];
+  } catch (e) {
+    if (/could not find|does not exist|10\d{3}/i.test(e.message)) return [];
+    throw e;
+  }
+}
+async function cfPutRules(zoneId, rules) {
+  return cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_firewall_custom/entrypoint',
+    { method: 'PUT', body: { rules } });
+}
+// ใส่ rule (merge ไม่ลบของเดิม) หรือถอด rule ของระบบออก
+async function cfApplyDomain(domain, enable) {
+  const zone = await cfFindZone(domain);
+  if (!zone) return { domain, ok: false, error: 'ไม่พบ zone นี้ในบัญชี Cloudflare' };
+  try {
+    const existing = await cfGetEntrypoint(zone.id);
+    const ours = new Set(cfRules().map(r => r.description));
+    const kept = existing.filter(r => !ours.has(r.description)); // rule ของผู้ใช้ เก็บไว้
+    let merged;
+    if (enable) {
+      const mine = cfRules().map(r => ({ description: r.description, expression: r.expression, action: r.action, enabled: true }));
+      merged = [...mine, ...kept];
+      if (merged.length > 5) return { domain, ok: false, error: 'zone นี้มี rule เกิน 5 (ขีดจำกัด CF Free) — ลบ rule เดิมก่อน' };
+    } else {
+      merged = kept; // ถอดเฉพาะของเรา
+    }
+    await cfPutRules(zone.id, merged);
+    return { domain, ok: true, zone: zone.name, enabled: enable };
+  } catch (e) {
+    return { domain, ok: false, error: e.message };
+  }
+}
+
 // ===== WP-ADMIN TOGGLE (added feature) — เปิด/ปิด wp-login รายโดเมน จากแดชบอร์ด =====
 // ปลอดภัย: ทุกคำสั่งจะ apachectl configtest ก่อน reload — ถ้า config ผิด rollback อัตโนมัติ
 // source of truth = ไฟล์ .wpadmin-open.list บนเครื่อง (ระบบอ่านของเดิมก่อนแก้ ไม่ลืมเว็บที่เปิดไว้)
@@ -2250,6 +2326,58 @@ async function handleRequest(req, res) {
     saveAutoHealList();
     try { logEvent('info', 'Auto-heal ' + (want ? 'ปิด' : 'เปิด') + ' สำหรับ ' + name); } catch (e) {}
     json(res, { success: true, server: name, disabled: want, list: autoHealDisabledList });
+    return;
+  }
+
+  // Cloudflare Managed Challenge API (added feature)
+  if (req.method === 'GET' && url === '/api/cloudflare/config') {
+    json(res, { success: true, tokenSet: !!CF_TOKEN });
+    return;
+  }
+  // ตั้ง/ถอด CF ทีละโดเมน (ต้องมี key)
+  if (req.method === 'POST' && url === '/api/cloudflare/domain') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
+    const domain = String(body.domain || '').trim().toLowerCase();
+    const enable = !!body.enable;
+    if (!validDomainName(domain)) { json(res, { success: false, error: 'ชื่อโดเมนไม่ถูกต้อง' }); return; }
+    const r = await cfApplyDomain(domain, enable);
+    try { logEvent('info', 'Cloudflare ' + (enable ? 'ตั้ง' : 'ถอด') + ' wp-login challenge: ' + domain + (r.ok ? ' สำเร็จ' : ' ล้มเหลว')); } catch (e) {}
+    json(res, { success: r.ok, ...r });
+    return;
+  }
+  // ตั้ง/ถอด CF ทั้งหมดรวดเดียว (ต้องมี key) — ทำเป็น background, ดูความคืบหน้าที่ /api/cloudflare/bulk-status
+  if (req.method === 'POST' && url === '/api/cloudflare/bulk') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
+    if (cfBulk.running) { json(res, { success: false, error: 'กำลังทำงานอยู่แล้ว — ดูความคืบหน้าที่หน้าจอ' }); return; }
+    const enable = !!body.enable;
+    // รายชื่อโดเมน: จาก body.domains ถ้าส่งมา ไม่งั้นทุกโดเมนใน memory
+    let domains = Array.isArray(body.domains) && body.domains.length
+      ? body.domains.map(x => String(x).trim().toLowerCase()).filter(validDomainName)
+      : [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
+    cfBulk = { running: true, enable, total: domains.length, done: 0, ok: 0, failed: 0, failures: [], startedAt: Date.now(), finishedAt: null };
+    (async () => {
+      for (const dom of domains) {
+        try {
+          const r = await cfApplyDomain(dom, enable);
+          cfBulk.done++;
+          if (r.ok) cfBulk.ok++; else { cfBulk.failed++; if (cfBulk.failures.length < 100) cfBulk.failures.push({ domain: dom, error: r.error }); }
+        } catch (e) {
+          cfBulk.done++; cfBulk.failed++;
+          if (cfBulk.failures.length < 100) cfBulk.failures.push({ domain: dom, error: e.message });
+        }
+        await new Promise(r => setTimeout(r, 250)); // กัน CF rate limit
+      }
+      cfBulk.running = false; cfBulk.finishedAt = Date.now();
+    })().catch(() => { cfBulk.running = false; cfBulk.finishedAt = Date.now(); });
+    json(res, { success: true, started: true, total: domains.length });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/cloudflare/bulk-status') {
+    json(res, { success: true, ...cfBulk });
     return;
   }
 
