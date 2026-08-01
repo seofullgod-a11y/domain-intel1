@@ -7272,16 +7272,51 @@ function vaultRenderItems(){
     h+='<div style="color:var(--text3,#888);padding:20px;text-align:center">ยังไม่มีข้อมูล — กด "เพิ่มรายการ"</div>';
   } else {
     window._vaultItems.forEach(function(it,i){
-      h+='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:12px;margin-bottom:10px">'+
-        '<input value="'+(it.title||'').replace(/"/g,'&quot;')+'" placeholder="หัวข้อ" oninput="window._vaultItems['+i+'].title=this.value" style="width:100%;box-sizing:border-box;background:transparent;border:none;color:inherit;font-weight:700;font-size:14px;margin-bottom:6px;outline:none">'+
-        '<textarea placeholder="เนื้อหา (เข้ารหัสก่อนบันทึก)" oninput="window._vaultItems['+i+'].content=this.value" style="width:100%;box-sizing:border-box;background:var(--bg,#0a0a0a);border:1px solid var(--border,#333);border-radius:6px;color:inherit;padding:8px;min-height:70px;resize:vertical;font-family:inherit">'+(it.content||'').replace(/</g,'&lt;')+'</textarea>'+
-        '<div style="text-align:right;margin-top:6px"><button class="btn" style="padding:2px 8px;font-size:11px;color:#e24b4a" onclick="vaultDeleteItem('+i+')">ลบ</button></div>'+
+      var fileChip='';
+      if(it.file && it.file.name){
+        var sizeKB = it.file.data ? Math.round(it.file.data.length*0.75/1024) : 0;
+        fileChip='<div style="display:flex;align-items:center;gap:8px;background:var(--bg,#0a0a0a);border:1px solid var(--border,#333);border-radius:6px;padding:6px 10px;margin-top:8px">'+
+          '<i class="ti ti-paperclip"></i>'+
+          '<span style="flex:1;font-size:12px;word-break:break-all">'+it.file.name.replace(/</g,'&lt;')+' <span style="color:var(--text3,#888)">('+sizeKB+' KB)</span></span>'+
+          '<button class="btn" style="padding:2px 8px;font-size:11px" onclick="vaultDownloadFile('+i+')">⬇ ดาวน์โหลด</button>'+
+          '<button class="btn" style="padding:2px 8px;font-size:11px;color:#e24b4a" onclick="vaultRemoveFile('+i+')">✕</button>'+
+        '</div>';
+      }
+      h+='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px;margin-bottom:14px;width:100%;box-sizing:border-box">'+
+        '<input value="'+(it.title||'').replace(/"/g,'&quot;')+'" placeholder="หัวข้อ" oninput="window._vaultItems['+i+'].title=this.value" style="width:100%;box-sizing:border-box;background:transparent;border:none;border-bottom:1px solid var(--border,#333);color:inherit;font-weight:700;font-size:16px;margin-bottom:10px;outline:none;padding:4px 0">'+
+        '<textarea placeholder="เนื้อหา (เข้ารหัสก่อนบันทึก)" oninput="window._vaultItems['+i+'].content=this.value" style="width:100%;box-sizing:border-box;background:var(--bg,#0a0a0a);border:1px solid var(--border,#333);border-radius:6px;color:inherit;padding:12px;min-height:160px;resize:vertical;font-family:inherit;font-size:14px;line-height:1.6">'+(it.content||'').replace(/</g,'&lt;')+'</textarea>'+
+        fileChip+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">'+
+          '<label class="btn" style="padding:4px 12px;font-size:12px;cursor:pointer;margin:0"><i class="ti ti-upload"></i> '+(it.file&&it.file.name?'เปลี่ยนไฟล์':'แนบไฟล์')+'<input type="file" style="display:none" onchange="vaultAttachFile('+i+',this)"></label>'+
+          '<button class="btn" style="padding:4px 12px;font-size:12px;color:#e24b4a" onclick="vaultDeleteItem('+i+')"><i class="ti ti-trash"></i> ลบรายการ</button>'+
+        '</div>'+
       '</div>';
     });
   }
-  h+='<button class="btn btn-green" onclick="vaultSave()" style="justify-content:center;padding:10px 20px"><i class="ti ti-device-floppy"></i> บันทึก (เข้ารหัส)</button>';
-  h+='<div style="font-size:11px;color:var(--text3,#888);margin-top:8px">การเปลี่ยนแปลงจะถูกเข้ารหัสและบันทึกเมื่อกด "บันทึก" เท่านั้น</div>';
+  h+='<button class="btn btn-green" onclick="vaultSave()" style="justify-content:center;padding:12px 24px;font-size:14px"><i class="ti ti-device-floppy"></i> บันทึก (เข้ารหัสทั้งหมด)</button>';
+  h+='<div style="font-size:11px;color:var(--text3,#888);margin-top:8px">ข้อความและไฟล์จะถูกเข้ารหัสเมื่อกด "บันทึก" · ไฟล์ต่ออันไม่เกิน 3MB</div>';
   body.innerHTML=h;
+}
+function vaultAttachFile(i, input){
+  var f=input.files&&input.files[0]; if(!f) return;
+  if(f.size>3*1024*1024){ if(typeof toast==='function')toast('ไฟล์ใหญ่เกิน 3MB','error'); input.value=''; return; }
+  var reader=new FileReader();
+  reader.onload=function(){
+    var b64=String(reader.result).split(',')[1]||'';
+    window._vaultItems[i].file={name:f.name,type:f.type||'',data:b64};
+    vaultRenderItems();
+    if(typeof toast==='function')toast('แนบไฟล์แล้ว — อย่าลืมกดบันทึก','info');
+  };
+  reader.readAsDataURL(f);
+}
+function vaultRemoveFile(i){ if(confirm('เอาไฟล์ออก?')){ window._vaultItems[i].file=null; vaultRenderItems(); } }
+function vaultDownloadFile(i){
+  var it=window._vaultItems[i]; if(!it.file||!it.file.data) return;
+  var bin=atob(it.file.data); var arr=new Uint8Array(bin.length);
+  for(var k=0;k<bin.length;k++) arr[k]=bin.charCodeAt(k);
+  var blob=new Blob([arr],{type:it.file.type||'application/octet-stream'});
+  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=it.file.name||'file';
+  document.body.appendChild(a); a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
 }
 function vaultAddItem(){ window._vaultItems.push({id:Date.now()+''+Math.floor(Math.random()*1000),title:'',content:''}); vaultRenderItems(); }
 function vaultDeleteItem(i){ if(confirm('ลบรายการนี้?')){ window._vaultItems.splice(i,1); vaultRenderItems(); } }
