@@ -1526,10 +1526,279 @@ async function autoMeasureLoop() {
   } catch (e) {} finally { autoMeasureRunning = false; }
 }
 
+// ===== PRIVATE VAULT (added feature) — ข้อมูลลับส่วนตัว เข้ารหัสจริงด้วยรหัสผ่านแยก =====
+// ข้อมูลถูกเข้ารหัส AES-256-GCM ด้วยกุญแจที่ได้จากรหัสผ่าน (scrypt) — เซิร์ฟเวอร์ไม่เก็บรหัสผ่าน
+// ตั้งที่เก็บถาวรได้ด้วย env VAULT_DIR (เช่น Railway Volume ที่ /data) — ไม่งั้นใช้ /tmp (หายตอน redeploy)
+const VAULT_DIR = process.env.VAULT_DIR || '/tmp';
+const VAULT_FILE = path.join(VAULT_DIR, 'domainintel-vault.json');
+let vaultData = null; // { salt, check:{iv,ct,tag}, items:[{id,title,iv,ct,tag,updatedAt}] }
+try { vaultData = JSON.parse(fs.readFileSync(VAULT_FILE, 'utf8')); } catch (e) { vaultData = null; }
+function saveVault() { try { fs.mkdirSync(VAULT_DIR, { recursive: true }); fs.writeFileSync(VAULT_FILE, JSON.stringify(vaultData)); return true; } catch (e) { return false; } }
+
+function vaultDeriveKey(passphrase, saltHex) {
+  return crypto.scryptSync(Buffer.from(String(passphrase), 'utf8'), Buffer.from(saltHex, 'hex'), 32, { N: 16384, r: 8, p: 1 });
+}
+function vaultEncrypt(key, plaintext) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(Buffer.from(String(plaintext), 'utf8')), cipher.final()]);
+  return { iv: iv.toString('hex'), ct: ct.toString('hex'), tag: cipher.getAuthTag().toString('hex') };
+}
+function vaultDecrypt(key, blob) {
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(blob.iv, 'hex'));
+  decipher.setAuthTag(Buffer.from(blob.tag, 'hex'));
+  const pt = Buffer.concat([decipher.update(Buffer.from(blob.ct, 'hex')), decipher.final()]);
+  return pt.toString('utf8');
+}
+// ตรวจรหัสผ่านถูกไหม โดยลองถอดรหัส check-blob (ถ้า auth tag ผ่าน = รหัสถูก)
+function vaultVerify(passphrase) {
+  if (!vaultData || !vaultData.check) return null;
+  try {
+    const key = vaultDeriveKey(passphrase, vaultData.salt);
+    if (vaultDecrypt(key, vaultData.check) === 'VALID') return key;
+  } catch (e) {}
+  return null;
+}
+
+// rate limit สำหรับ unlock (กันเดารหัสตู้เซฟ) — แยกจาก login
+const vaultAttempts = {};
+function vaultRateCheck(ip) {
+  const r = vaultAttempts[ip];
+  if (r && r.until && Date.now() < r.until) return Math.ceil((r.until - Date.now()) / 1000);
+  return 0;
+}
+function vaultRateFail(ip) {
+  const r = vaultAttempts[ip] || { count: 0, until: 0 };
+  r.count++;
+  if (r.count >= 5) { r.until = Date.now() + 15 * 60 * 1000; r.count = 0; }
+  vaultAttempts[ip] = r;
+}
+function vaultRateReset(ip) { delete vaultAttempts[ip]; }
+
+// ===== AUTH LAYER (added feature) — login จริงฝั่งเซิร์ฟเวอร์ + rate limit + 2FA =====
+const crypto = require('crypto');
+// ตั้งค่าใน Railway:
+//   DASHBOARD_PASSWORD = รหัสผ่านเข้าแดชบอร์ด (ถ้าไม่ตั้ง = ระบบเปิดโล่งแบบเดิม เพื่อไม่ให้ล็อกตัวเอง)
+//   DASHBOARD_TOTP_SECRET = (ไม่บังคับ) secret สำหรับ 2FA — ตั้งเมื่อพร้อมใช้ Authenticator
+//   SESSION_SECRET = (ไม่บังคับ) กุญแจเซ็น session cookie — ถ้าไม่ตั้งจะสุ่มตอนบูต (redeploy แล้วต้อง login ใหม่)
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
+const DASHBOARD_TOTP_SECRET = process.env.DASHBOARD_TOTP_SECRET || '';
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const AUTH_ENABLED = !!DASHBOARD_PASSWORD; // ถ้าไม่ตั้งรหัส = ไม่บังคับ login (กันล็อกตัวเอง)
+const SESSION_HOURS = 12;
+
+// เส้นทางที่ไม่ต้อง login: หน้า login, ตัว agent (ใช้ ISP_AGENT_KEY ยืนยันตัวเองอยู่แล้ว), health
+const AUTH_EXEMPT_EXACT = new Set(['/api/login', '/api/auth-status', '/health', '/healthz']);
+function isAuthExempt(url, method) {
+  if (AUTH_EXEMPT_EXACT.has(url)) return true;
+  // ช่อง agent ทั้งหมด (poll/report) — ยืนยันด้วย ISP_AGENT_KEY ในตัวเอง ไม่ผ่าน session
+  if (url.startsWith('/api/agent/')) return true;
+  if (url.startsWith('/api/isp-agent/')) return true;
+  if (url.startsWith('/api/isp-check') || url === '/api/isp-status' || url === '/api/isp-check-all') return true;
+  // ไฟล์หน้าเว็บ (index.html, css, js) — ให้โหลดได้ แต่ API ข้อมูลจะโดน gate
+  if (method === 'GET' && !url.startsWith('/api/')) return true;
+  return false;
+}
+
+// --- session cookie (เซ็นด้วย HMAC กันปลอม) ---
+function signSession(payload) {
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+  return data + '.' + sig;
+}
+function verifySession(token) {
+  if (!token || token.indexOf('.') < 0) return null;
+  const [data, sig] = token.split('.');
+  const expect = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+  if (sig.length !== expect.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  try {
+    const p = JSON.parse(Buffer.from(data, 'base64url').toString());
+    if (!p.exp || Date.now() > p.exp) return null;
+    return p;
+  } catch (e) { return null; }
+}
+function parseCookies(req) {
+  const out = {}; const h = req.headers.cookie || '';
+  h.split(';').forEach(c => { const i = c.indexOf('='); if (i > 0) out[c.slice(0, i).trim()] = decodeURIComponent(c.slice(i + 1).trim()); });
+  return out;
+}
+function isLoggedIn(req) {
+  if (!AUTH_ENABLED) return true;
+  const c = parseCookies(req);
+  return !!verifySession(c.di_session);
+}
+
+// --- rate limit: กันเดารหัส (ต่อ IP) ---
+const loginAttempts = {}; // ip -> { count, until }
+function clientIp(req) {
+  const xff = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xff || req.socket.remoteAddress || 'unknown';
+}
+function rateLimitCheck(ip) {
+  const r = loginAttempts[ip];
+  if (r && r.until && Date.now() < r.until) return Math.ceil((r.until - Date.now()) / 1000);
+  return 0;
+}
+function rateLimitFail(ip) {
+  const r = loginAttempts[ip] || { count: 0, until: 0 };
+  r.count++;
+  if (r.count >= 5) { r.until = Date.now() + 10 * 60 * 1000; r.count = 0; } // ผิด 5 ครั้ง ล็อก 10 นาที
+  loginAttempts[ip] = r;
+}
+function rateLimitReset(ip) { delete loginAttempts[ip]; }
+
+// --- TOTP (2FA) — ตรวจรหัส 6 หลักจาก Google Authenticator/Authy ---
+function base32Decode(s) {
+  const alph = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '', out = [];
+  s = s.replace(/=+$/, '').toUpperCase().replace(/\s/g, '');
+  for (const ch of s) { const v = alph.indexOf(ch); if (v < 0) continue; bits += v.toString(2).padStart(5, '0'); }
+  for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
+  return Buffer.from(out);
+}
+function totpAt(secret, counter) {
+  const key = base32Decode(secret);
+  const buf = Buffer.alloc(8);
+  buf.writeBigInt64BE(BigInt(counter));
+  const hmac = crypto.createHmac('sha1', key).update(buf).digest();
+  const off = hmac[hmac.length - 1] & 0xf;
+  const code = ((hmac[off] & 0x7f) << 24) | ((hmac[off + 1] & 0xff) << 16) | ((hmac[off + 2] & 0xff) << 8) | (hmac[off + 3] & 0xff);
+  return (code % 1000000).toString().padStart(6, '0');
+}
+function verifyTotp(secret, token) {
+  if (!secret || !token) return false;
+  token = String(token).replace(/\s/g, '');
+  const step = Math.floor(Date.now() / 1000 / 30);
+  for (let w = -1; w <= 1; w++) { // ยอมเหลื่อม ±30 วิ
+    if (totpAt(secret, step + w) === token) return true;
+  }
+  return false;
+}
+
 async function handleRequest(req, res) {
   if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
   const url = req.url.split('?')[0];
   const rawUrl = req.url;
+
+  // --- PRIVATE VAULT ENDPOINTS (ข้อมูลลับส่วนตัว) ---
+  if (req.method === 'GET' && url === '/api/vault/status') {
+    json(res, { success: true, initialized: !!(vaultData && vaultData.check), persistent: VAULT_DIR !== '/tmp' });
+    return;
+  }
+  // ตั้งรหัสตู้เซฟครั้งแรก
+  if (req.method === 'POST' && url === '/api/vault/init') {
+    if (vaultData && vaultData.check) { json(res, { success: false, error: 'ตั้งรหัสตู้เซฟไว้แล้ว' }); return; }
+    const body = await parseBody(req) || {};
+    const pass = String(body.passphrase || '');
+    if (pass.length < 6) { json(res, { success: false, error: 'รหัสตู้เซฟต้องยาวอย่างน้อย 6 ตัว' }); return; }
+    const salt = crypto.randomBytes(16).toString('hex');
+    const key = vaultDeriveKey(pass, salt);
+    vaultData = { salt, check: vaultEncrypt(key, 'VALID'), items: [] };
+    if (!saveVault()) { json(res, { success: false, error: 'บันทึกไม่สำเร็จ' }); return; }
+    json(res, { success: true });
+    return;
+  }
+  // ปลดล็อก → คืนรายการที่ถอดรหัสแล้ว (ไม่เก็บรหัส)
+  if (req.method === 'POST' && url === '/api/vault/unlock') {
+    const ip = clientIp(req);
+    const wait = vaultRateCheck(ip);
+    if (wait > 0) { json(res, { success: false, error: 'ใส่รหัสผิดหลายครั้ง รออีก ' + Math.ceil(wait/60) + ' นาที', lockedSec: wait }, 429); return; }
+    if (!vaultData || !vaultData.check) { json(res, { success: false, error: 'ยังไม่ได้ตั้งรหัสตู้เซฟ' }); return; }
+    const body = await parseBody(req) || {};
+    const key = vaultVerify(String(body.passphrase || ''));
+    if (!key) { vaultRateFail(ip); json(res, { success: false, error: 'รหัสตู้เซฟไม่ถูกต้อง' }, 401); return; }
+    vaultRateReset(ip);
+    const items = (vaultData.items || []).map(it => {
+      let title = it.title, content = '';
+      try { content = vaultDecrypt(key, it); } catch (e) { content = '(ถอดรหัสไม่ได้)'; }
+      return { id: it.id, title, content, updatedAt: it.updatedAt };
+    });
+    json(res, { success: true, items });
+    return;
+  }
+  // บันทึกรายการทั้งหมด (ส่งรหัสมาด้วยทุกครั้ง — เข้ารหัสใหม่)
+  if (req.method === 'POST' && url === '/api/vault/save') {
+    const ip = clientIp(req);
+    if (vaultRateCheck(ip) > 0) { json(res, { success: false, error: 'ถูกล็อกชั่วคราว' }, 429); return; }
+    if (!vaultData || !vaultData.check) { json(res, { success: false, error: 'ยังไม่ได้ตั้งรหัสตู้เซฟ' }); return; }
+    const body = await parseBody(req) || {};
+    const key = vaultVerify(String(body.passphrase || ''));
+    if (!key) { vaultRateFail(ip); json(res, { success: false, error: 'รหัสตู้เซฟไม่ถูกต้อง' }, 401); return; }
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (items.length > 500) { json(res, { success: false, error: 'เก็บได้สูงสุด 500 รายการ' }); return; }
+    vaultData.items = items.slice(0, 500).map(it => {
+      const enc = vaultEncrypt(key, String(it.content || ''));
+      return { id: String(it.id || Date.now() + '' + Math.random()).slice(0, 40),
+        title: String(it.title || 'ไม่มีชื่อ').slice(0, 200),
+        iv: enc.iv, ct: enc.ct, tag: enc.tag, updatedAt: new Date().toISOString() };
+    });
+    if (!saveVault()) { json(res, { success: false, error: 'บันทึกไม่สำเร็จ' }); return; }
+    json(res, { success: true, count: vaultData.items.length });
+    return;
+  }
+  // เปลี่ยนรหัสตู้เซฟ (ต้องรู้รหัสเดิม — เข้ารหัสข้อมูลใหม่ทั้งหมด)
+  if (req.method === 'POST' && url === '/api/vault/change-pass') {
+    const ip = clientIp(req);
+    if (vaultRateCheck(ip) > 0) { json(res, { success: false, error: 'ถูกล็อกชั่วคราว' }, 429); return; }
+    const body = await parseBody(req) || {};
+    const oldKey = vaultVerify(String(body.oldPassphrase || ''));
+    if (!oldKey) { vaultRateFail(ip); json(res, { success: false, error: 'รหัสเดิมไม่ถูกต้อง' }, 401); return; }
+    const np = String(body.newPassphrase || '');
+    if (np.length < 6) { json(res, { success: false, error: 'รหัสใหม่ต้องยาวอย่างน้อย 6 ตัว' }); return; }
+    // ถอดด้วยรหัสเก่า → เข้ารหัสใหม่ด้วยรหัสใหม่
+    const plain = (vaultData.items || []).map(it => { try { return { id: it.id, title: it.title, content: vaultDecrypt(oldKey, it) }; } catch (e) { return null; } }).filter(Boolean);
+    const newSalt = crypto.randomBytes(16).toString('hex');
+    const newKey = vaultDeriveKey(np, newSalt);
+    vaultData = { salt: newSalt, check: vaultEncrypt(newKey, 'VALID'),
+      items: plain.map(it => { const enc = vaultEncrypt(newKey, it.content); return { id: it.id, title: it.title, iv: enc.iv, ct: enc.ct, tag: enc.tag, updatedAt: new Date().toISOString() }; }) };
+    if (!saveVault()) { json(res, { success: false, error: 'บันทึกไม่สำเร็จ' }); return; }
+    json(res, { success: true });
+    return;
+  }
+
+  // --- AUTH ENDPOINTS ---
+  if (req.method === 'GET' && url === '/api/auth-status') {
+    json(res, { authEnabled: AUTH_ENABLED, twoFactor: !!DASHBOARD_TOTP_SECRET, loggedIn: isLoggedIn(req) });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/login') {
+    if (!AUTH_ENABLED) { json(res, { success: true, note: 'ยังไม่ได้ตั้ง DASHBOARD_PASSWORD — เข้าได้เลย' }); return; }
+    const ip = clientIp(req);
+    const wait = rateLimitCheck(ip);
+    if (wait > 0) { json(res, { success: false, error: 'ลองผิดหลายครั้ง ถูกล็อกชั่วคราว รออีก ' + Math.ceil(wait / 60) + ' นาที', lockedSec: wait }, 429); return; }
+    const body = await parseBody(req) || {};
+    const pass = String(body.password || '');
+    const otp = String(body.otp || '');
+    // เทียบรหัสแบบ timing-safe
+    const a = Buffer.from(pass), b = Buffer.from(DASHBOARD_PASSWORD);
+    const passOk = a.length === b.length && crypto.timingSafeEqual(a, b);
+    if (!passOk) { rateLimitFail(ip); json(res, { success: false, error: 'รหัสผ่านไม่ถูกต้อง' }, 401); return; }
+    // ถ้าเปิด 2FA ต้องมี otp ถูกด้วย
+    if (DASHBOARD_TOTP_SECRET) {
+      if (!otp) { json(res, { success: false, needOtp: true, error: 'ใส่รหัส 6 หลักจากแอป Authenticator' }, 401); return; }
+      if (!verifyTotp(DASHBOARD_TOTP_SECRET, otp)) { rateLimitFail(ip); json(res, { success: false, needOtp: true, error: 'รหัส 2FA ไม่ถูกต้อง' }, 401); return; }
+    }
+    rateLimitReset(ip);
+    const token = signSession({ u: 'admin', exp: Date.now() + SESSION_HOURS * 3600 * 1000 });
+    const secure = (req.headers['x-forwarded-proto'] === 'https') ? '; Secure' : '';
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'application/json',
+      'Set-Cookie': 'di_session=' + token + '; HttpOnly; SameSite=Lax; Path=/; Max-Age=' + (SESSION_HOURS * 3600) + secure });
+    res.end(JSON.stringify({ success: true }));
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/logout') {
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': 'di_session=; HttpOnly; Path=/; Max-Age=0' });
+    res.end(JSON.stringify({ success: true }));
+    return;
+  }
+
+  // --- AUTH GATE ---
+  if (AUTH_ENABLED && !isAuthExempt(url, req.method) && !isLoggedIn(req)) {
+    if (url.startsWith('/api/')) { json(res, { success: false, error: 'ต้อง login ก่อน', needLogin: true }, 401); return; }
+    cors(res); res.writeHead(302, { Location: '/' }); res.end(); return;
+  }
 
   if (req.method === 'GET' && url === '/api/domains') {
     const cfg = loadConfig();
