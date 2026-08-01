@@ -1,7344 +1,6352 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>DomainIntel — SEO Domain Dashboard</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
-<style>
-:root {
-  /* ===== DARK MODE (default) — Black + Emerald/Gold + Glow ===== */
-  --bg:      #0a0a0b;
-  --bg2:     #131316;
-  --bg3:     #1c1c21;
-  --bg4:     #28282f;
-  --border:  rgba(255,255,255,0.06);
-  --border2: rgba(255,255,255,0.12);
-  --text:    #ededf0;
-  --text2:   #9b9ba5;
-  --text3:   #5a5a66;
-  --teal:    #34d399;
-  --teal-dim:rgba(52,211,153,0.12);
-  --green:   #34d399;
-  --green-dim:rgba(52,211,153,0.12);
-  --gold:    #fbbf24;
-  --gold-dim:rgba(251,191,36,0.12);
-  --red:     #f87171;
-  --red-dim: rgba(248,113,113,0.12);
-  --amber:   #fbbf24;
-  --amber-dim:rgba(251,191,36,0.12);
-  --blue:    #38bdf8;
-  --blue-dim:rgba(56,189,248,0.12);
-  --purple:  #c084fc;
-  --purple-dim:rgba(192,132,252,0.12);
-  --radius:  10px;
-  --radius-sm: 6px;
-  --sidebar-w: 220px;
-  --font: 'IBM Plex Sans Thai', sans-serif;
-  --mono: 'IBM Plex Mono', monospace;
-  --shadow: 0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
-  --shadow-md: 0 4px 20px rgba(0,0,0,0.6);
-  --glow-green: 0 0 20px rgba(52,211,153,0.15);
-  --glow-gold: 0 0 20px rgba(251,191,36,0.15);
-}
+/**
+ * DomainIntel Backend Server v2.1
+ * Plesk + Google Sheets + Agent Integration
+ */
 
-/* ===== LIGHT MODE ===== */
-html.light {
-  --bg:      #f0f4f8;
-  --bg2:     #ffffff;
-  --bg3:     #f7fafc;
-  --bg4:     #edf2f7;
-  --border:  rgba(0,0,0,0.08);
-  --border2: rgba(0,0,0,0.14);
-  --text:    #1a202c;
-  --text2:   #4a5568;
-  --text3:   #a0aec0;
-  --teal:    #0284c7;
-  --teal-dim:rgba(2,132,199,0.1);
-  --green:   #059669;
-  --green-dim:rgba(5,150,105,0.1);
-  --red:     #dc2626;
-  --red-dim: rgba(220,38,38,0.1);
-  --amber:   #d97706;
-  --amber-dim:rgba(217,119,6,0.1);
-  --blue:    #2563eb;
-  --blue-dim:rgba(37,99,235,0.1);
-  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; transition: background 0.2s, color 0.2s; }
+const http = require('http');
+const https = require('https');
+const fs = require('fs');
+const path = require('path');
 
-/* SCROLLBAR */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+const PORT = process.env.PORT || 8080;
+const PLESK_HOST = process.env.PLESK_HOST || '';
+const PLESK_USER = process.env.PLESK_USER || 'admin';
+const PLESK_PASS = process.env.PLESK_PASS || '';
 
-/* LAYOUT */
-.app { display: flex; height: 100vh; overflow: hidden; }
-.sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; overflow-y: auto; transition: background 0.2s; }
-.main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg); }
-
-/* ===== SIDEBAR ===== */
-.logo { padding: 18px 16px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
-.logo-icon { width: 30px; height: 30px; background: linear-gradient(135deg,var(--teal),var(--green)); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; font-weight: 700; flex-shrink: 0; box-shadow: 0 2px 8px rgba(14,165,233,0.35); }
-.logo-text { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0; font-family: var(--font); }
-.logo-text span { color: var(--teal); }
-.logo-ver { font-size: 10px; color: var(--text3); margin-top: 1px; }
-.nav { padding: 8px 0; flex: 1; overflow-y: auto; scrollbar-width: none; }
-.nav::-webkit-scrollbar { display: none; }
-.nav-section { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); padding: 12px 16px 4px; font-weight: 600; }
-.nav-item { display: flex; align-items: center; gap: 9px; padding: 7px 16px; border-radius: 0; border-left: 2px solid transparent; cursor: pointer; color: var(--text2); font-size: 12px; font-family: var(--font); transition: all 0.12s; margin-bottom: 1px; }
-.nav-item:hover { background: var(--bg3); color: var(--text); }
-.nav-item.active { background: rgba(52,211,153,0.1); color: var(--teal); border-left-color: var(--teal); font-weight: 500; box-shadow: inset 0 0 20px rgba(52,211,153,0.05); }
-.nav-item i { width: 15px; text-align: center; font-size: 14px; flex-shrink: 0; opacity: 0.8; }
-.nav-item.active i { opacity: 1; }
-.nav-badge { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; background: var(--red-dim); color: var(--red); }
-.nav-badge.amber { background: var(--amber-dim); color: var(--amber); }
-.nav-badge.green { background: var(--green-dim); color: var(--green); }
-.sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
-.status-indicator { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text2); padding: 4px 0; }
-.dot-live { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; box-shadow: 0 0 6px var(--green); }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-@keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 6px var(--green)} 50%{opacity:0.6;box-shadow:0 0 12px var(--green)} }
-
-/* ===== TOPBAR ===== */
-.topbar { display: flex; align-items: center; padding: 10px 20px; gap: 10px; border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0; box-shadow: var(--shadow); }
-.topbar-title { font-size: 14px; font-weight: 600; color: var(--text); }
-.topbar-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
-.topbar-right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-
-/* ===== BUTTONS ===== */
-.btn { padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg3); color: var(--text2); font-size: 12px; cursor: pointer; font-family: var(--font); display: inline-flex; align-items: center; gap: 5px; transition: all 0.15s; white-space: nowrap; font-weight: 500; }
-.btn:hover { background: var(--bg4); color: var(--text); border-color: var(--text3); }
-.btn i { font-size: 13px; }
-.btn-green { background: var(--teal); color: #fff; border-color: var(--teal); font-weight: 600; }
-.btn-green:hover { background: #0284c7; border-color: #0284c7; color: #fff; }
-.btn-red { background: var(--red-dim); color: var(--red); border-color: rgba(239,68,68,0.3); }
-.btn-red:hover { background: rgba(239,68,68,0.2); }
-.btn-ghost { background: transparent; border-color: transparent; color: var(--text2); }
-.btn-ghost:hover { background: var(--bg3); color: var(--text); }
-.btn-amber { background: var(--amber-dim); color: var(--amber); border-color: rgba(245,158,11,0.3); }
-.btn-amber:hover { background: rgba(245,158,11,0.2); }
-.btn-sm { padding: 4px 9px; font-size: 11px; }
-.btn-icon { padding: 6px 8px; }
-
-/* DARK MODE TOGGLE */
-.theme-toggle { width: 34px; height: 18px; background: var(--bg4); border: 1px solid var(--border2); border-radius: 10px; cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0; }
-.theme-toggle.on { background: var(--teal); border-color: var(--teal); }
-.theme-toggle::after { content: ''; position: absolute; width: 12px; height: 12px; background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
-.theme-toggle.on::after { left: 18px; }
-.theme-toggle-wrap { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text2); }
-
-/* ===== CONTENT ===== */
-.content { padding: 16px 20px; flex: 1; }
-
-/* ===== METRIC CARDS ===== */
-.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; margin-bottom: 18px; }
-.metric-card { background: linear-gradient(145deg, var(--bg2), var(--bg)); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; position: relative; overflow: hidden; transition: all 0.2s; box-shadow: var(--shadow); }
-.metric-card:hover { border-color: var(--border2); box-shadow: var(--shadow-md), var(--glow-green); transform: translateY(-1px); }
-.metric-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--teal); opacity: 0; transition: opacity 0.15s; }
-.metric-card.highlight-green { border-color: rgba(52,211,153,0.25); box-shadow: var(--shadow), 0 0 24px rgba(52,211,153,0.08); }
-.metric-card.highlight-green::after { background: var(--green); opacity: 0.7; box-shadow: 0 0 12px var(--green); }
-.metric-card.highlight-red { border-color: rgba(248,113,113,0.25); box-shadow: var(--shadow), 0 0 24px rgba(248,113,113,0.08); }
-.metric-card.highlight-red::after { background: var(--red); opacity: 0.7; box-shadow: 0 0 12px var(--red); }
-.metric-card.highlight-amber { border-color: rgba(251,191,36,0.25); box-shadow: var(--shadow), 0 0 24px rgba(251,191,36,0.08); }
-.metric-card.highlight-amber::after { background: var(--amber); opacity: 0.7; box-shadow: 0 0 12px var(--amber); }
-.metric-card.highlight-blue { border-color: rgba(96,165,250,0.2); }
-.metric-card.highlight-blue::after { background: var(--blue); opacity: 0.6; }
-.metric-card.clickable { cursor: pointer; }
-.metric-card.clickable:hover { background: var(--bg3); border-color: var(--border2); transform: translateY(-1px); box-shadow: var(--shadow-md); }
-.metric-card.clickable:hover::after { opacity: 1; }
-.metric-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; font-weight: 600; }
-.metric-val { font-size: 26px; font-weight: 700; color: var(--text); font-family: var(--mono); line-height: 1; }
-.metric-val.green { color: var(--green); }
-.metric-val.red { color: var(--red); }
-.metric-val.amber { color: var(--amber); }
-.metric-val.blue { color: var(--teal); }
-.metric-sub { font-size: 11px; color: var(--text3); margin-top: 5px; }
-
-/* ===== TOOLBAR ===== */
-.toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
-.search-box { position: relative; flex: 1; min-width: 200px; }
-.search-box i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 13px; }
-.search-box input { width: 100%; padding: 7px 12px 7px 32px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
-.search-box input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(14,165,233,0.1); }
-.search-box input::placeholder { color: var(--text3); }
-select.sel { padding: 7px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; font-family: var(--font); outline: none; cursor: pointer; }
-select.sel:focus { border-color: var(--teal); }
-select.sel option { background: var(--bg2); }
-
-/* ===== TABS ===== */
-.tabs { display: flex; gap: 0; margin-bottom: 14px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-.tabs::-webkit-scrollbar { display: none; }
-.tab { padding: 8px 14px; font-size: 12px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: all 0.12s; display: flex; align-items: center; gap: 6px; font-weight: 500; }
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--teal); border-bottom-color: var(--teal); }
-.tab-count { background: var(--bg3); border-radius: 10px; font-size: 10px; padding: 1px 6px; }
-.tab.active .tab-count { background: var(--teal-dim); color: var(--teal); }
-
-/* ===== TABLE ===== */
-.table-container { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; }
-thead th { padding: 10px 14px; text-align: left; font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; background: var(--bg3); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
-thead th:hover { color: var(--text2); }
-thead th.sort-asc::after { content: ' ↑'; color: var(--teal); }
-thead th.sort-desc::after { content: ' ↓'; color: var(--teal); }
-tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
-tbody tr:last-child { border-bottom: none; }
-tbody tr:hover { background: var(--bg3); }
-tbody td { padding: 10px 14px; font-size: 12px; color: var(--text); vertical-align: middle; }
-.domain-name { font-family: var(--mono); font-size: 12px; color: var(--teal); font-weight: 500; }
-.domain-name a { color: inherit; text-decoration: none; }
-.domain-name a:hover { opacity: 0.8; text-decoration: underline; }
-
-/* ===== BADGES ===== */
-.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
-.badge-up { background: var(--green-dim); color: var(--green); }
-.badge-down { background: var(--red-dim); color: var(--red); }
-.badge-warn { background: var(--amber-dim); color: var(--amber); }
-.badge-unknown { background: var(--bg4); color: var(--text3); border: 1px solid var(--border); }
-.badge-blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(0,170,255,0.2); }
-
-/* TRAFFIC BAR */
-.traffic-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
-.traffic-bar-bg { flex: 1; height: 5px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
-.traffic-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
-.traffic-val { font-family: var(--mono); font-size: 12px; min-width: 40px; text-align: right; color: var(--text2); }
-
-/* KW BADGES */
-.kw-pos { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
-.kw-top1 { color: var(--green); }
-.kw-top3 { color: #34d399; }
-.kw-top10 { color: var(--blue); }
-.kw-top30 { color: var(--amber); }
-.kw-none { color: var(--text3); }
-
-/* EXPIRY */
-.expiry-ok { color: var(--text2); font-size: 12px; }
-.expiry-warn { color: var(--amber); font-size: 12px; font-weight: 500; }
-.expiry-danger { color: var(--red); font-size: 12px; font-weight: 600; }
-
-/* ACTIONS */
-.action-group { display: flex; gap: 4px; }
-.action-btn { width: 28px; height: 28px; border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent; color: var(--text3); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: all 0.15s; }
-.action-btn:hover { background: var(--bg4); color: var(--text); border-color: var(--border); }
-.action-btn.danger:hover { background: var(--red-dim); color: var(--red); border-color: rgba(240,82,82,0.3); }
-
-/* PAGINATION */
-.pagination { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text3); }
-.page-btns { display: flex; gap: 4px; }
-.page-btn { padding: 4px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text2); cursor: pointer; font-size: 12px; font-family: var(--font); }
-.page-btn:hover { background: var(--bg4); }
-.page-btn.active { background: var(--teal); color: #fff; border-color: var(--teal); font-weight: 600; }
-.page-btn:disabled { opacity: 0.4; cursor: default; }
-
-/* MODAL */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 28px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-md); }
-.modal-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
-.form-group { margin-bottom: 16px; }
-.form-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; display: block; font-weight: 500; }
-.form-input { width: 100%; padding: 9px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
-.form-input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(14,165,233,0.1); }
-.form-input::placeholder { color: var(--text3); }
-textarea.form-input { resize: vertical; min-height: 80px; }
-.form-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
-.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
-.close-btn { position: absolute; right: 20px; top: 20px; }
-
-/* LOADING */
-.loading { display: flex; align-items: center; gap: 8px; color: var(--text3); font-size: 13px; padding: 40px; justify-content: center; }
-.spinner { width: 16px; height: 16px; border: 2px solid var(--bg4); border-top-color: var(--teal); border-radius: 50%; animation: spin 0.7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* TOAST */
-.toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
-.toast { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; display: flex; align-items: center; gap: 10px; min-width: 280px; animation: slideIn 0.2s ease; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
-.toast.success { border-color: rgba(16,185,129,0.3); background: var(--bg2); }
-.toast.error { border-color: rgba(239,68,68,0.3); background: var(--bg2); }
-.toast i { font-size: 16px; }
-.toast.success i { color: var(--green); }
-.toast.error i { color: var(--red); }
-.toast.info i { color: var(--teal); }
-@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
-/* DETAIL PANEL */
-.detail-panel { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 16px; }
-.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
-.detail-item { background: var(--bg3); border-radius: var(--radius-sm); padding: 12px; }
-.detail-item-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
-.detail-item-val { font-size: 15px; font-weight: 600; font-family: var(--mono); }
-.kw-table-wrap { max-height: 300px; overflow-y: auto; }
-.kw-table-wrap table th { position: sticky; top: 0; z-index: 1; }
-
-/* GSC CONNECT BANNER */
-.gsc-banner { background: linear-gradient(135deg, var(--bg3), var(--bg2)); border: 1px solid rgba(96,165,250,0.2); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 16px; }
-.gsc-banner-icon { font-size: 28px; }
-.gsc-banner-text h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-.gsc-banner-text p { font-size: 12px; color: var(--text2); }
-.gsc-banner-action { margin-left: auto; }
-
-/* SETTINGS PAGE */
-.settings-section { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-.settings-section-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; color: var(--text); }
-.settings-section-title i { color: var(--teal); }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.server-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 20px; }
-.server-ok { background: var(--green-dim); color: var(--green); }
-.server-err { background: var(--red-dim); color: var(--red); }
-
-/* EMPTY STATE */
-.empty-state { padding: 60px 20px; text-align: center; color: var(--text3); }
-.empty-state i { font-size: 40px; margin-bottom: 12px; display: block; }
-.empty-state h3 { font-size: 15px; color: var(--text2); margin-bottom: 6px; }
-.empty-state p { font-size: 13px; }
-
-/* PROGRESS */
-.progress-bar { height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; margin-top: 8px; }
-.progress-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.3s; }
-
-/* RESPONSIVE MOBILE */
-.mobile-menu-btn { display:none; position:fixed; top:12px; left:12px; z-index:1000; background:var(--bg2); border:1px solid var(--border2); border-radius:var(--radius-sm); padding:8px 10px; cursor:pointer; color:var(--text); }
-.sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:998; }
-
-@media (max-width: 768px) {
-  .app { flex-direction: column; }
-  .mobile-menu-btn { display:flex; align-items:center; gap:6px; }
-  .sidebar { 
-    position: fixed; left: -240px; top: 0; bottom: 0; z-index: 999;
-    width: 240px !important; min-width: 240px !important;
-    transition: left 0.25s ease;
-    box-shadow: 4px 0 20px rgba(0,0,0,0.4);
+// Multi-server support
+let PLESK_SERVERS = [];
+try {
+  if (process.env.PLESK_SERVERS) {
+    PLESK_SERVERS = JSON.parse(process.env.PLESK_SERVERS);
+    console.log(`[Plesk] โหลด ${PLESK_SERVERS.length} servers จาก PLESK_SERVERS`);
+  } else if (PLESK_HOST && PLESK_PASS) {
+    // fallback to single server
+    PLESK_SERVERS = [{ host: PLESK_HOST, user: PLESK_USER, pass: PLESK_PASS, name: 'Server 1' }];
   }
-  .sidebar.open { left: 0; }
-  .sidebar-overlay.open { display: block; }
-  .content { padding: 12px; padding-top: 52px; }
-  .form-row { grid-template-columns: 1fr; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .stat-card { padding: 12px; }
-  .topbar { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
-  .topbar h2 { font-size: 14px; }
-  .btn { padding: 6px 10px; font-size: 12px; }
-  table { font-size: 12px; }
-  table th, table td { padding: 6px 8px; }
-  /* ซ่อนคอลัมน์ที่ไม่จำเป็นบนมือถือ */
-  .col-traffic, .col-keywords, .col-ssl, .col-clicks { display: none; }
-  .domain-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .modal { margin: 12px; width: calc(100% - 24px); max-width: 100%; }
-  .bulk-bar-inner { flex-wrap: wrap; }
-  #progress-modal .modal { margin: 12px; }
+} catch(e) {
+  console.error('[Plesk] ไม่สามารถ parse PLESK_SERVERS:', e.message);
+  if (PLESK_HOST && PLESK_PASS) {
+    PLESK_SERVERS = [{ host: PLESK_HOST, user: PLESK_USER, pass: PLESK_PASS, name: 'Server 1' }];
+  }
 }
-.ov-flow-item { display:inline-flex; align-items:center; gap:5px; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius-sm); padding:5px 10px; font-size:11px; color:var(--text); }
-.ov-auto-row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--border); font-size:11px; }
-.ov-auto-row:last-child { border-bottom:none; }
-.ov-pill { font-size:10px; padding:1px 7px; border-radius:10px; border:1px solid var(--border2); color:var(--text2); white-space:nowrap; }
-.ov-rule-card { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; }
-.ov-integ-row { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--border); font-size:11px; }
-.ov-integ-row:last-child { border-bottom:none; }
-.ov-server-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:14px; }
-.ov-badge { display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:600; padding:2px 7px; border-radius:10px; }
-.ov-badge-green { background:var(--green-dim); color:var(--green); }
-.ov-badge-amber { background:var(--amber-dim); color:var(--amber); }
-.ov-badge-red { background:var(--red-dim); color:var(--red); }
-.ov-badge-gray { background:var(--bg4); color:var(--text2); }
-@keyframes loadbar {
-  0%{width:10%;margin-left:0}
-  50%{width:50%;margin-left:30%}
-  100%{width:10%;margin-left:90%}
+const SHEET_ID = process.env.GOOGLE_SHEET_ID || '';
+const CF_API_TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
+const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
+const TG_CHAT = process.env.TELEGRAM_CHAT_ID || '';
+
+// Parse Google Service Account from env
+let SERVICE_ACCOUNT = null;
+try {
+  SERVICE_ACCOUNT = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT || '{}');
+} catch(e) {
+  console.error('[Sheets] ไม่สามารถ parse GOOGLE_SERVICE_ACCOUNT ได้');
 }
-</style>
-</head>
-<body>
 
-<!-- LOGIN PAGE -->
-<div id="login-page" style="display:none;position:fixed;inset:0;background:var(--bg1);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:40px;width:100%;max-width:400px;margin:20px">
-    <div style="text-align:center;margin-bottom:32px">
-      <div style="width:56px;height:56px;background:linear-gradient(135deg,var(--green),#34d399);border-radius:14px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center">
-        <i class="ti ti-globe" style="font-size:28px;color:#fff"></i>
-      </div>
-      <h1 style="margin:0;font-size:22px;font-weight:700">DomainIntel</h1>
-      <p style="margin:8px 0 0;color:var(--text3);font-size:13px">SEO Domain Intelligence Dashboard</p>
-    </div>
-    <div style="margin-bottom:24px">
-      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Password</label>
-      <input id="login-pass" type="password" placeholder="••••••••" class="form-input" style="width:100%;box-sizing:border-box"
-        onkeydown="if(event.key==='Enter')doLogin()" />
-    </div>
-    <div id="login-otp-wrap" style="margin-bottom:24px;display:none">
-      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">รหัส 2FA (6 หลักจากแอป Authenticator)</label>
-      <input id="login-otp" type="text" inputmode="numeric" maxlength="6" placeholder="123456" class="form-input" style="width:100%;box-sizing:border-box;letter-spacing:4px;text-align:center"
-        onkeydown="if(event.key==='Enter')doLogin()" />
-    </div>
-    <button onclick="doLogin()" class="btn btn-green" style="width:100%;padding:12px;font-size:14px;justify-content:center">
-      <i class="ti ti-login"></i> เข้าสู่ระบบ
-    </button>
-    <div id="login-error" style="display:none;color:var(--red);font-size:12px;text-align:center;margin-top:12px"></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--text3)">DomainIntel v1.0 · Secure Access</div>
-  </div>
-</div>
-
-<div id="matrix-rain" style="position:fixed;inset:0;overflow:hidden;pointer-events:none;opacity:0.03;z-index:0"></div>
-<div id="global-loading" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;flex-direction:column;gap:16px">
-  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:28px 36px;text-align:center;min-width:280px">
-    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
-      <div class="spinner" style="width:22px;height:22px;border-width:3px"></div>
-      <div id="global-loading-title" style="font-size:15px;font-weight:500;color:var(--text)">กำลังโหลด...</div>
-    </div>
-    <div id="global-loading-sub" style="font-size:12px;color:var(--text3)">กรุณารอสักครู่</div>
-    <div style="background:var(--bg4);border-radius:4px;overflow:hidden;height:4px;margin-top:14px">
-      <div id="global-loading-bar" style="height:100%;background:var(--green);border-radius:4px;width:30%;animation:loadbar 1.5s ease-in-out infinite"></div>
-    </div>
-  </div>
-</div>
-
-<div class="app" id="main-app" style="display:none">
-
-  <!-- SIDEBAR -->
-  <!-- Mobile Menu Button -->
-  <button class="mobile-menu-btn" onclick="toggleSidebar()" id="menu-btn">
-    <i class="ti ti-menu-2"></i> เมนู
-  </button>
-  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
-  
-  <aside class="sidebar" id="sidebar">
-    <div class="logo">
-      <div class="logo-icon">D</div>
-      <div>
-        <div class="logo-text">Domain<span>Intel</span></div>
-        <div class="logo-ver">v2.0 · SEO Intelligence</div>
-      </div>
-    </div>
-    <nav class="nav">
-      <div class="nav-section">// OVERVIEW</div>
-      <div class="nav-item active" onclick="showPage('command')">
-        <i class="ti ti-layout-grid"></i> ศูนย์บัญชาการ <span id="nav-command-badge" class="nav-badge" style="display:none"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('dashboard')">
-        <i class="ti ti-dashboard"></i> Dashboard
-      </div>
-      <div class="nav-item" onclick="showPage('overview')">
-        <i class="ti ti-topology-star"></i> System Overview
-      </div>
-      <div class="nav-section">// บริษัท</div>
-      <div class="nav-item" onclick="showPage('company')">
-        <i class="ti ti-building"></i> ทีมพนักงาน
-      </div>
-      <div class="nav-item" onclick="showPage('problems')">
-        <i class="ti ti-alert-hexagon"></i> ศูนย์ปัญหา <span id="nav-problem-badge" class="nav-badge" style="display:none"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('approvals')">
-        <i class="ti ti-checkbox"></i> รออนุมัติ <span id="nav-approval-badge" class="nav-badge" style="display:none;background:var(--gold);color:#000"></span>
-      </div>
-      <div class="nav-section">// MONITORING</div>
-      <div class="nav-item" onclick="showPage('domains');currentTab='all';applyFilters();">
-        <i class="ti ti-world"></i> โดเมนทั้งหมด
-        <span class="nav-badge" id="nav-total">0</span>
-      </div>
-      <div class="nav-item" onclick="showPageFiltered('domains','down')">
-        <i class="ti ti-alert-circle"></i> Down / Error
-        <span class="nav-badge" id="nav-down">0</span>
-      </div>
-      <div class="nav-item" onclick="showPageFiltered('domains','expiring')">
-        <i class="ti ti-clock"></i> หมดอายุเร็วๆ
-        <span class="nav-badge amber" id="nav-expiring">0</span>
-      </div>
-      <div class="nav-section">// ANALYTICS</div>
-      <div class="nav-item" onclick="showPage('traffic')">
-        <i class="ti ti-chart-line"></i> Traffic & GSC
-      </div>
-      <div class="nav-item" onclick="showPage('keywords')">
-        <i class="ti ti-award"></i> Keyword Rankings
-      </div>
-      <div class="nav-section">// TOOLS</div>
-      <div class="nav-item" onclick="showPageFiltered('domains','cannot-fix')">
-        <i class="ti ti-alert-circle"></i>
-        <span>แก้ไขไม่ได้</span>
-        <span class="badge" id="nav-cannotfix"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('diagnosis')">
-        <i class="ti ti-stethoscope"></i>
-        <span>รายงานสาเหตุ</span>
-        <span class="badge" id="nav-diagnosis" style="background:var(--red);color:#fff"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('import')">
-        <i class="ti ti-file-import"></i> Import CSV
-      </div>
-      <div class="nav-item" onclick="showPage('server-manager')">
-        <i class="ti ti-server"></i> Server Manager
-        <span class="badge" id="nav-server-alerts" style="background:var(--red);color:#fff;display:none"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('sla')">
-        <i class="ti ti-chart-line"></i> Uptime SLA
-      </div>
-      <div class="nav-item" onclick="showPage('resources')">
-        <i class="ti ti-cpu"></i> Resource Usage
-      </div>
-      <div class="nav-item" onclick="showPage('health')">
-        <i class="ti ti-heartbeat"></i> Health Score
-      </div>
-      <div class="nav-item" onclick="showPage('events')">
-        <i class="ti ti-history"></i> Event Timeline
-      </div>
-      <div class="nav-item" onclick="openReport()">
-        <i class="ti ti-report-analytics"></i> Diagnostic Report
-      </div>
-      <div class="nav-item" onclick="openISP()">
-        <i class="ti ti-network"></i> ISP Block Check
-      </div>
-      <div class="nav-item" onclick="openBackup()">
-        <i class="ti ti-switch-horizontal"></i> โดเมนสำรอง
-      </div>
-      <div class="nav-item" onclick="openHistory()">
-        <i class="ti ti-chart-line"></i> แนวโน้ม (History)
-      </div>
-      <div class="nav-item" onclick="openIncidents()">
-        <i class="ti ti-alert-triangle"></i> ประวัติดับ (Incidents)
-      </div>
-      <div class="nav-item" onclick="openWpAdmin()">
-        <i class="ti ti-lock-open"></i> เปิด/ปิด wp-admin
-      </div>
-      <div class="nav-item" onclick="openVault()">
-        <i class="ti ti-shield-lock"></i> ข้อมูลลับส่วนตัว
-      </div>
-      <div class="nav-item" onclick="showPage('tasks')">
-        <i class="ti ti-layout-kanban"></i> To-Do Board
-      </div>
-      <div class="nav-item" onclick="showPage('botwatch')">
-        <i class="ti ti-shield-check"></i> Bot Watch
-        <span class="nav-badge" id="nav-botwatch" style="display:none"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('settings')">
-        <i class="ti ti-settings"></i> Settings
-      </div>
-    </nav>
-    <div class="sidebar-footer">
-      <div style="padding:8px 10px;border-bottom:1px solid var(--border);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:11px;color:var(--text3)"><i class="ti ti-user"></i> <span id="logged-user">admin</span></span>
-        <button onclick="doLogout()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px" title="ออกจากระบบ"><i class="ti ti-logout"></i> ออก</button>
-      </div>
-      <div class="status-indicator">
-        <div class="dot-live" id="live-dot"></div>
-        <span id="server-status-text">กำลังเชื่อมต่อ...</span>
-      </div>
-      <div style="font-size:11px;color:var(--text3);padding:4px 10px" id="last-updated-text"></div>
-    </div>
-  </aside>
-
-  <!-- MAIN -->
-  <main class="main">
-
-    <!-- DASHBOARD PAGE -->
-    <!-- COMMAND CENTER PAGE -->
-    <div id="page-command">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-layout-grid" style="color:var(--teal)"></i> ศูนย์บัญชาการ</div>
-          <div class="topbar-sub">ทุกอย่างที่ต้องรู้ ในที่เดียว — เรียงตามความเร่งด่วน</div>
-        </div>
-        <div class="topbar-right">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer" title="ให้บอทวินิจฉัยแล้วแก้งานปลอดภัยเองทุก 30 นาที (มี cooldown + เพดานต่อวัน)">
-            <input type="checkbox" id="remediate-toggle" onchange="toggleRemediate()" checked> 🤖 แก้เองอัตโนมัติ
-          </label>
-          <button class="btn btn-green" onclick="runRemediateNow()" id="remediate-run-btn"><i class="ti ti-wand"></i> วินิจฉัย+แก้เลย</button>
-          <button class="btn" onclick="loadCommandCenter()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px" id="command-content">
-        <div style="text-align:center;padding:50px;color:var(--text3)"><i class="ti ti-refresh ti-spin" style="font-size:24px"></i><br>กำลังรวบรวมข้อมูล...</div>
-      </div>
-      <!-- กล่องวินิจฉัยโดเมน -->
-      <div style="padding:0 20px 20px">
-        <div class="metric-card" style="padding:16px">
-          <div style="font-size:13px;font-weight:600;margin-bottom:10px"><i class="ti ti-stethoscope" style="color:var(--teal)"></i> วินิจฉัยโดเมนที่เข้าไม่ได้</div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:10px">ใส่ชื่อโดเมนที่ขึ้นแดง/timeout ระบบจะเช็ค DNS, Cloudflare, SSL, vhost ให้ว่าติดตรงไหน</div>
-          <div style="display:flex;gap:8px">
-            <input id="diag-domain-input" type="text" placeholder="เช่น slotday88.bio" 
-              onkeypress="if(event.key==='Enter')runDomainDiag()"
-              style="flex:1;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none;font-family:var(--mono)">
-            <button class="btn btn-green" onclick="runDomainDiag()" id="diag-domain-btn"><i class="ti ti-search"></i> วินิจฉัย</button>
-          </div>
-          <div id="diag-domain-result" style="margin-top:12px"></div>
-        </div>
-
-        <!-- ผู้ช่วย AI วิเคราะห์ error -->
-        <div class="metric-card" style="padding:16px;margin-top:16px;border-color:rgba(192,132,252,0.25)">
-          <div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--purple)"><i class="ti ti-robot"></i> ผู้ช่วย AI — วาง error ให้ช่วยแก้</div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:10px">วางข้อความ error อะไรก็ได้ (nginx, PHP, log, ฯลฯ) AI จะวิเคราะห์สาเหตุ + บอกวิธีแก้ทันที</div>
-          <textarea id="ai-error-input" placeholder="วาง error ที่นี่... เช่น nginx: [emerg] ..." 
-            style="width:100%;min-height:90px;padding:10px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;outline:none;font-family:var(--mono);resize:vertical;box-sizing:border-box"></textarea>
-          <div style="display:flex;gap:8px;margin-top:8px">
-            <button class="btn btn-green" onclick="aiAnalyze()" id="ai-analyze-btn"><i class="ti ti-sparkles"></i> ให้ AI วิเคราะห์</button>
-            <button class="btn btn-sm" onclick="document.getElementById('ai-error-input').value='';document.getElementById('ai-analyze-result').innerHTML=''">ล้าง</button>
-          </div>
-          <div id="ai-analyze-result" style="margin-top:12px"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="page-dashboard" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title">Dashboard</div>
-          <div class="topbar-sub" id="dash-subtitle">โหลดข้อมูล...</div>
-        </div>
-        <div class="topbar-right">
-          <div class="theme-toggle-wrap" title="สลับ Dark/Light Mode">
-            <i class="ti ti-sun" style="font-size:13px;color:var(--amber)"></i>
-            <div class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"></div>
-            <i class="ti ti-moon" style="font-size:13px;color:var(--teal)"></i>
-          </div>
-          <button class="btn" onclick="syncPlesk()" id="plesk-sync-btn"><i class="ti ti-server"></i> Sync Plesk</button>
-          <button class="btn" id="refresh-btn" onclick="refreshNow()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-          <button class="btn" onclick="checkAllNow()"><i class="ti ti-refresh"></i> เช็คทุกโดเมน</button>
-          <button class="btn" onclick="autoFixAllVisible()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)" id="autofix-all-btn"><i class="ti ti-wand"></i> Auto-fix ทั้งหมด</button>
-          <button class="btn" onclick="syncGSCAll()"><i class="ti ti-brand-google"></i> Sync GSC</button>
-          <button class="btn btn-green" onclick="openAddModal()"><i class="ti ti-plus"></i> เพิ่มโดเมน</button>
-        </div>
-      </div>
-      <div class="content">
-        <div class="metrics-grid">
-          <div class="metric-card clickable" onclick="goToFilter('all')"><div class="metric-label"><i class="ti ti-world"></i> โดเมนทั้งหมด</div><div class="metric-val blue" id="stat-total">—</div><div class="metric-sub" id="stat-last">—</div></div>
-          <div class="metric-card highlight-green clickable" onclick="goToFilter('up')"><div class="metric-label"><i class="ti ti-circle-check"></i> Up</div><div class="metric-val green" id="stat-up">—</div><div class="metric-sub" id="stat-up-pct">—</div></div>
-          <div class="metric-card highlight-red clickable" onclick="goToFilter('down')"><div class="metric-label"><i class="ti ti-circle-x"></i> Down</div><div class="metric-val red" id="stat-down">—</div><div class="metric-sub">ต้องตรวจสอบด่วน</div></div>
-          <div class="metric-card highlight-amber clickable" onclick="goToFilter('warn')"><div class="metric-label"><i class="ti ti-alert-triangle"></i> Warning</div><div class="metric-val amber" id="stat-warn">—</div><div class="metric-sub">ตอบสนองช้า / error</div></div>
-          <div class="metric-card highlight-green clickable" onclick="goToFilter('traffic')"><div class="metric-label"><i class="ti ti-chart-bar"></i> มีทราฟฟิค (GSC)</div><div class="metric-val green" id="stat-traffic">—</div><div class="metric-sub" id="stat-clicks">—</div></div>
-          <div class="metric-card highlight-amber clickable" onclick="goToFilter('notraffic')"><div class="metric-label"><i class="ti ti-ban"></i> ไม่มีทราฟฟิค</div><div class="metric-val amber" id="stat-notraffic">—</div><div class="metric-sub">0 คลิกใน 30 วัน</div></div>
-          <div class="metric-card highlight-red clickable" onclick="goToFilter('expiring')"><div class="metric-label"><i class="ti ti-calendar-x"></i> SSL หมดอายุใน 30 วัน</div><div class="metric-val red" id="stat-expiring">—</div><div class="metric-sub">ต้องต่ออายุด่วน</div></div>
-          <div class="metric-card highlight-green clickable" onclick="goToFilter('plesk-active')"><div class="metric-label"><i class="ti ti-server"></i> Plesk Active</div><div class="metric-val green" id="stat-plesk-active">—</div><div class="metric-sub" id="stat-plesk-host">—</div></div>
-          <div class="metric-card highlight-red clickable" onclick="goToFilter('plesk-suspended')"><div class="metric-label"><i class="ti ti-ban"></i> Plesk Suspended</div><div class="metric-val red" id="stat-plesk-suspended">—</div><div class="metric-sub">โดเมนถูกระงับ</div></div>
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-eye"></i> Total Impressions</div><div class="metric-val" id="stat-impressions">—</div><div class="metric-sub">30 วันล่าสุด</div></div>
-        </div>
-
-        <div id="gsc-banner-wrap"></div>
-
-        <!-- CEO Report card -->
-        <div id="ceo-report-wrap"></div>
-
-        <!-- Quick domain list -->
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <div style="font-size:14px;font-weight:600">โดเมนล่าสุด / ต้องดูแล</div>
-          <button class="btn btn-sm" onclick="showPage('domains')">ดูทั้งหมด →</button>
-        </div>
-        <div id="quick-table-wrap"></div>
-      </div>
-    </div>
-
-    <!-- DOMAINS PAGE -->
-    <div id="page-domains" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title">โดเมนทั้งหมด</div>
-          <div class="topbar-sub" id="domains-count-text">—</div>
-        </div>
-        <div class="topbar-right">
-          <button class="btn" onclick="exportCSV()"><i class="ti ti-download"></i> Export CSV</button>
-          <button class="btn" onclick="checkAllNow()"><i class="ti ti-refresh"></i> เช็คทั้งหมด</button>
-          <button class="btn" onclick="autoFixAllVisible()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)"><i class="ti ti-wand"></i> Auto-fix ทั้งหมด</button>
-          <button class="btn btn-green" onclick="openAddModal()"><i class="ti ti-plus"></i> เพิ่มโดเมน</button>
-        </div>
-      </div>
-      <div class="content">
-        <div class="toolbar">
-          <div class="search-box">
-            <i class="ti ti-search"></i>
-            <input type="text" placeholder="ค้นหาโดเมน..." id="search-input" oninput="applyFilters()" />
-          </div>
-          <select class="sel" id="filter-status" onchange="applyFilters()">
-            <option value="">สถานะทั้งหมด</option>
-            <option value="up">Up</option>
-            <option value="down">Down</option>
-            <option value="warn">Warning</option>
-            <option value="unknown">Unknown</option>
-          </select>
-          <select class="sel" id="filter-traffic" onchange="applyFilters()">
-            <option value="">ทราฟฟิคทั้งหมด</option>
-            <option value="high">สูง (&gt;1k/เดือน)</option>
-            <option value="mid">กลาง (100–1k)</option>
-            <option value="low">ต่ำ (&lt;100)</option>
-            <option value="none">ไม่มีทราฟฟิค</option>
-          </select>
-          <select class="sel" id="filter-expiry" onchange="applyFilters()">
-            <option value="">อายุโดเมน</option>
-            <option value="7">หมดใน 7 วัน</option>
-            <option value="30">หมดใน 30 วัน</option>
-            <option value="90">หมดใน 90 วัน</option>
-          </select>
-        </div>
-        <div class="tabs" id="domain-tabs">
-          <div class="tab active" onclick="setDomainTab('all',this)">ทั้งหมด <span class="tab-count" id="tab-all">0</span></div>
-          <div class="tab" onclick="setDomainTab('down',this)"><i class="ti ti-circle-x"></i> Down <span class="tab-count" id="tab-down">0</span></div>
-          <div class="tab" onclick="setDomainTab('warn',this)"><i class="ti ti-alert-triangle"></i> Warning <span class="tab-count" id="tab-warn">0</span></div>
-          <div class="tab" onclick="setDomainTab('notraffic',this)">ไม่มีทราฟฟิค <span class="tab-count" id="tab-notraffic">0</span></div>
-          <div class="tab" onclick="setDomainTab('expiring',this)">หมดอายุเร็ว <span class="tab-count" id="tab-expiring">0</span></div>
-          <div class="tab" onclick="setDomainTab('ranked',this)">มี Keyword ติด <span class="tab-count" id="tab-ranked">0</span></div>
-        </div>
-        <!-- Bulk Action Bar (แสดงเมื่อติ๊กโดเมน) -->
-        <div id="bulk-bar" style="display:none;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius);padding:10px 16px;margin-bottom:12px;flex-direction:column;gap:8px">
-          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-            <span id="bulk-count" style="font-size:13px;color:var(--text2)">เลือก 0 โดเมน</span>
-            <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn-sm" onclick="bulkAutoFix()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.3)">
-                <i class="ti ti-wand"></i> Auto-fix ทั้งหมดที่เลือก
-              </button>
-              <button class="btn btn-sm" onclick="bulkCheck()" style="background:var(--blue-dim);color:var(--blue);border-color:rgba(96,165,250,0.3)">
-                <i class="ti ti-refresh"></i> เช็คสถานะ
-              </button>
-              <button class="btn btn-sm btn-red" onclick="bulkDelete()">
-                <i class="ti ti-trash"></i> ลบ
-              </button>
-              <button class="btn btn-sm btn-ghost" onclick="clearSelection()">ยกเลิก</button>
-            </div>
-          </div>
-          <!-- Select all filtered banner -->
-          <div id="select-all-banner" style="display:none;background:var(--blue-dim);border-radius:var(--radius-sm);padding:8px 12px;font-size:12px;color:var(--blue);align-items:center;gap:8px">
-            <i class="ti ti-info-circle"></i>
-            <span id="select-all-banner-text">เลือกแค่ 25 โดเมนในหน้านี้</span>
-            <button onclick="selectAllDomains()" style="background:var(--blue);color:#fff;border:none;border-radius:4px;padding:3px 10px;font-size:11px;cursor:pointer;font-family:var(--font-sans)" id="select-all-btn">
-              เลือกทั้งหมด <span id="select-all-count">0</span> โดเมน
-            </button>
-            <button onclick="clearSelection()" style="background:transparent;border:none;color:var(--blue);cursor:pointer;font-size:11px;text-decoration:underline">ยกเลิก</button>
-          </div>
-        </div>
-        <div id="domain-table-wrap"></div>
-      </div>
-    </div>
-
-    <!-- TRAFFIC PAGE -->
-    <div id="page-traffic" style="display:none">
-      <div class="topbar">
-        <div><div class="topbar-title">Traffic & Google Search Console</div><div class="topbar-sub">ข้อมูล 30 วันล่าสุด</div></div>
-        <div class="topbar-right">
-          <button class="btn" onclick="openBulkGSCModal()" style="background:var(--gold-dim);color:var(--gold);border-color:rgba(251,191,36,0.3)"><i class="ti ti-plus"></i> Bulk เพิ่มเข้า GSC</button>
-          <button class="btn" onclick="importGSCDomains()" style="background:rgba(52,211,153,0.12);color:var(--teal);border-color:rgba(52,211,153,0.3)"><i class="ti ti-download"></i> Import จาก GSC</button>
-          <button class="btn btn-green" onclick="syncGSCAll()"><i class="ti ti-brand-google"></i> Sync GSC ทั้งหมด</button>
-        </div>
-      </div>
-      <div class="content" id="traffic-content">
-        <div class="loading"><div class="spinner"></div> โหลดข้อมูล...</div>
-      </div>
-    </div>
-
-    <!-- KEYWORDS PAGE -->
-    <div id="page-keywords" style="display:none">
-      <div class="topbar">
-        <div><div class="topbar-title">Keyword Rankings</div><div class="topbar-sub">จาก Google Search Console</div></div>
-        <div class="topbar-right">
-          <button class="btn btn-green" onclick="syncGSCAll()"><i class="ti ti-brand-google"></i> Sync GSC</button>
-        </div>
-      </div>
-      <div class="content" id="keywords-content">
-        <div class="loading"><div class="spinner"></div> โหลดข้อมูล...</div>
-      </div>
-    </div>
-
-    <!-- IMPORT PAGE -->
-    <div id="page-import" style="display:none">
-      <div class="topbar">
-        <div><div class="topbar-title">Import CSV</div><div class="topbar-sub">นำเข้าโดเมนจาก CSV แบบ Bulk</div></div>
-      </div>
-      <div class="content">
-        <div class="settings-section">
-          <div class="settings-section-title"><i class="ti ti-file-spreadsheet"></i> รูปแบบ CSV ที่รองรับ</div>
-          <p style="font-size:13px;color:var(--text2);margin-bottom:12px">คอลัมน์ที่รองรับ (บรรทัดแรกต้องเป็น header):</p>
-          <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:14px;font-family:var(--mono);font-size:12px;color:var(--text2);margin-bottom:16px;overflow-x:auto">
-            <div style="color:var(--green);margin-bottom:4px">domain,notes,tags,expiry_date,days_left</div>
-            <div>example.com,เว็บหลัก,seo;lead,2026-12-31,217</div>
-            <div>example2.net,แคมเปญ Q1,ppc,2026-06-30,32</div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button class="btn" onclick="downloadTemplate()"><i class="ti ti-download"></i> ดาวน์โหลด Template</button>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-section-title"><i class="ti ti-upload"></i> อัพโหลด CSV</div>
-          <div id="drop-zone" style="border:2px dashed var(--border2);border-radius:var(--radius);padding:40px;text-align:center;cursor:pointer;transition:all 0.2s;margin-bottom:16px" ondragover="event.preventDefault();this.style.borderColor='var(--green)'" ondragleave="this.style.borderColor='var(--border2)'" ondrop="handleDrop(event)">
-            <i class="ti ti-cloud-upload" style="font-size:32px;color:var(--text3);display:block;margin-bottom:12px"></i>
-            <div style="font-size:14px;color:var(--text2);margin-bottom:6px">ลากไฟล์มาวางตรงนี้</div>
-            <div style="font-size:12px;color:var(--text3);margin-bottom:16px">หรือ</div>
-            <button class="btn" onclick="document.getElementById('file-input').click()"><i class="ti ti-folder-open"></i> เลือกไฟล์</button>
-            <input type="file" id="file-input" accept=".csv" style="display:none" onchange="handleFileSelect(this)" />
-          </div>
-          <div style="font-size:13px;color:var(--text2);margin-bottom:12px">หรือวาง CSV โดยตรง:</div>
-          <textarea class="form-input" id="csv-text" rows="8" placeholder="domain,notes,tags&#10;example.com,เว็บหลัก,seo&#10;example2.net,,ppc"></textarea>
-          <div style="margin-top:12px;display:flex;gap:8px">
-            <button class="btn btn-green" onclick="importCSV()"><i class="ti ti-file-import"></i> Import โดเมน</button>
-            <button class="btn" onclick="document.getElementById('csv-text').value=''">ล้าง</button>
-          </div>
-          <div id="import-result" style="margin-top:12px"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SETTINGS PAGE -->
-    <!-- SERVER MANAGER PAGE -->
-    <div id="page-server-manager" style="display:none">
-      <div class="topbar">
-        <div><div class="topbar-title"><i class="ti ti-server" style="color:var(--blue)"></i> Server Manager</div>
-        <div class="topbar-sub">Monitor & จัดการ Hosting ทั้ง 4 Server แบบ Real-time</div></div>
-        <div class="topbar-right">
-          <button class="btn" onclick="refreshServerHealth()" id="sm-refresh-btn"><i class="ti ti-refresh"></i> รีเฟรช</button>
-          <button class="btn" onclick="fixAllServers()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)"><i class="ti ti-wand"></i> Fix ทั้งหมด</button>
-          <button class="btn" onclick="runDiskCleanup()" style="background:rgba(16,185,129,0.12);color:var(--green);border-color:rgba(16,185,129,0.3)" title="ล้าง log/tmp/cache เก่า ป้องกัน disk เต็ม"><i class="ti ti-trash"></i> Disk Cleanup</button>
-          <button class="btn" onclick="runPhpFpmLimit()" style="background:rgba(167,139,250,0.12);color:var(--purple);border-color:rgba(167,139,250,0.3)" title="จำกัด PHP-FPM max_children=3 ต่อโดเมน ทุก server"><i class="ti ti-adjustments"></i> PHP-FPM Limit</button>
-          <button class="btn" onclick="runPhpFpmOndemand()" style="background:rgba(239,68,68,0.12);color:var(--red);border-color:rgba(239,68,68,0.3)" title="เปลี่ยน pm=ondemand ป้องกัน process สะสม — แก้ Load สูง"><i class="ti ti-flame-off"></i> Fix Load (Ondemand)</button>
-          <button class="btn" onclick="unsuspendAllServers()" style="background:var(--green-dim);color:var(--green);border-color:rgba(34,197,94,0.3)"><i class="ti ti-player-play"></i> Unsuspend ทั้งหมด</button>
-          <button class="btn" onclick="installApacheWatchdog()" style="background:rgba(14,165,233,0.12);color:var(--teal);border-color:rgba(14,165,233,0.3)" title="ติดตั้ง Apache Watchdog บนทุก server"><i class="ti ti-shield-check"></i> Apache Watchdog</button>
-          <button class="btn" onclick="setupCFWhitelist()" style="background:rgba(245,158,11,0.12);color:var(--amber);border-color:rgba(245,158,11,0.3)" title="Allow Cloudflare IPs — ป้องกัน Error 521"><i class="ti ti-cloud-lock"></i> CF Whitelist</button>
-        </div>
-      </div>
-      <div style="padding:20px;display:flex;flex-direction:column;gap:20px">
-
-        <!-- Server Monitor Cards -->
-        <div id="server-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px">
-          <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin" style="font-size:24px"></i><br>กำลังโหลดข้อมูล Server...</div>
-        </div>
-
-        <!-- SSL Expiring -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
-            <h3 style="margin:0;font-size:14px;display:flex;align-items:center;gap:8px"><i class="ti ti-certificate" style="color:var(--amber)"></i> SSL ใกล้หมดอายุ</h3>
-            <span id="ssl-expiry-count" style="font-size:12px;color:var(--text3)"></span>
-          </div>
-          <div id="ssl-expiry-list"><div style="color:var(--text3);font-size:13px;text-align:center;padding:20px">กำลังโหลด...</div></div>
-        </div>
-
-        <!-- Domain Health Summary -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-          <h3 style="margin:0 0 16px 0;font-size:14px;display:flex;align-items:center;gap:8px"><i class="ti ti-chart-bar" style="color:var(--blue)"></i> สรุปสุขภาพโดเมน</h3>
-          <div id="domain-health-summary" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px"></div>
-        </div>
-
-        <!-- Action Log -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-          <h3 style="margin:0 0 16px 0;font-size:14px;display:flex;align-items:center;gap:8px"><i class="ti ti-history" style="color:var(--green)"></i> Action Log</h3>
-          <div id="server-action-log" style="font-size:12px;font-family:var(--mono);display:flex;flex-direction:column;gap:4px;max-height:200px;overflow-y:auto">
-            <div style="color:var(--text3);text-align:center;padding:12px">ยังไม่มี Log</div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- DIAGNOSIS PAGE -->
-    <div id="page-diagnosis" style="display:none">
-      <div class="topbar">
-        <div><div class="topbar-title"><i class="ti ti-stethoscope" style="color:var(--red)"></i> รายงานสาเหตุ</div>
-        <div class="topbar-sub">วิเคราะห์และแก้ไขโดเมนที่ Down อัตโนมัติ</div></div>
-        <div class="topbar-right">
-          <button class="btn" onclick="runDiagnosisAll()" style="background:var(--red);color:#fff;border-color:var(--red)"><i class="ti ti-stethoscope"></i> วิเคราะห์ทั้งหมด</button>
-          <button class="btn" onclick="autoFixDiagnosed()" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.4)"><i class="ti ti-wand"></i> Auto-fix ที่แก้ได้</button>
-        </div>
-      </div>
-      <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
-        
-        <!-- Summary -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px" id="diagnosis-summary"></div>
-        
-        <!-- Diagnosis List -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-          <h3 style="margin:0 0 16px 0;font-size:14px">รายการโดเมนที่วิเคราะห์แล้ว</h3>
-          <div id="diagnosis-list">
-            <div style="color:var(--text3);text-align:center;padding:40px">
-              <i class="ti ti-stethoscope" style="font-size:32px;display:block;margin-bottom:12px"></i>
-              กด "วิเคราะห์ทั้งหมด" เพื่อตรวจสอบโดเมนที่ Down
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div id="page-settings" style="display:none">
-      <div class="topbar">
-        <div><div class="topbar-title">Settings</div><div class="topbar-sub">ตั้งค่า GSC API และการแจ้งเตือน</div></div>
-        <div class="topbar-right">
-          <button class="btn btn-green" onclick="saveSettings()"><i class="ti ti-device-floppy"></i> บันทึก</button>
-        </div>
-      </div>
-      <div class="content">
-        <div class="settings-section">
-          <div class="settings-section-title"><i class="ti ti-server"></i> Backend Server</div>
-          <p style="font-size:13px;color:var(--text2);margin-bottom:12px">URL ของ Backend Server (node server.js)</p>
-          <div style="display:flex;gap:10px;align-items:center">
-            <input class="form-input" id="server-url" style="max-width:320px" placeholder="https://your-app.up.railway.app" value="" />
-            <button class="btn" onclick="testConnection()"><i class="ti ti-plug"></i> ทดสอบ</button>
-            <span id="conn-status"></span>
-          </div>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-section-title"><i class="ti ti-brand-google"></i> Google Search Console API</div>
-          <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
-            ขั้นตอน: <a href="https://console.cloud.google.com/" target="_blank" style="color:var(--blue)">Google Cloud Console</a> → สร้าง Project → เปิด Search Console API → สร้าง OAuth 2.0 Credentials
-          </p>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Client ID</label>
-              <input class="form-input" id="gsc-client-id" placeholder="xxxx.apps.googleusercontent.com" />
-            </div>
-            <div class="form-group">
-              <label class="form-label">Client Secret</label>
-              <input class="form-input" id="gsc-client-secret" type="password" placeholder="GOCSPX-..." />
-            </div>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Refresh Token</label>
-            <input class="form-input" id="gsc-refresh-token" placeholder="1//..." />
-            <div class="form-hint">ได้จาก OAuth Playground: <a href="https://developers.google.com/oauthplayground/" target="_blank" style="color:var(--blue)">developers.google.com/oauthplayground</a> → scope: https://www.googleapis.com/auth/webmasters.readonly</div>
-          </div>
-          <button class="btn" onclick="saveGSC()"><i class="ti ti-device-floppy"></i> บันทึก GSC Config</button>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-section-title"><i class="fa-solid fa-bell"></i> การแจ้งเตือน</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Telegram Bot Token</label>
-              <input class="form-input" id="telegram-token" placeholder="7123456789:AAFxxxxxx" />
-              <div class="form-hint">สร้างจาก <a href="https://t.me/BotFather" target="_blank" style="color:var(--blue)">@BotFather</a> บน Telegram</div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">Telegram Chat ID</label>
-              <input class="form-input" id="telegram-chat" placeholder="123456789" />
-              <div class="form-hint">เปิด bot แล้วพิมพ์ /start จากนั้นเปิด api.telegram.org/bot[TOKEN]/getUpdates</div>
-            </div>
-            <div class="form-group">
-              <label class="form-label">แจ้งเตือนเมื่อโดเมนหมดอายุก่อน (วัน)</label>
-              <input class="form-input" id="expiry-threshold" type="number" value="30" min="1" max="365" />
-            </div>
-          </div>
-          <div style="display:flex;gap:16px;margin-top:4px">
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer">
-              <input type="checkbox" id="notify-down" checked style="accent-color:var(--green)" /> แจ้งเมื่อโดเมนล่ม
-            </label>
-            <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text2);cursor:pointer">
-              <input type="checkbox" id="notify-expiry" checked style="accent-color:var(--green)" /> แจ้งเมื่อโดเมนใกล้หมดอายุ
-            </label>
-          </div>
-          <button class="btn" style="margin-top:12px" onclick="testLineAlert()"><i class="ti ti-brand-telegram"></i> ทดสอบแจ้งเตือน Telegram</button>
-        </div>
-
-        <div class="settings-section">
-          <div class="settings-section-title"><i class="ti ti-history"></i> Auto-check Schedule</div>
-          <p style="font-size:13px;color:var(--text2)">Server จะเช็คโดเมนอัตโนมัติทุก <strong>30 นาที</strong> และ Sync GSC ทุก <strong>6 ชั่วโมง</strong> (ต้องรัน server.js)</p>
-        </div>
-      </div>
-    </div>
-
-    <!-- BOT WATCH PAGE -->
-    <div id="page-botwatch" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-shield-check" style="color:var(--red)"></i> Bot Watch</div>
-          <div class="topbar-sub">ตรวจจับ IP ที่เข้าระบบผิดปกติ</div>
-        </div>
-        <div class="topbar-right">
-          <input type="date" id="bw-date" class="form-input" style="width:160px;padding:6px 10px;font-size:13px" />
-          <select id="bw-domain" class="sel" onchange="loadBotWatch()">
-            <option value="">ทุกโดเมน</option>
-          </select>
-          <button class="btn" onclick="loadBotWatch()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-          <button class="btn" style="background:var(--red-dim);color:var(--red);border-color:rgba(240,82,82,0.3)" onclick="syncBotWatch()"><i class="ti ti-refresh"></i> Sync ข้อมูล</button>
-        </div>
-      </div>
-      <div style="padding:20px;display:flex;flex-direction:column;gap:16px">
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-shield-x"></i> Bot IPs วันนี้</div><div class="metric-val red" id="bw-stat-ips">—</div></div>
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-click"></i> จำนวนครั้งรวม</div><div class="metric-val amber" id="bw-stat-hits">—</div></div>
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-world"></i> โดเมนที่ถูก hit</div><div class="metric-val blue" id="bw-stat-domains">—</div></div>
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-clock"></i> อัพเดตล่าสุด</div><div style="font-size:12px;color:var(--text2);margin-top:4px" id="bw-stat-sync">—</div></div>
-        </div>
-        <div class="table-container">
-          <div style="padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-            <div style="font-size:14px;font-weight:600"><i class="ti ti-robot" style="color:var(--red)"></i> รายการ Bot IPs</div>
-            <div style="font-size:12px;color:var(--text3)">IP ที่เข้าระบบซ้ำ ≥ 5 ครั้ง/วัน</div>
-          </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>IP Address</th>
-                  <th>เว็บไซต์</th>
-                  <th>การกระทำ</th>
-                  <th>ช่วงเวลา</th>
-                  <th style="color:var(--red)">จำนวนครั้ง</th>
-                  <th>จัดการ</th>
-                </tr>
-              </thead>
-              <tbody id="bw-table-body">
-                <tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
-          <div style="font-size:14px;font-weight:600;margin-bottom:16px"><i class="ti ti-chart-bar" style="color:var(--blue)"></i> ประวัติ 7 วันล่าสุด</div>
-          <div id="bw-history" style="display:grid;gap:8px"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- SYSTEM OVERVIEW PAGE -->
-    <div id="page-overview" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-topology-star" style="color:var(--teal)"></i> System Overview</div>
-          <div class="topbar-sub" id="ov-last-updated">ภาพรวมระบบทั้งหมด</div>
-        </div>
-        <div class="topbar-right">
-          <button class="btn" onclick="loadOverview()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px">
-
-        <!-- Stat Cards -->
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">
-          <div class="metric-card highlight-green clickable" onclick="showPage('domains')">
-            <div class="metric-label"><i class="ti ti-world"></i> โดเมนทั้งหมด</div>
-            <div class="metric-val green" id="ov-total">—</div>
-            <div class="metric-sub" id="ov-up-pct">—</div>
-          </div>
-          <div class="metric-card highlight-red clickable" onclick="showPage('domains');currentTab='down';applyFilters()">
-            <div class="metric-label"><i class="ti ti-circle-x"></i> Down</div>
-            <div class="metric-val red" id="ov-down">—</div>
-            <div class="metric-sub">ต้องตรวจสอบ</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-server"></i> Servers</div>
-            <div class="metric-val blue">4</div>
-            <div class="metric-sub">Plesk Hosting</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-robot"></i> Auto Systems</div>
-            <div class="metric-val" style="color:var(--teal)">18</div>
-            <div class="metric-sub">ทำงาน 24/7</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-shield-check"></i> SSL</div>
-            <div class="metric-val green" id="ov-ssl">—</div>
-            <div class="metric-sub">Let's Encrypt</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-ban"></i> Suspended</div>
-            <div class="metric-val" id="ov-suspended">—</div>
-            <div class="metric-sub">Plesk suspended</div>
-          </div>
-        </div>
-
-        <!-- Architecture Flow -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
-          <div style="font-size:12px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:6px">
-            <i class="ti ti-sitemap" style="color:var(--teal)"></i> สถาปัตยกรรมระบบ
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-            <div class="ov-flow-item" style="border-color:var(--border2)"><i class="ti ti-world" style="color:var(--blue)"></i> Browser</div>
-            <i class="ti ti-arrow-right" style="color:var(--text3);font-size:12px"></i>
-            <div class="ov-flow-item" style="border-color:var(--border2)"><i class="ti ti-cloud" style="color:var(--purple)"></i> Cloudflare</div>
-            <i class="ti ti-arrow-right" style="color:var(--text3);font-size:12px"></i>
-            <div class="ov-flow-item" style="border-color:var(--border2)"><i class="ti ti-brand-github"></i> GitHub</div>
-            <i class="ti ti-arrow-right" style="color:var(--text3);font-size:12px"></i>
-            <div class="ov-flow-item" style="border-color:var(--teal);background:rgba(14,165,233,0.08)"><i class="ti ti-server" style="color:var(--teal)"></i> Railway · Node.js</div>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px">
-            <div class="ov-flow-item"><i class="ti ti-table" style="color:var(--green)"></i> Google Sheets</div>
-            <i class="ti ti-arrows-horizontal" style="color:var(--text3);font-size:12px"></i>
-            <div class="ov-flow-item" style="border-color:var(--teal);background:rgba(14,165,233,0.08)"><i class="ti ti-server" style="color:var(--teal)"></i> Railway · Node.js</div>
-            <i class="ti ti-arrows-horizontal" style="color:var(--text3);font-size:12px"></i>
-            <div class="ov-flow-item"><i class="ti ti-server-2" style="color:var(--amber)"></i> Plesk API (4 servers)</div>
-            <i class="ti ti-arrow-right" style="color:var(--text3);font-size:12px"></i>
-            <div class="ov-flow-item"><i class="ti ti-brand-telegram" style="color:var(--blue)"></i> Telegram Bot</div>
-          </div>
-        </div>
-
-        <!-- 4 Servers -->
-        <div>
-          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--text3);margin-bottom:8px">4 Plesk Servers</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px" id="ov-servers">
-            <div style="text-align:center;padding:20px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
-          </div>
-        </div>
-
-        <!-- Auto Systems + Rules -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-
-          <!-- Auto Systems -->
-          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
-            <div style="font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
-              <i class="ti ti-robot" style="color:var(--teal)"></i> ระบบอัตโนมัติ
-            </div>
-            <div id="ov-auto-systems"></div>
-          </div>
-
-          <!-- Auto-Heal Rules + Integrations -->
-          <div style="display:flex;flex-direction:column;gap:10px">
-            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
-              <div style="font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
-                <i class="ti ti-heart-rate-monitor" style="color:var(--red)"></i> Auto-Heal Rules
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
-                <div class="ov-rule-card" style="border-color:rgba(239,68,68,0.3)">
-                  <div style="font-size:13px;font-weight:600;color:var(--red)">Load &gt;15</div>
-                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Kill WP Toolkit<br>Restart PHP-FPM</div>
-                </div>
-                <div class="ov-rule-card" style="border-color:rgba(239,68,68,0.3)">
-                  <div style="font-size:13px;font-weight:600;color:var(--red)">Load &gt;30</div>
-                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Kill heavy procs<br>Restart Apache</div>
-                </div>
-                <div class="ov-rule-card" style="border-color:rgba(245,158,11,0.3)">
-                  <div style="font-size:13px;font-weight:600;color:var(--amber)">RAM &gt;90%</div>
-                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Clear cache<br>Restart PHP-FPM</div>
-                </div>
-                <div class="ov-rule-card" style="border-color:rgba(245,158,11,0.3)">
-                  <div style="font-size:13px;font-weight:600;color:var(--amber)">Disk &gt;80%</div>
-                  <div style="font-size:10px;color:var(--text3);margin-top:2px">Auto-Cleanup<br>logs/tmp/cache</div>
-                </div>
-              </div>
-            </div>
-
-            <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
-              <div style="font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
-                <i class="ti ti-plug" style="color:var(--blue)"></i> Integrations
-              </div>
-              <div id="ov-integrations"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Pending Tasks -->
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px">
-          <div style="font-size:12px;font-weight:600;margin-bottom:10px;display:flex;align-items:center;gap:6px">
-            <i class="ti ti-clock-exclamation" style="color:var(--amber)"></i> งานที่ยังค้างอยู่
-          </div>
-          <div id="ov-pending"></div>
-        </div>
-
-      </div>
-    </div>
-
-
-    <!-- UPTIME SLA PAGE -->
-    <div id="page-sla" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-chart-line" style="color:var(--teal)"></i> Uptime SLA Tracker</div>
-          <div class="topbar-sub" id="sla-updated-at">ติดตาม uptime รายวัน — เก็บข้อมูลอัตโนมัติทุกครั้งที่ system check</div>
-        </div>
-        <div class="topbar-right">
-          <button class="btn" onclick="loadSLAPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px">
-
-        <!-- Stats -->
-        <div class="metrics-grid" id="sla-summary">
-          <div class="metric-card"><div class="metric-label">Avg SLA 7 วัน</div><div class="metric-val" id="sla-avg7">—</div></div>
-          <div class="metric-card"><div class="metric-label">Avg SLA 30 วัน</div><div class="metric-val" id="sla-avg30">—</div></div>
-          <div class="metric-card highlight-amber"><div class="metric-label">⚠️ SLA &lt; 99%</div><div class="metric-val amber" id="sla-under99">—</div></div>
-          <div class="metric-card highlight-red"><div class="metric-label">🔴 SLA &lt; 95%</div><div class="metric-val red" id="sla-under95">—</div></div>
-        </div>
-
-        <!-- Info box ถ้ายังไม่มีข้อมูล -->
-        <div id="sla-info-box" style="background:rgba(14,165,233,0.08);border:1px solid rgba(14,165,233,0.2);border-radius:var(--radius);padding:14px 16px;display:none">
-          <div style="font-size:12px;font-weight:600;color:var(--teal);margin-bottom:4px"><i class="ti ti-info-circle"></i> ระบบกำลังสะสมข้อมูล</div>
-          <div style="font-size:11px;color:var(--text2)">
-            SLA Tracker เพิ่งเริ่มทำงาน — จะเห็นข้อมูลหลังจาก system check ทำงานสักพักครับ<br>
-            ข้อมูลจะครบภายใน <b>24-48 ชั่วโมง</b> และสะสมได้ถึง <b>90 วัน</b>
-          </div>
-        </div>
-
-        <!-- Filters + Table -->
-        <div>
-          <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center">
-            <button class="btn btn-sm" onclick="window._slaFilter='good';renderSLATable()" id="sla-f-good" style="background:var(--teal);color:#fff;border-color:var(--teal)">✅ Up &amp; ดี</button>
-            <button class="btn btn-sm" onclick="window._slaFilter='all';renderSLATable()" id="sla-f-all">ทั้งหมด</button>
-            <button class="btn btn-sm" onclick="window._slaFilter='under99';renderSLATable()" id="sla-f-under99">⚠️ SLA &lt; 99%</button>
-            <button class="btn btn-sm" onclick="window._slaFilter='under95';renderSLATable()" id="sla-f-under95">🔴 SLA &lt; 95%</button>
-            <button class="btn btn-sm" onclick="window._slaFilter='down';renderSLATable()" id="sla-f-down">🔴 Down ตอนนี้</button>
-            <div style="margin-left:auto">
-              <input id="sla-search" type="text" placeholder="🔍 ค้นหาโดเมน..." 
-                style="padding:5px 10px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:12px;width:200px;outline:none"
-                oninput="renderSLATable()">
-            </div>
-          </div>
-          <div class="table-container" id="sla-table-wrap">
-            <div style="text-align:center;padding:40px;color:var(--text3)">
-              <i class="ti ti-refresh ti-spin"></i> กำลังโหลด...
-            </div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-
-    <!-- RESOURCE USAGE PAGE -->
-    <div id="page-resources" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-cpu" style="color:var(--amber)"></i> Resource Usage per Domain</div>
-          <div class="topbar-sub">Disk usage และ PHP-FPM processes แยกตาม server</div>
-        </div>
-        <div class="topbar-right">
-          <span id="res-last-updated" style="font-size:11px;color:var(--text3)"></span>
-          <button class="btn btn-green" onclick="loadResourceUsage()"><i class="ti ti-refresh"></i> ดึงข้อมูลจาก Server</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:14px" id="resources-content">
-        <!-- Initial state -->
-        <div style="text-align:center;padding:60px 20px;color:var(--text3)">
-          <div style="font-size:48px;margin-bottom:12px">📊</div>
-          <div style="font-size:14px;font-weight:600;margin-bottom:8px">Resource Usage per Domain</div>
-          <div style="font-size:12px;margin-bottom:4px">ดูว่าโดเมนไหนกิน <b>Disk</b> และ <b>PHP-FPM processes</b> มากสุด</div>
-          <div style="font-size:11px;color:var(--text3)">กด "ดึงข้อมูลจาก Server" เพื่อเริ่ม — ใช้เวลา 1-2 นาที</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- HEALTH SCORE PAGE -->
-    <div id="page-health" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-heartbeat" style="color:var(--green)"></i> Server Health Score</div>
-          <div class="topbar-sub">คะแนนสุขภาพรวมแต่ละ server (0-100)</div>
-        </div>
-        <div class="topbar-right">
-          <button class="btn" onclick="loadHealthPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px" id="health-content">
-        <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
-      </div>
-    </div>
-
-    <!-- EVENT TIMELINE PAGE -->
-    <div id="page-events" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-history" style="color:var(--purple)"></i> Event Timeline</div>
-          <div class="topbar-sub">ประวัติเหตุการณ์ทั้งหมด — down, fix, ssl, alert, sync</div>
-        </div>
-        <div class="topbar-right">
-          <button class="btn" onclick="loadEventsPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px">
-        <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap" id="event-filters">
-          <button class="btn btn-sm" onclick="window._evFilter='all';renderEvents()" id="ev-f-all" style="background:var(--teal);color:#fff;border-color:var(--teal)">ทั้งหมด</button>
-          <button class="btn btn-sm" onclick="window._evFilter='critical';renderEvents()" id="ev-f-critical">🚨 Critical</button>
-          <button class="btn btn-sm" onclick="window._evFilter='warning';renderEvents()" id="ev-f-warning">⚠️ Warning</button>
-          <button class="btn btn-sm" onclick="window._evFilter='down';renderEvents()" id="ev-f-down">🔴 Down</button>
-          <button class="btn btn-sm" onclick="window._evFilter='slow';renderEvents()" id="ev-f-slow">🐌 Slow</button>
-        </div>
-        <div id="events-content">
-          <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- TODO KANBAN PAGE -->
-    <div id="page-tasks" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-layout-kanban" style="color:var(--gold)"></i> To-Do Board</div>
-          <div class="topbar-sub">จัดการงานระบบ — ลากการ์ดข้ามคอลัมน์ได้</div>
-        </div>
-        <div class="topbar-right">
-          <button class="btn btn-green" onclick="openTaskModal()"><i class="ti ti-plus"></i> เพิ่มงาน</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px">
-        <div id="kanban-board" style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start">
-          <div style="text-align:center;padding:40px;color:var(--text3);grid-column:1/-1"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- COMPANY / TEAM PAGE -->
-    <div id="page-company" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-building" style="color:var(--teal)"></i> ทีมพนักงาน AI</div>
-          <div class="topbar-sub">พนักงาน 11 คน ทำงานอัตโนมัติ — ดูว่าใครทำอะไรบ้าง</div>
-        </div>
-        <div class="topbar-right">
-          <button class="btn" onclick="loadCompanyPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:16px">
-        <div class="metrics-grid" id="company-summary"></div>
-        <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">พนักงานทั้งหมด</div>
-          <div id="company-employees" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px"></div>
-        </div>
-        <div>
-          <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-            <span style="font-size:13px;font-weight:600;color:var(--text2)">กิจกรรมล่าสุด</span>
-            <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:10px">
-              <span style="width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite"></span> LIVE
-            </span>
-          </div>
-          <div id="company-activity" class="table-container" style="max-height:400px;overflow-y:auto"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- APPROVALS PAGE -->
-    <div id="page-approvals" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-checkbox" style="color:var(--gold)"></i> รออนุมัติจากเจ้าของ</div>
-          <div class="topbar-sub">งานที่กระทบโฮส พนักงานต้องขออนุมัติก่อนทำ</div>
-        </div>
-        <div class="topbar-right">
-          <button class="btn" onclick="proposeActions()" id="propose-btn" style="background:var(--purple-dim);color:var(--purple);border-color:rgba(192,132,252,0.3)"><i class="ti ti-bulb"></i> ให้ AI เสนองาน</button>
-          <button class="btn" onclick="loadApprovalsPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px" id="approvals-content">
-        <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
-      </div>
-    </div>
-
-    <!-- EMPLOYEE DETAIL PAGE -->
-    <div id="page-employee-detail" style="display:none">
-      <div class="topbar">
-        <div style="display:flex;align-items:center;gap:12px">
-          <button class="btn btn-sm" onclick="showPage('company')"><i class="ti ti-arrow-left"></i> กลับ</button>
-          <div>
-            <div class="topbar-title" id="emp-detail-title">พนักงาน</div>
-            <div class="topbar-sub">รายละเอียดและประวัติการทำงาน</div>
-          </div>
-        </div>
-        <div class="topbar-right">
-          <button class="btn" onclick="showEmployeeActivity(currentEmployee)"><i class="ti ti-refresh"></i> รีเฟรช</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px" id="employee-detail-content">
-        <div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>
-      </div>
-    </div>
-
-    <!-- PROBLEMS CENTER PAGE -->
-    <div id="page-problems" style="display:none">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title"><i class="ti ti-alert-hexagon" style="color:var(--red)"></i> ศูนย์ปัญหา</div>
-          <div class="topbar-sub">ปัญหาทั้งหมดในระบบ พร้อมปุ่มแก้ทันที</div>
-        </div>
-        <div class="topbar-right">
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer">
-            <input type="checkbox" id="autofix-toggle" onchange="toggleAutoFix()" checked> Auto-fix อัตโนมัติ
-          </label>
-          <button class="btn" onclick="runAutoFixNow()" id="autofix-run-btn"><i class="ti ti-bolt"></i> แก้อัตโนมัติเดี๋ยวนี้</button>
-          <button class="btn" onclick="loadProblemsPage()"><i class="ti ti-refresh"></i> รีเฟรช</button>
-        </div>
-      </div>
-      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:16px">
-        <div class="metrics-grid" id="problems-summary"></div>
-        <div id="problems-list"></div>
-        <div>
-          <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px"><i class="ti ti-robot"></i> ประวัติการแก้อัตโนมัติ</div>
-          <div id="autofix-history" class="table-container" style="max-height:300px;overflow-y:auto"></div>
-        </div>
-      </div>
-    </div>
-
-  </main>
-</div>
-
-
-
-
-
-
-<!-- MODALS -->
-<div id="bulk-gsc-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center" onclick="if(event.target===this)closeBulkGSCModal()">
-  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:600px;max-width:92vw;max-height:85vh;display:flex;flex-direction:column;box-shadow:var(--shadow-md),var(--glow-gold);overflow:hidden">
-    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <span style="font-size:15px;font-weight:600;color:var(--text)"><i class="ti ti-brand-google" style="color:var(--gold)"></i> Bulk เพิ่มโดเมนเข้า GSC</span>
-      <button onclick="closeBulkGSCModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px">✕</button>
-    </div>
-
-    <!-- รายการเลือกโดเมน -->
-    <div id="bulk-gsc-list-wrap" style="display:flex;flex-direction:column;flex:1;overflow:hidden">
-      <div style="padding:14px 20px;border-bottom:1px solid var(--border)">
-        <div style="font-size:12px;color:var(--text2);margin-bottom:10px;line-height:1.5">
-          ระบบจะ <b>ขอ token จาก GSC → เขียน DNS TXT (Cloudflare/Plesk อัตโนมัติ) → verify</b><br>
-          โดเมนที่ DNS อยู่ที่อื่นจะแสดง TXT ให้ก็อปไปวางเอง
-        </div>
-        <div style="display:flex;gap:8px;align-items:center">
-          <input id="bulk-gsc-search" type="text" placeholder="🔍 ค้นหาโดเมน..." oninput="renderBulkGSCList()"
-            style="flex:1;padding:8px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
-          <button class="btn btn-sm" onclick="selectAllBulkGSC()">เลือกทั้งหมด (<span id="bulk-gsc-total">0</span>)</button>
-          <button class="btn btn-sm" onclick="clearAllBulkGSC()">ล้าง</button>
-        </div>
-      </div>
-      <div id="bulk-gsc-list" style="flex:1;overflow-y:auto;min-height:200px;max-height:340px"></div>
-      <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:13px;color:var(--text2)">เลือกแล้ว <b id="bulk-gsc-count" style="color:var(--gold)">0</b> โดเมน</span>
-        <div style="display:flex;gap:8px">
-          <button class="btn" onclick="closeBulkGSCModal()">ยกเลิก</button>
-          <button class="btn btn-green" onclick="startBulkGSC()"><i class="ti ti-rocket"></i> เริ่มเพิ่ม</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Progress -->
-    <div id="bulk-gsc-progress" style="display:none;flex-direction:column;flex:1;overflow:hidden;padding:20px">
-      <div style="margin-bottom:14px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-          <span style="font-size:13px;font-weight:600" id="bulk-progress-text">0/0</span>
-          <span style="font-size:12px" id="bulk-progress-stats"></span>
-        </div>
-        <div style="height:8px;background:var(--bg4);border-radius:4px;overflow:hidden">
-          <div id="bulk-progress-bar" style="width:0%;height:100%;background:linear-gradient(90deg,var(--teal),var(--green));border-radius:4px;transition:width .3s"></div>
-        </div>
-        <div id="bulk-progress-current" style="font-size:12px;color:var(--text2);margin-top:8px"></div>
-      </div>
-      <div id="bulk-progress-results" style="flex:1;overflow-y:auto;background:var(--bg);border:1px solid var(--border);border-radius:var(--radius-sm);min-height:200px;max-height:340px"></div>
-      <div style="padding-top:14px;display:flex;justify-content:space-between;align-items:center">
-        <button class="btn" id="bulk-verify-pending-btn" onclick="verifyPendingGSC()" style="display:none;background:var(--amber-dim);color:var(--amber);border-color:rgba(251,191,36,0.3)"><i class="ti ti-refresh"></i> Verify ที่ค้าง</button>
-        <button class="btn" onclick="closeBulkGSCModal()" style="margin-left:auto">ปิด</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div id="task-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center" onclick="if(event.target===this)closeTaskModal()">
-  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:var(--radius);width:480px;max-width:90vw;box-shadow:var(--shadow-md),var(--glow-green);overflow:hidden">
-    <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <span id="task-modal-title" style="font-size:15px;font-weight:600;color:var(--text)">เพิ่มงานใหม่</span>
-      <button onclick="closeTaskModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px">✕</button>
-    </div>
-    <div style="padding:20px;display:flex;flex-direction:column;gap:14px">
-      <input type="hidden" id="task-id">
-      <div>
-        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">ชื่องาน *</label>
-        <input id="task-title" type="text" placeholder="เช่น แก้ SSL noah345.bio"
-          style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
-      </div>
-      <div>
-        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">รายละเอียด</label>
-        <textarea id="task-desc" rows="3" placeholder="รายละเอียดเพิ่มเติม..."
-          style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none;resize:vertical;font-family:var(--font)"></textarea>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">สถานะ</label>
-          <select id="task-status" style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
-            <option value="todo">📋 To Do</option>
-            <option value="doing">🔨 กำลังทำ</option>
-            <option value="review">🔍 ตรวจสอบ</option>
-            <option value="done">✅ เสร็จ</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">ความสำคัญ</label>
-          <select id="task-priority" style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
-            <option value="high">🔴 สูง</option>
-            <option value="normal">🟡 ปกติ</option>
-            <option value="low">⚪ ต่ำ</option>
-          </select>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-        <div>
-          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">โดเมน (ถ้ามี)</label>
-          <input id="task-domain" type="text" placeholder="example.com"
-            style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:5px">Server (ถ้ามี)</label>
-          <input id="task-server" type="text" placeholder="Server 1"
-            style="width:100%;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none">
-        </div>
-      </div>
-    </div>
-    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
-      <button id="task-delete-btn" class="btn" onclick="deleteTask()" style="display:none;color:var(--red);border-color:rgba(248,113,113,0.3)"><i class="ti ti-trash"></i> ลบ</button>
-      <div style="display:flex;gap:8px;margin-left:auto">
-        <button class="btn" onclick="closeTaskModal()">ยกเลิก</button>
-        <button class="btn btn-green" onclick="saveTask()"><i class="ti ti-check"></i> บันทึก</button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div id="add-modal" class="modal-overlay" style="display:none">
-  <div class="modal">
-    <div class="modal-title"><i class="ti ti-circle-plus" style="color:var(--green)"></i> เพิ่มโดเมนใหม่</div>
-    <div class="form-group">
-      <label class="form-label">Domain *</label>
-      <input class="form-input" id="add-domain" placeholder="example.com" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">Notes</label>
-      <input class="form-input" id="add-notes" placeholder="หมายเหตุ..." />
-    </div>
-    <div class="form-group">
-      <label class="form-label">Tags (คั่นด้วย ;)</label>
-      <input class="form-input" id="add-tags" placeholder="seo;lead;campaign" />
-    </div>
-    <div class="form-group">
-      <label class="form-label">วันหมดอายุ (ถ้ามี)</label>
-      <input class="form-input" id="add-expiry" type="date" />
-    </div>
-    <div class="modal-footer">
-      <button class="btn" onclick="closeModal('add-modal')">ยกเลิก</button>
-      <button class="btn btn-green" onclick="addDomain()"><i class="ti ti-plus"></i> เพิ่มโดเมน</button>
-    </div>
-  </div>
-</div>
-
-<div id="detail-modal" class="modal-overlay" style="display:none">
-  <div class="modal" style="max-width:700px">
-    <div class="modal-title" id="detail-modal-title">—</div>
-    <div id="detail-modal-content"></div>
-    <div class="modal-footer">
-      <button class="btn" onclick="closeModal('detail-modal')">ปิด</button>
-      <button class="btn btn-green" id="detail-sync-btn">Sync GSC</button>
-      <button class="btn" id="detail-check-btn">เช็คสถานะ</button>
-    </div>
-  </div>
-</div>
-
-
-<div class="toast-container" id="toast-container"></div>
-
-<!-- PROGRESS MODAL -->
-<div id="progress-modal" class="modal-overlay" style="display:none">
-  <div class="modal" style="max-width:480px;text-align:center">
-    <div style="font-size:28px;margin-bottom:12px">⚡</div>
-    <div class="modal-title" style="justify-content:center;font-size:16px" id="progress-title">กำลัง Auto-fix...</div>
-    <div style="font-size:13px;color:var(--text2);margin-bottom:20px" id="progress-subtitle">กรุณารอสักครู่</div>
-    
-    <!-- Progress Bar -->
-    <div style="background:var(--bg4);border-radius:8px;overflow:hidden;height:10px;margin-bottom:12px">
-      <div id="progress-bar-fill" style="height:100%;background:linear-gradient(90deg,var(--teal),var(--green));border-radius:8px;width:0%;transition:width 0.3s;"></div>
-    </div>
-    <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3);margin-bottom:20px">
-      <span id="progress-count">0 / 0 โดเมน</span>
-      <span id="progress-pct">0%</span>
-    </div>
-    
-    <!-- Log -->
-    <div id="progress-log" style="background:var(--bg3);border-radius:var(--radius-sm);padding:12px;max-height:200px;overflow-y:auto;text-align:left;font-family:var(--mono);font-size:11px;color:var(--text2);line-height:1.7"></div>
-    
-    <!-- Stats -->
-    <div id="progress-stats" style="display:flex;gap:12px;margin-top:16px;justify-content:center">
-      <div style="text-align:center;background:var(--green-dim);border-radius:var(--radius-sm);padding:8px 16px">
-        <div style="font-size:20px;font-weight:600;color:var(--green)" id="stat-fixed">0</div>
-        <div style="font-size:11px;color:var(--text2)">แก้สำเร็จ</div>
-      </div>
-      <div style="text-align:center;background:var(--red-dim);border-radius:var(--radius-sm);padding:8px 16px">
-        <div style="font-size:20px;font-weight:600;color:var(--red)" id="stat-failed">0</div>
-        <div style="font-size:11px;color:var(--text2)">ไม่สำเร็จ</div>
-      </div>
-      <div style="text-align:center;background:var(--bg3);border-radius:var(--radius-sm);padding:8px 16px">
-        <div style="font-size:20px;font-weight:600;color:var(--text2)" id="stat-skipped">0</div>
-        <div style="font-size:11px;color:var(--text2)">ข้าม</div>
-      </div>
-    </div>
-    
-    <button id="progress-close-btn" class="btn btn-green" style="margin-top:20px;display:none;width:100%" onclick="closeProgressModal()">
-      <i class="ti ti-check"></i> เสร็จสิ้น — ปิด
-    </button>
-  </div>
-</div>
-
-<script>
-// ===== STATE =====
-let API = 'http://localhost:3001';
-// ให้ทุก fetch ส่ง session cookie ไปด้วย (สำหรับ auth ฝั่งเซิร์ฟเวอร์) + เด้ง login เมื่อ session หมดอายุ
-(function(){
-  var _f = window.fetch.bind(window);
-  window.fetch = function(input, init){
-    init = init || {};
-    if (init.credentials === undefined) init.credentials = 'include';
-    return _f(input, init).then(function(res){
-      if (res.status === 401 && typeof input === 'string' && input.indexOf('/api/') >= 0 && input.indexOf('/api/login') < 0 && input.indexOf('/api/auth-status') < 0) {
-        // session หมดอายุ → กลับไปหน้า login
-        var lp = document.getElementById('login-page'), ma = document.getElementById('main-app');
-        if (lp && ma) { lp.style.display = 'flex'; ma.style.display = 'none'; }
-      }
-      return res;
+const CHECK_INTERVAL_MS = 5 * 60 * 1000; // เช็คทุก 5 นาที
+const PLESK_SYNC_INTERVAL_MS = 1 * 60 * 60 * 1000; // Sync Plesk ทุก 1 ชั่วโมง
+const CF_DOWN_CODES = new Set([521, 522, 523, 524, 525, 526, 530]);
+const CF_WARN_CODES = new Set([520, 527, 528, 529]);
+// [เพิ่มความแม่น] คำที่บ่งบอกว่าเว็บพังจริง แม้ HTTP จะตอบ 200
+const WP_FATAL_MARKERS = [
+  'Error establishing a database connection',
+  'There has been a critical error on this website',
+  'There has been a critical error on your website',
+  'Fatal error:',
+  'Parse error:',
+  'Cannot modify header information'
+];
+// หน้า challenge ของ Cloudflare = แค่กัน bot เว็บยังปกติ (ห้ามนับเป็นพัง)
+const CF_CHALLENGE_MARKERS = [
+  'Just a moment', 'Checking your browser', 'Attention Required', 'cf-browser-verification',
+  'Enable JavaScript and cookies to continue', 'challenge-platform'
+];
+// หน้าบล็อกการเข้าถึงจากปลั๊กอิน/ไฟร์วอลล์ = ผิดปกติจริง
+const BLOCKPAGE_MARKERS = [
+  'restricted by the administrator',
+  'Your access to this site has been limited',
+  'blocked by the administrator',
+  'Access Denied'
+];
+
+// In-memory cache (Google Sheets เป็น persistent storage)
+let memoryDomains = [];
+let lastUpdated = null;
+let gscAccessToken = null;
+
+// ===== HELPERS =====
+function cors(res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+}
+function json(res, data, status = 200) {
+  cors(res);
+  res.writeHead(status, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify(data));
+}
+function parseBody(req) {
+  return new Promise(resolve => {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => { try { resolve(JSON.parse(body)); } catch { resolve({}); } });
+  });
+}
+
+// ===== GOOGLE SHEETS AUTH =====
+async function getGoogleToken(scopes) {
+  if (!SERVICE_ACCOUNT?.private_key) return null;
+  const now = Math.floor(Date.now() / 1000);
+  const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    iss: SERVICE_ACCOUNT.client_email,
+    scope: scopes,
+    aud: 'https://oauth2.googleapis.com/token',
+    exp: now + 3600,
+    iat: now
+  })).toString('base64url');
+
+  const { createSign } = require('crypto');
+  const sign = createSign('RSA-SHA256');
+  sign.update(`${header}.${payload}`);
+  const sig = sign.sign(SERVICE_ACCOUNT.private_key, 'base64url');
+  const jwt = `${header}.${payload}.${sig}`;
+
+  return new Promise(resolve => {
+    const body = `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`;
+    const req = https.request({
+      hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(data).access_token || null); }
+        catch { resolve(null); }
+      });
     });
-  };
-})();
-let allDomains = [];
-let filteredDomains = [];
-let currentPage = 1;
-const PER_PAGE = 25;
-let currentTab = 'all';
-let sortKey = 'domain';
-let sortDir = 1;
-
-// ===== INIT =====
-// ===== LOGIN SYSTEM =====
-// (รหัสผ่านย้ายไปฝั่งเซิร์ฟเวอร์แล้ว — ตั้งที่ DASHBOARD_PASSWORD ใน Railway ไม่เก็บในหน้าเว็บอีก)
-
-function checkLogin() {
-  // เก็บไว้เพื่อความเข้ากันได้ — การตัดสินใจจริงอยู่ที่เซิร์ฟเวอร์ (initApp เช็ค /api/auth-status)
-  return true;
+    req.on('error', () => resolve(null));
+    req.write(body); req.end();
+  });
 }
 
-async function doLogin() {
-  const pass = document.getElementById('login-pass').value;
-  const otpEl = document.getElementById('login-otp');
-  const otp = otpEl ? otpEl.value.trim() : '';
-  const errEl = document.getElementById('login-error');
-  errEl.style.display = 'none';
-  try {
-    const apiBase = window._authApiBase || window.location.origin;
-    const r = await fetch(apiBase + '/api/login', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ password: pass, otp: otp })
+// ===== GOOGLE SHEETS API =====
+async function sheetsRequest(method, path, body = null, token = null) {
+  if (!token) token = await getGoogleToken('https://www.googleapis.com/auth/spreadsheets');
+  if (!token) return null;
+  return new Promise(resolve => {
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const headers = { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' };
+    if (bodyStr) headers['Content-Length'] = Buffer.byteLength(bodyStr);
+    const req = https.request({
+      hostname: 'sheets.googleapis.com', path, method, headers
+    }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
     });
-    const d = await r.json();
-    if (d.success) {
-      document.getElementById('login-page').style.display = 'none';
-      document.getElementById('main-app').style.display = 'flex';
-      errEl.style.display = 'none';
-      initApp();
-      return;
-    }
-    // ต้องใส่ OTP
-    if (d.needOtp) {
-      document.getElementById('login-otp-wrap').style.display = 'block';
-      if (otpEl) otpEl.focus();
-      errEl.style.display = 'block';
-      errEl.textContent = otp ? ('❌ ' + (d.error || 'รหัส 2FA ไม่ถูกต้อง')) : '🔐 ใส่รหัส 6 หลักจากแอป Authenticator';
-      return;
-    }
-    errEl.style.display = 'block';
-    errEl.textContent = '❌ ' + (d.error || 'เข้าสู่ระบบไม่สำเร็จ');
-    document.getElementById('login-pass').value = '';
-    document.getElementById('login-pass').focus();
-  } catch (e) {
-    errEl.style.display = 'block';
-    errEl.textContent = '❌ ต่อเซิร์ฟเวอร์ไม่ได้: ' + e.message;
-  }
+    req.on('error', () => resolve(null));
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
 }
 
-async function doLogout() {
-  try {
-    const apiBase = window._authApiBase || window.location.origin;
-    await fetch(apiBase + '/api/logout', { method: 'POST', credentials: 'include' });
-  } catch (e) {}
-  // ล้างของเดิมที่อาจค้าง
-  localStorage.removeItem('di_logged_in');
-  localStorage.removeItem('di_login_time');
-  document.getElementById('main-app').style.display = 'none';
-  document.getElementById('login-page').style.display = 'flex';
-  document.getElementById('login-pass').value = '';
-  var o = document.getElementById('login-otp'); if (o) o.value = '';
-}
+// sheet headers
+const HEADERS = ['domain','status','statusCode','responseTime','checkedAt','error','pleskId','pleskStatus','pleskActive','hostingType','sslExpiry','sslDaysLeft','notes','tags','gscClicks','gscImpressions','gscAvgPosition','gscKeywordCount','gscTopKeyword','gscTopPosition','pleskSyncedAt','addedAt','pleskServer','pleskHost'];
 
-async function initApp() {
-  const saved = localStorage.getItem('api_url');
-  const defaultUrl = window.location.origin.includes('localhost') ? 'http://localhost:8080' : window.location.origin;
-  const apiUrl = saved || defaultUrl;
-  API = apiUrl;
-  const urlEl = document.getElementById('server-url');
-  if (urlEl) urlEl.value = apiUrl;
-  if (!saved) localStorage.setItem('api_url', apiUrl);
-
-  const tgToken = localStorage.getItem('tg_token');
-  const tgChat = localStorage.getItem('tg_chat');
-  if (tgToken) { const el = document.getElementById('telegram-token'); if(el) el.value = tgToken; }
-  if (tgChat) { const el = document.getElementById('telegram-chat'); if(el) el.value = tgChat; }
-
-  // แสดงชื่อ user
-  const uname = localStorage.getItem('di_username') || 'admin';
-  const el = document.getElementById('logged-user');
-  if (el) el.textContent = uname;
-  
-  await loadData();
-  setInterval(loadData, 30000);
-  startCountdown();
-
-  // หน้าแรกคือศูนย์บัญชาการ — โหลดเลย
-  if (currentPageName === 'command') loadCommandCenter();
-
-  // โหลด approval badge + อัพเดททุก 60 วิ
-  refreshApprovalBadge();
-  setInterval(refreshApprovalBadge, 60000);
-  // โหลด problem badge + อัพเดททุก 60 วิ
-  refreshProblemBadge();
-  setInterval(refreshProblemBadge, 60000);
-}
-
-async function refreshApprovalBadge() {
-  try {
-    const res = await fetch(`${API}/api/approvals`);
-    const data = await res.json();
-    updateApprovalBadge(data.pending || 0);
-  } catch(e) {}
-}
-
-async function refreshProblemBadge() {
-  try {
-    const res = await fetch(`${API}/api/problems`);
-    const data = await res.json();
-    const high = (data.problems||[]).filter(p => p.severity === 'high').length;
-    updateProblemBadge(high);
-  } catch(e) {}
-}
-
-document.addEventListener('DOMContentLoaded', async () => {
-  // ถามเซิร์ฟเวอร์ว่าต้อง login ไหม + มี session อยู่แล้วไหม
-  var needLogin = true;
-  try {
-    var apiBase = localStorage.getItem('api_url') || window.location.origin;
-    window._authApiBase = apiBase;
-    var r = await fetch(apiBase + '/api/auth-status', { credentials: 'include' });
-    var d = await r.json();
-    // ถ้าเซิร์ฟเวอร์ไม่ได้เปิด auth (ยังไม่ตั้งรหัส) หรือ login อยู่แล้ว → เข้าได้เลย
-    if (!d.authEnabled || d.loggedIn) needLogin = false;
-  } catch (e) { needLogin = false; /* ต่อเซิร์ฟเวอร์ไม่ได้ ปล่อยให้ initApp จัดการ */ }
-
-  if (!needLogin) {
-    document.getElementById('login-page').style.display = 'none';
-    document.getElementById('main-app').style.display = 'flex';
-    initApp();
-  } else {
-    document.getElementById('login-page').style.display = 'flex';
-    document.getElementById('main-app').style.display = 'none';
-    setTimeout(() => document.getElementById('login-pass').focus(), 100);
-  }
-});
-
-// ===== DATA =====
-let loadDataRetries = 0;
-async function loadData() {
-  const dot = document.getElementById('live-dot');
-  const statusText = document.getElementById('server-status-text');
-  if (dot) dot.style.background = 'var(--amber)';
-  if (statusText) statusText.textContent = 'กำลังโหลด...';
-  
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    
-    const [domainsRes, statsRes] = await Promise.all([
-      fetch(`${API}/api/domains`, { signal: controller.signal }),
-      fetch(`${API}/api/stats`, { signal: controller.signal })
-    ]);
-    clearTimeout(timeout);
-    
-    if (!domainsRes.ok || !statsRes.ok) throw new Error('Server error: '+domainsRes.status);
-    
-    const domainsData = await domainsRes.json();
-    const stats = await statsRes.json();
-    allDomains = domainsData.domains || [];
-    
-    if (domainsData.pleskServerConfigs) {
-      window._pleskServers = domainsData.pleskServerConfigs;
-      window._pleskServerConfigs = domainsData.pleskServerConfigs;
-    }
-    
-    updateSidebar(stats);
-    updateStats(stats, domainsData);
-    if (currentPageName === 'domains') { applyFilters(); }
-    if (currentPageName === 'dashboard') renderQuickTable();
-    if (currentPageName === 'traffic') renderTrafficPage();
-    if (currentPageName === 'keywords') renderKeywordsPage();
-    setServerStatus(true, domainsData.lastUpdated);
-    if (dot) dot.style.background = 'var(--green)';
-    loadDataRetries = 0;
-    
-    // แจ้งถ้าข้อมูลว่างเปล่า (ยังไม่ได้ Sync)
-    if (allDomains.length === 0 && window._pleskServers && window._pleskServers.length > 0) {
-      showSyncPrompt();
-    }
-  } catch (e) {
-    setServerStatus(false);
-    if (dot) dot.style.background = 'var(--red)';
-    loadDataRetries++;
-    
-    // แสดงแจ้งเตือน error
-    const isTimeout = e.name === 'AbortError';
-    const msg = isTimeout ? 'เชื่อมต่อ Server Timeout' : 'เชื่อมต่อ Server ไม่ได้';
-    showConnectionError(msg, loadDataRetries);
-    
-    if (allDomains.length === 0) loadDemoData();
-    
-    // retry อัตโนมัติ
-    if (loadDataRetries < 3) {
-      setTimeout(loadData, 5000);
-    }
-  }
-}
-
-function showSyncPrompt() {
-  // แสดง banner แจ้งให้ Sync Plesk
-  const existing = document.getElementById('sync-prompt-banner');
-  if (existing) return;
-  
-  const banner = document.createElement('div');
-  banner.id = 'sync-prompt-banner';
-  banner.style.cssText = 'position:fixed;top:60px;left:50%;transform:translateX(-50%);background:var(--bg3);border:1px solid var(--amber);border-radius:var(--radius);padding:12px 20px;display:flex;align-items:center;gap:12px;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:90vw';
-  banner.innerHTML = '<i class="ti ti-refresh" style="color:var(--amber);font-size:18px"></i>'
-    + '<div><div style="font-size:13px;font-weight:600;color:var(--amber)">ยังไม่มีข้อมูลโดเมน</div>'
-    + '<div style="font-size:11px;color:var(--text3)">กด Sync Plesk เพื่อดึงข้อมูลจาก Hosting</div></div>'
-    + '<button onclick="syncPlesk();var b=document.getElementById(\'sync-prompt-banner\');if(b)b.remove()" class="btn btn-sm" style="background:var(--amber);color:#000;border:none;white-space:nowrap"><i class="ti ti-refresh"></i> Sync Plesk</button>'
-    + '<button onclick="this.parentElement.remove()" style="background:none;border:none;color:var(--text3);cursor:pointer;padding:4px"><i class="ti ti-x"></i></button>';
-  document.body.appendChild(banner);
-  setTimeout(() => banner.remove(), 15000);
-}
-
-let errorToastTimeout;
-function showConnectionError(msg, retries) {
-  clearTimeout(errorToastTimeout);
-  const existing = document.getElementById('connection-error-toast');
-  if (existing) existing.remove();
-  
-  const toast_el = document.createElement('div');
-  toast_el.id = 'connection-error-toast';
-  toast_el.style.cssText = 'position:fixed;bottom:80px;right:20px;background:var(--bg3);border:1px solid var(--red);border-radius:var(--radius);padding:12px 16px;display:flex;align-items:center;gap:10px;z-index:500;box-shadow:0 4px 20px rgba(0,0,0,0.3);max-width:320px';
-  toast_el.innerHTML = '<i class="ti ti-wifi-off" style="color:var(--red);font-size:18px;flex-shrink:0"></i>'
-    + '<div>'
-    + '<div style="font-size:12px;font-weight:600;color:var(--red)">'+msg+'</div>'
-    + (retries < 3 ? '<div style="font-size:11px;color:var(--text3)">กำลังลองใหม่ครั้งที่ '+retries+'/3...</div>' 
-       : '<div style="font-size:11px;color:var(--text3)">กรุณาตรวจสอบการเชื่อมต่อ<br>แล้วกด <b>รีเฟรช</b> อีกครั้ง</div>')
-    + '</div>'
-    + (retries >= 3 ? '<button onclick="loadData();this.parentElement.remove()" class="btn btn-sm" style="white-space:nowrap"><i class="ti ti-refresh"></i> ลองใหม่</button>' : '');
-  document.body.appendChild(toast_el);
-  
-  errorToastTimeout = setTimeout(() => toast_el.remove(), retries >= 3 ? 30000 : 8000);
-}
-
-function loadDemoData() {
-  allDomains = [
-    {domain:'bangkokrealty.co.th',status:'up',statusCode:200,responseTime:340,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-12-01',daysLeft:187,notes:'เว็บหลัก',tags:['seo','lead'],gsc:{clicks:520,impressions:6800,avgPosition:3.2,keywordCount:89,topKeyword:'อสังหาริมทรัพย์กรุงเทพ',topPosition:1},addedAt:'2025-01-01'},
-    {domain:'example-seo.com',status:'up',statusCode:200,responseTime:280,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-06-30',daysLeft:32,notes:'',tags:['seo'],gsc:{clicks:312,impressions:4200,avgPosition:5.1,keywordCount:47,topKeyword:'ซื้อบ้านกรุงเทพ',topPosition:2},addedAt:'2025-01-01'},
-    {domain:'buyhome-th.net',status:'up',statusCode:200,responseTime:520,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-09-15',daysLeft:109,notes:'',tags:['lead'],gsc:{clicks:198,impressions:2800,avgPosition:7.4,keywordCount:31,topKeyword:'บ้านมือสอง',topPosition:5},addedAt:'2025-01-01'},
-    {domain:'realestate-bkk.com',status:'down',statusCode:0,responseTime:8000,checkedAt:new Date().toISOString(),error:'Connection refused',expiryDate:'2026-08-20',daysLeft:83,notes:'ต้องแก้ไขด่วน',tags:['broken'],gsc:null,addedAt:'2025-01-01'},
-    {domain:'condothailand.co',status:'warn',statusCode:503,responseTime:4200,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-06-12',daysLeft:14,notes:'',tags:['condo'],gsc:{clicks:34,impressions:980,avgPosition:14,keywordCount:9,topKeyword:'คอนโดราคาถูก',topPosition:14},addedAt:'2025-01-01'},
-    {domain:'sellcondo-hua.com',status:'down',statusCode:0,responseTime:8000,checkedAt:new Date().toISOString(),error:'Timeout',expiryDate:'2026-06-05',daysLeft:7,notes:'',tags:['condo'],gsc:null,addedAt:'2025-01-01'},
-    {domain:'homesale-phuket.com',status:'up',statusCode:200,responseTime:410,checkedAt:new Date().toISOString(),error:null,expiryDate:'2027-01-10',daysLeft:226,notes:'',tags:['phuket'],gsc:{clicks:88,impressions:1500,avgPosition:8.9,keywordCount:18,topKeyword:'บ้านภูเก็ต',topPosition:3},addedAt:'2025-01-01'},
-    {domain:'pathumthani-land.net',status:'warn',statusCode:302,responseTime:1100,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-06-02',daysLeft:4,notes:'',tags:['land'],gsc:{clicks:8,impressions:420,avgPosition:27,keywordCount:2,topKeyword:'ที่ดินปทุมธานี',topPosition:27},addedAt:'2025-01-01'},
-    {domain:'nonthaburi-home.com',status:'up',statusCode:200,responseTime:610,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-07-20',daysLeft:52,notes:'',tags:['nonthaburi'],gsc:{clicks:15,impressions:580,avgPosition:22,keywordCount:4,topKeyword:'บ้านนนทบุรี',topPosition:22},addedAt:'2025-01-01'},
-    {domain:'property-chiangmai.net',status:'up',statusCode:200,responseTime:780,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-11-30',daysLeft:185,notes:'',tags:['chiangmai'],gsc:{clicks:25,impressions:730,avgPosition:19,keywordCount:5,topKeyword:'บ้านเชียงใหม่',topPosition:19},addedAt:'2025-01-01'},
-    {domain:'samutprakan-estate.com',status:'up',statusCode:200,responseTime:330,checkedAt:new Date().toISOString(),error:null,expiryDate:'2026-10-10',daysLeft:134,notes:'',tags:['samutprakan'],gsc:{clicks:72,impressions:1200,avgPosition:6,keywordCount:14,topKeyword:'บ้านสมุทรปราการ',topPosition:6},addedAt:'2025-01-01'},
-    {domain:'thaiproperty99.com',status:'up',statusCode:200,responseTime:460,checkedAt:new Date().toISOString(),error:null,expiryDate:'2027-03-01',daysLeft:276,notes:'',tags:['property'],gsc:{clicks:140,impressions:1900,avgPosition:11,keywordCount:22,topKeyword:'คอนโดใกล้รถไฟฟ้า',topPosition:8},addedAt:'2025-01-01'},
+function domainToRow(d) {
+  return [
+    d.domain || '', d.status || 'unknown', d.statusCode || 0, d.responseTime || 0,
+    d.checkedAt || '', d.error || '', d.pleskId || '', d.pleskStatus || '',
+    d.pleskActive ? 'true' : 'false', d.hostingType || '',
+    d.sslExpiry || '', d.sslDaysLeft !== null && d.sslDaysLeft !== undefined ? d.sslDaysLeft : '',
+    d.notes || '', (d.tags || []).join(';'),
+    d.gsc?.clicks || 0, d.gsc?.impressions || 0, d.gsc?.avgPosition || 0,
+    d.gsc?.keywordCount || 0, d.gsc?.topKeyword || '', d.gsc?.topPosition || 0,
+    d.pleskSyncedAt || '', d.addedAt || new Date().toISOString(),
+    d.pleskServer || '', d.pleskHost || ''
   ];
-  const stats = calcStats(allDomains);
-  updateSidebar(stats);
-  updateStats(stats, {lastUpdated: null});
-  applyFilters();
-  renderQuickTable();
-  renderTrafficPage();
-  renderKeywordsPage();
 }
 
-function calcStats(domains) {
+function rowToDomain(row) {
+  if (!row[0]) return null;
+  const gscClicks = parseInt(row[14]) || 0;
+  const gscImpressions = parseInt(row[15]) || 0;
   return {
-    total: domains.length,
-    up: domains.filter(d=>d.status==='up').length,
-    down: domains.filter(d=>d.status==='down').length,
-    warn: domains.filter(d=>d.status==='warn').length,
-    unknown: domains.filter(d=>d.status==='unknown').length,
-    withTraffic: domains.filter(d=>d.gsc?.clicks>0).length,
-    noTraffic: domains.filter(d=>d.gsc&&d.gsc.clicks===0).length,
-    expiringIn30: domains.filter(d=>d.daysLeft!==null&&d.daysLeft<=30&&d.daysLeft>=0).length,
-    totalClicks: domains.reduce((s,d)=>s+(d.gsc?.clicks||0),0),
-    totalImpressions: domains.reduce((s,d)=>s+(d.gsc?.impressions||0),0),
+    domain: row[0], status: row[1] || 'unknown', statusCode: parseInt(row[2]) || 0,
+    responseTime: parseInt(row[3]) || 0, checkedAt: row[4] || null, error: row[5] || null,
+    pleskId: row[6] ? parseInt(row[6]) : null, pleskStatus: row[7] || 'unknown',
+    pleskActive: row[8] === 'true', hostingType: row[9] || '',
+    sslExpiry: row[10] || null, sslDaysLeft: row[11] !== '' ? parseInt(row[11]) : null,
+    notes: row[12] || '', tags: row[13] ? row[13].split(';').filter(Boolean) : [],
+    gsc: (gscClicks > 0 || gscImpressions > 0) ? {
+      clicks: gscClicks, impressions: gscImpressions,
+      avgPosition: parseFloat(row[16]) || 0, keywordCount: parseInt(row[17]) || 0,
+      topKeyword: row[18] || '', topPosition: parseFloat(row[19]) || 0
+    } : null,
+    pleskSyncedAt: row[20] || null, addedAt: row[21] || new Date().toISOString(),
+    pleskServer: row[22] || '', pleskHost: row[23] || '',
+    expiryDate: row[10] || null, daysLeft: row[11] !== '' ? parseInt(row[11]) : null
   };
 }
 
-function setServerStatus(ok, lastUpdated) {
-  const dot = document.getElementById('live-dot');
-  const text = document.getElementById('server-status-text');
-  const lu = document.getElementById('last-updated-text');
-  if (ok) {
-    dot.style.background = 'var(--green)';
-    text.textContent = 'Server Online';
-    if (lastUpdated) lu.textContent = 'อัพเดต ' + timeAgo(lastUpdated);
-  } else {
-    dot.style.background = 'var(--amber)';
-    text.textContent = 'Demo Mode';
-    lu.textContent = 'รัน server.js เพื่อใช้งานจริง';
-  }
+async function loadFromSheets() {
+  if (!SHEET_ID) return [];
+  const res = await sheetsRequest('GET', `/v4/spreadsheets/${SHEET_ID}/values/Sheet1!A2:V5000`);
+  if (!res?.values) return [];
+  return res.values.map(rowToDomain).filter(Boolean);
 }
 
-function timeAgo(iso) {
-  if (!iso) return '—';
-  const secs = Math.floor((Date.now() - new Date(iso)) / 1000);
-  if (secs < 60) return `${secs} วินาทีที่แล้ว`;
-  if (secs < 3600) return `${Math.floor(secs/60)} นาทีที่แล้ว`;
-  return `${Math.floor(secs/3600)} ชั่วโมงที่แล้ว`;
+async function saveToSheets(domains) {
+  if (!SHEET_ID) return;
+  const token = await getGoogleToken('https://www.googleapis.com/auth/spreadsheets');
+  // clear เก่าก่อน
+  await sheetsRequest('POST', `/v4/spreadsheets/${SHEET_ID}/values/Sheet1!A1:V5000:clear`, {}, token);
+  // เขียน header + data
+  const values = [HEADERS, ...domains.map(domainToRow)];
+  await sheetsRequest('PUT', `/v4/spreadsheets/${SHEET_ID}/values/Sheet1!A1:V${values.length}?valueInputOption=RAW`, { values }, token);
+  lastUpdated = new Date().toISOString();
+  console.log(`[Sheets] บันทึก ${domains.length} โดเมนแล้ว`);
 }
 
-function updateSidebar(stats) {
-  const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
-  set('nav-total', stats.total);
-  set('nav-down', stats.down || '');
-  set('nav-expiring', stats.expiringIn30 || '');
-  
-  // count cannot-fix (Down แต่ไม่ใช่ Suspended และไม่ใช่ CF error)
-  const cannotFixCount = typeof isCannotFix === 'function' 
-    ? allDomains.filter(d => isCannotFix(d)).length 
-    : 0;
-  set('nav-cannotfix', cannotFixCount || '');
-  
-  // server-alerts — clear ถ้าไม่มีปัญหา
-  set('nav-server-alerts', '');
+async function initSheets() {
+  if (!SHEET_ID) { console.log('[Sheets] ไม่มี SHEET_ID'); return; }
+  console.log('[Sheets] โหลดข้อมูลจาก Google Sheets...');
+  memoryDomains = await loadFromSheets();
+  loadTasks();
+  console.log('[Tasks] โหลด', memoryTasks.length, 'tasks');
+  loadEmployeeState();
+  loadApprovals();
+  loadReports();
+  console.log('[Employees] พนักงาน', EMPLOYEES.length, 'คน | รออนุมัติ', approvalQueue.filter(a=>a.status==='pending').length);
+  console.log(`[Sheets] โหลด ${memoryDomains.length} โดเมน`);
 }
 
-function updateStats(stats, extra) {
-  const set = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
-  set('stat-total', stats.total.toLocaleString());
-  set('stat-up', stats.up.toLocaleString());
-  set('stat-down', stats.down.toLocaleString());
-  set('stat-warn', stats.warn.toLocaleString());
-  set('stat-traffic', stats.withTraffic.toLocaleString());
-  set('stat-notraffic', stats.noTraffic.toLocaleString());
-  set('stat-expiring', stats.expiringIn30.toLocaleString());
-  set('stat-impressions', stats.totalImpressions.toLocaleString());
-  set('stat-plesk-active', (stats.pleskActive ?? '—').toLocaleString());
-  set('stat-plesk-suspended', (stats.pleskSuspended ?? '—').toLocaleString());
-  set('stat-plesk-host', extra.pleskHost ? extra.pleskHost.replace('interesting-panini.','') : 'ยังไม่เชื่อมต่อ');
-  set('stat-up-pct', stats.total > 0 ? `${Math.round(stats.up/stats.total*100)}% ของทั้งหมด` : '—');
-  set('stat-clicks', `${stats.totalClicks.toLocaleString()} คลิกรวม`);
-  set('stat-last', extra.lastUpdated ? `อัพเดต ${timeAgo(extra.lastUpdated)}` : 'Demo Mode');
-  set('dash-subtitle', `${stats.total} โดเมน · Down ${stats.down} · Plesk ${stats.pleskActive ?? 0} active`);
-  const pleskBtn = document.getElementById('plesk-sync-btn');
-  if (pleskBtn) pleskBtn.style.display = 'inline-flex'; // always show sync button
-  const bannerWrap = document.getElementById('gsc-banner-wrap');
-  if (bannerWrap) {
-    let banners = '';
-    if (extra.pleskConnected && stats.total === 0) banners += `<div class="gsc-banner" style="margin-bottom:10px"><div class="gsc-banner-icon">🔄</div><div class="gsc-banner-text"><h3>Plesk เชื่อมต่อแล้ว</h3><p>กด Sync Plesk เพื่อดึงโดเมนทั้งหมดจาก ${extra.pleskHost}</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="syncPlesk()"><i class="ti ti-server"></i> Sync Plesk</button></div></div>`;
-    if (stats.withTraffic === 0 && stats.total > 0) banners += `<div class="gsc-banner"><div class="gsc-banner-icon">🔗</div><div class="gsc-banner-text"><h3>เชื่อมต่อ Google Search Console</h3><p>ตั้งค่า API เพื่อดู Traffic, Clicks และ Keyword Rankings</p></div><div class="gsc-banner-action"><button class="btn btn-green btn-sm" onclick="showPage('settings')"><i class="ti ti-settings"></i> ตั้งค่า GSC</button></div></div>`;
-    bannerWrap.innerHTML = banners;
-  }
-}
-
-// ===== FILTERS =====
-function applyFilters() {
-  const q = (document.getElementById('search-input')?.value || '').toLowerCase();
-  const st = document.getElementById('filter-status')?.value || '';
-  const tr = document.getElementById('filter-traffic')?.value || '';
-  const ex = document.getElementById('filter-expiry')?.value || '';
-
-  filteredDomains = allDomains.filter(d => {
-    if (q && !d.domain.includes(q) && !(d.notes||'').toLowerCase().includes(q)) return false;
-    if (st && d.status !== st) return false;
-    if (tr === 'high' && !(d.gsc?.clicks >= 1000)) return false;
-    if (tr === 'mid' && !(d.gsc?.clicks >= 100 && d.gsc?.clicks < 1000)) return false;
-    if (tr === 'low' && !(d.gsc?.clicks > 0 && d.gsc?.clicks < 100)) return false;
-    if (tr === 'none' && !(d.gsc && d.gsc.clicks === 0)) return false;
-    if (ex && !(d.daysLeft !== null && d.daysLeft <= parseInt(ex))) return false;
-    if (currentTab === 'down' && d.status !== 'down') return false;
-    if (currentTab === 'warn' && d.status !== 'warn') return false;
-    if (currentTab === 'notraffic' && !(d.gsc && d.gsc.clicks === 0)) return false;
-    if (currentTab === 'expiring' && !(d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft >= 0)) return false;
-    if (currentTab === 'ranked' && !(d.gsc?.keywordCount > 0)) return false;
-    if (currentTab === 'cannot-fix' && !isCannotFix(d)) return false;
-    return true;
+// ===== PLESK =====
+function pleskRequest(method, apiPath, body = null, server = null) {
+  // ถ้าไม่ระบุ server ให้ใช้ server แรก
+  const srv = server || PLESK_SERVERS[0] || { host: PLESK_HOST, user: PLESK_USER, pass: PLESK_PASS };
+  return new Promise((resolve, reject) => {
+    const auth = Buffer.from(`${srv.user}:${srv.pass}`).toString('base64');
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const headers = {
+      'Authorization': `Basic ${auth}`,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+    if (bodyStr) headers['Content-Length'] = Buffer.byteLength(bodyStr);
+    const req = https.request({
+      hostname: srv.host, port: 8443, path: `/api/v2${apiPath}`, method,
+      headers, rejectUnauthorized: false
+    }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try { resolve({ status: res.statusCode, data: JSON.parse(data) }); }
+        catch { resolve({ status: res.statusCode, data: {} }); }
+      });
+    });
+    req.on('error', reject);
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('Timeout')); });
+    if (bodyStr) req.write(bodyStr);
+    req.end();
   });
-
-  // Sort
-  filteredDomains.sort((a,b) => {
-    let av = a[sortKey], bv = b[sortKey];
-    if (sortKey === 'clicks') { av = a.gsc?.clicks||0; bv = b.gsc?.clicks||0; }
-    if (sortKey === 'position') { av = a.gsc?.avgPosition||999; bv = b.gsc?.avgPosition||999; }
-    if (sortKey === 'keywords') { av = a.gsc?.keywordCount||0; bv = b.gsc?.keywordCount||0; }
-    if (typeof av === 'string') return sortDir * av.localeCompare(bv||'');
-    return sortDir * ((av||0) - (bv||0));
-  });
-
-  // Tab counts
-  const countTab = (fn) => allDomains.filter(fn).length;
-  const setEl = (id, val) => { const el = document.getElementById(id); if(el) el.textContent = val; };
-  setEl('tab-all', allDomains.length);
-  setEl('tab-down', countTab(d=>d.status==='down'));
-  setEl('tab-warn', countTab(d=>d.status==='warn'));
-  setEl('tab-notraffic', countTab(d=>d.gsc&&d.gsc.clicks===0));
-  setEl('tab-expiring', countTab(d=>d.daysLeft!==null&&d.daysLeft<=30&&d.daysLeft>=0));
-  setEl('tab-ranked', countTab(d=>d.gsc?.keywordCount>0));
-
-  const countEl = document.getElementById('domains-count-text');
-  if (countEl) countEl.textContent = `${filteredDomains.length} โดเมน`;
-
-  currentPage = 1;
-  renderDomainTable();
 }
 
-function setDomainTab(tab, el) {
-  currentTab = tab;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  el.classList.add('active');
-  applyFilters();
-}
-
-function sortBy(key) {
-  if (sortKey === key) sortDir *= -1;
-  else { sortKey = key; sortDir = -1; }
-  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sort-asc','sort-desc'));
-  const th = document.querySelector(`[data-sort="${key}"]`);
-  if (th) th.classList.add(sortDir === 1 ? 'sort-asc' : 'sort-desc');
-  applyFilters();
-}
-
-// ===== RENDER TABLE =====
-function statusBadge(d) {
-  const map = { up: ['badge-up','fa-circle-check','Up'], down: ['badge-down','fa-circle-xmark','Down'], warn: ['badge-warn','fa-triangle-exclamation','Warn'], unknown: ['badge-unknown','fa-circle-question','?'] };
-  const [cls, icon, label] = map[d.status] || map.unknown;
-  const rt = d.responseTime ? `<span style="color:var(--text3);font-size:10px;margin-left:4px">${d.responseTime}ms</span>` : '';
-  return `<span class="badge ${cls}"><i class="fa-solid ${icon}"></i> ${label}</span>${rt}`;
-}
-
-function trafficBar(d) {
-  if (!d.gsc) return `<span style="color:var(--text3);font-size:12px">—</span>`;
-  const clicks = d.gsc.clicks;
-  const max = Math.max(...allDomains.map(x=>x.gsc?.clicks||0), 1);
-  const pct = Math.min(100, Math.round(clicks/max*100));
-  const color = clicks === 0 ? 'var(--red)' : clicks < 100 ? 'var(--amber)' : 'var(--green)';
-  const label = clicks >= 1000 ? (clicks/1000).toFixed(1)+'k' : clicks;
-  return `<div class="traffic-wrap"><div class="traffic-bar-bg"><div class="traffic-bar-fill" style="width:${pct}%;background:${color}"></div></div><span class="traffic-val">${label}</span></div>`;
-}
-
-function kwBadge(d) {
-  if (!d.gsc || d.gsc.keywordCount === 0) return `<span style="color:var(--text3);font-size:12px">ไม่ติด</span>`;
-  const pos = d.gsc.topPosition;
-  const cls = pos <= 1 ? 'kw-top1' : pos <= 3 ? 'kw-top3' : pos <= 10 ? 'kw-top10' : 'kw-top30';
-  const icon = pos <= 3 ? '🏆' : pos <= 10 ? '✅' : '📊';
-  return `<span class="kw-pos ${cls}">${icon} #${pos} <span style="color:var(--text3);font-size:11px">· ${d.gsc.keywordCount} kw</span></span>`;
-}
-
-function expiryCell(d) {
-  const days = d.sslDaysLeft !== null && d.sslDaysLeft !== undefined ? d.sslDaysLeft : (d.daysLeft !== null && d.daysLeft !== undefined ? d.daysLeft : null);
-  if (days === null) return '<span style="color:var(--text3);font-size:12px">—</span>';
-  const label = days < 0 ? 'หมดแล้ว' : days === 0 ? 'วันนี้' : `${days} วัน`;
-  const cls = days <= 7 ? 'expiry-danger' : days <= 30 ? 'expiry-warn' : 'expiry-ok';
-  const icon = days <= 30 ? '⚠️ ' : '🔒 ';
-  return `<span class="${cls}">${icon}${label}</span>`;
-}
-
-function serverInfoCell(d) {
-  // หา server config จาก pleskHost หรือ pleskServer
-  const srv = getServerConfig(d.pleskHost) || getServerConfigByName(d.pleskServer);
-  const ip = d.pleskHost || srv?.host || '—';
-  const name = d.pleskServer || srv?.name || 'Server';
-  
-  if (!ip || ip === '—') return '<span style="color:var(--text3);font-size:11px">—</span>';
-  
-  const user = srv?.user || 'admin';
-  const pass = srv?.pass || '';
-  const uid = 'p' + Math.random().toString(36).slice(2,8) + d.domain.replace(/[^a-z0-9]/g,'').slice(0,6);
-  const passB64 = pass ? btoa(unescape(encodeURIComponent(pass))) : '';
-  
-  return `<div style="font-size:11px;min-width:160px">
-    <div style="display:flex;align-items:center;gap:4px;margin-bottom:4px">
-      <span style="background:var(--blue-dim);color:var(--blue);padding:1px 6px;border-radius:3px;font-size:10px;white-space:nowrap">${name}</span>
-      <span style="font-family:var(--mono);color:var(--text2);font-size:11px">${ip}</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">
-      <span style="color:var(--text3);min-width:32px">user:</span>
-      <span style="font-family:var(--mono);color:var(--text)">${user}</span>
-      <button onclick="navigator.clipboard.writeText('${user}');toast('Copy user แล้ว','success')" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:0 2px"><i class="ti ti-copy" style="font-size:11px"></i></button>
-    </div>
-    ${pass ? `<div style="display:flex;align-items:center;gap:4px">
-      <span style="color:var(--text3);min-width:32px">pass:</span>
-      <span id="pd-${uid}" style="font-family:var(--mono);color:var(--text3);cursor:pointer;letter-spacing:1px" 
-        onmousedown="document.getElementById('pd-${uid}').textContent=decodeURIComponent(escape(atob('${passB64}')))"
-        onmouseup="document.getElementById('pd-${uid}').textContent='••••••••'"
-        onmouseleave="document.getElementById('pd-${uid}').textContent='••••••••'"
-        title="กดค้างเพื่อดู">••••••••</span>
-      <button onclick="navigator.clipboard.writeText(decodeURIComponent(escape(atob('${passB64}'))));toast('Copy password แล้ว','success')" style="background:none;border:none;cursor:pointer;color:var(--text3);padding:0 2px"><i class="ti ti-copy" style="font-size:11px"></i></button>
-    </div>` : ''}
-  </div>`;
-}
-
-function getServerConfig(host) {
-  if (!host) return null;
-  const servers = window._pleskServers || [];
-  return servers.find(s => s.host === host) || null;
-}
-
-function getServerConfigByName(name) {
-  if (!name) return null;
-  const servers = window._pleskServers || [];
-  return servers.find(s => s.name === name) || null;
-}
-
-function showPass(uid, b64) {
-  const el = document.getElementById(`pass-${uid}`);
-  if (el) el.querySelector('.pass-dots').textContent = atob(b64);
-}
-
-function hidePass(uid) {
-  const el = document.getElementById(`pass-${uid}`);
-  if (el) el.querySelector('.pass-dots').textContent = '••••••••';
-}
-
-function copyPass(b64) {
-  navigator.clipboard.writeText(atob(b64));
-  toast('Copy password แล้ว', 'success');
-}
-
-function pleskBadge(d) {
-  if (!d.pleskId) return '<span style="color:var(--text3);font-size:11px">—</span>';
-  if (d.pleskActive) return '<span class="badge badge-up" style="font-size:10px"><i class="ti ti-circle-check"></i> Active</span>';
-  return '<span class="badge badge-down" style="font-size:10px"><i class="ti ti-ban"></i> Suspended</span>';
-}
-
-function renderDomainTable() {
-  const wrap = document.getElementById('domain-table-wrap');
-  if (!wrap) return;
-  if (filteredDomains.length === 0) {
-    wrap.innerHTML = `<div class="empty-state"><i class="ti ti-inbox"></i><h3>ไม่พบโดเมน</h3><p>ลองปรับตัวกรองหรือเพิ่มโดเมนใหม่</p></div>`;
-    return;
-  }
-  const start = (currentPage-1)*PER_PAGE;
-  const rows = filteredDomains.slice(start, start+PER_PAGE);
-  wrap.innerHTML = `
-  <div class="table-container">
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th><input type="checkbox" onchange="selectAll(this)" style="accent-color:var(--green)" /></th>
-            <th data-sort="domain" onclick="sortBy('domain')">โดเมน</th>
-            <th>โฮส</th>
-            <th data-sort="status" onclick="sortBy('status')">สถานะ HTTP</th>
-            <th>Plesk</th>
-            <th data-sort="clicks" onclick="sortBy('clicks')">Traffic (GSC)</th>
-            <th>Clicks / Imp</th>
-            <th data-sort="keywords" onclick="sortBy('keywords')">Keywords</th>
-            <th data-sort="sslDaysLeft" onclick="sortBy('sslDaysLeft')">SSL</th>
-            <th>จัดการ</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(d => `
-          <tr>
-            <td><input type="checkbox" style="accent-color:var(--green)" onchange="updateBulkBar()" data-domain="${d.domain}" /></td>
-            <td>
-              <div class="domain-name"><a href="https://${d.domain}" target="_blank">${d.domain} <i class="ti ti-external-link" style="font-size:10px;opacity:0.5"></i></a></div>
-              ${d.tags?.length ? `<div style="margin-top:3px">${d.tags.map(t=>`<span style="background:var(--bg4);color:var(--text3);font-size:10px;padding:1px 5px;border-radius:3px;margin-right:3px">${t}</span>`).join('')}</div>` : ''}
-            </td>
-            <td>${statusBadge(d)}</td>
-            <td>${pleskBadge(d)}</td>
-            <td>${trafficBar(d)}</td>
-            <td style="font-family:var(--mono);font-size:12px;color:var(--text2)">${d.gsc ? `${d.gsc.clicks.toLocaleString()} / ${d.gsc.impressions.toLocaleString()}` : '—'}</td>
-            <td>${kwBadge(d)}</td>
-            <td>${expiryCell(d)}</td>
-            <td>
-              <div class="action-group">
-                <button class="action-btn" title="ดูรายละเอียด" onclick="viewDetail('${d.domain}')"><i class="ti ti-eye"></i></button>
-                <button class="action-btn" title="เช็คสถานะ" onclick="checkOne('${d.domain}')"><i class="ti ti-refresh"></i></button>
-                ${(d.status === 'down' || (d.pleskId && !d.pleskActive)) ? `<button class="action-btn" title="Auto-fix (Unsuspend Plesk + Pause CF)" onclick="autoFixDomain('${d.domain}')" style="color:var(--amber);border-color:rgba(245,158,11,0.5);background:var(--amber-dim)"><i class="ti ti-wand"></i></button>` : ''}
-                <button class="action-btn" title="Sync GSC" onclick="syncGSCOne('${d.domain}')"><i class="ti ti-brand-google"></i></button>
-                <button class="action-btn danger" title="ลบ" onclick="deleteDomain('${d.domain}')"><i class="ti ti-trash"></i></button>
-              </div>
-            </td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
-    <div class="pagination">
-      <span>แสดง ${start+1}–${Math.min(start+PER_PAGE,filteredDomains.length)} จาก ${filteredDomains.length} โดเมน</span>
-      <div class="page-btns">${renderPaginationBtns()}</div>
-    </div>
-  </div>`;
-}
-
-function renderPaginationBtns() {
-  const total = Math.ceil(filteredDomains.length / PER_PAGE);
-  let html = `<button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>`;
-  const pages = [];
-  for (let i=1;i<=total;i++) {
-    if (i===1||i===total||Math.abs(i-currentPage)<=2) pages.push(i);
-    else if (pages[pages.length-1]!=='…') pages.push('…');
-  }
-  pages.forEach(p => {
-    if (p==='…') html += `<span style="padding:4px 6px;color:var(--text3)">…</span>`;
-    else html += `<button class="page-btn${p===currentPage?' active':''}" onclick="goPage(${p})">${p}</button>`;
-  });
-  html += `<button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===Math.ceil(filteredDomains.length/PER_PAGE)?'disabled':''}>›</button>`;
-  return html;
-}
-
-function goPage(p) {
-  const total = Math.ceil(filteredDomains.length/PER_PAGE);
-  if (p<1||p>total) return;
-  currentPage = p;
-  renderDomainTable();
-  document.getElementById('page-domains')?.scrollTo(0,0);
-}
-
-function renderQuickTable() {
-  const wrap = document.getElementById('quick-table-wrap');
-  if (!wrap) return;
-  const urgent = [...allDomains].filter(d=>d.status==='down'||d.daysLeft<=7).slice(0,5);
-  const recent = [...allDomains].sort((a,b)=>new Date(b.addedAt)-new Date(a.addedAt)).slice(0,5);
-  const list = [...new Map([...urgent,...recent].map(d=>[d.domain,d])).values()].slice(0,8);
-  if (!list.length) { wrap.innerHTML='<div class="empty-state" style="padding:30px"><i class="ti ti-confetti"></i><h3>ทุกอย่างปกติดี!</h3></div>'; return; }
-  wrap.innerHTML = `<div class="table-container"><div class="table-wrap"><table><thead><tr><th>โดเมน</th><th>สถานะ</th><th>Traffic</th><th>หมดอายุ</th><th></th></tr></thead><tbody>${list.map(d=>`<tr><td class="domain-name">${d.domain}</td><td>${statusBadge(d)}</td><td>${trafficBar(d)}</td><td>${expiryCell(d)}</td><td><button class="action-btn" onclick="viewDetail('${d.domain}')"><i class="ti ti-eye"></i></button></td></tr>`).join('')}</tbody></table></div></div>`;
-}
-
-// ===== TRAFFIC PAGE =====
-// ===== GSC TIER HELPER =====
-function gscTier(clicks) {
-  if (clicks >= 100) return { label: '🔥 Hot',  color: 'var(--green)',  bg: 'var(--green-dim)',  key: 'hot'  };
-  if (clicks >= 10)  return { label: '📈 Good', color: 'var(--teal)',   bg: 'rgba(14,165,233,.12)', key: 'good' };
-  if (clicks >= 1)   return { label: '📉 Low',  color: 'var(--amber)',  bg: 'var(--amber-dim)', key: 'low'  };
-  return               { label: '👻 Ghost', color: 'var(--text3)',  bg: 'var(--bg4)',       key: 'ghost' };
-}
-
-function gscCTR(clicks, impressions) {
-  if (!impressions) return 0;
-  return Math.round(clicks / impressions * 1000) / 10;
-}
-
-function renderTrafficPage() {
-  const el = document.getElementById('traffic-content');
-  if (!el) return;
-
-  const withGSC = allDomains.filter(d => d.gsc && d.gsc.inGSC);
-  if (!withGSC.length) {
-    el.innerHTML = '<div class="gsc-banner"><h3>ยังไม่มีข้อมูล GSC</h3><p>กด Sync GSC เพื่อดูข้อมูล</p></div>';
-    return;
-  }
-
-  const period = window._gscPeriod || 'd30';
-  // ใช้ข้อมูลตาม period ที่เลือก
-  const getPData = (d) => (d.gsc && d.gsc[period]) ? d.gsc[period] : d.gsc;
-  const getC = (d) => getPData(d)?.clicks || 0;
-  const getI = (d) => getPData(d)?.impressions || 0;
-
-  // จัด tiers ตาม period
-  const hot   = withGSC.filter(d => getC(d) >= 100);
-  const good  = withGSC.filter(d => getC(d) >= 10 && getC(d) < 100);
-  const low   = withGSC.filter(d => getC(d) >= 1  && getC(d) < 10);
-  const ghost = withGSC.filter(d => getC(d) === 0);
-
-  // Opportunity: impressions > 100 แต่ CTR < 2%
-  const opps = [...withGSC]
-    .filter(d => getI(d) >= 100 && gscCTR(getC(d), getI(d)) < 2)
-    .sort((a,b) => getI(b) - getI(a))
-    .slice(0, 20);
-
-  const totalClicks = withGSC.reduce((s,d) => s + getC(d), 0);
-  const totalImpressions = withGSC.reduce((s,d) => s + getI(d), 0);
-  const avgCTR = totalImpressions ? Math.round(totalClicks / totalImpressions * 1000) / 10 : 0;
-
-  const tab = window._gscTab || 'tier';
-
-  // filter โดเมน ตาม tier tab
-  const tierMap = { hot, good, low, ghost, all: withGSC, opp: opps };
-  const period2 = window._gscPeriod || 'd30';
-  const getC2 = (d) => ((d.gsc && d.gsc[period2]) ? d.gsc[period2] : d.gsc)?.clicks || 0;
-  const display = [...(tierMap[tab] || withGSC)].sort((a,b) => getC2(b) - getC2(a));
-
-  const tierBtn = (key, label, count, color) =>
-    `<button class="btn btn-sm" onclick="window._gscTab='${key}';renderTrafficPage()"
-      style="${tab===key ? 'background:'+color+';color:#fff;border-color:'+color : ''}">
-      ${label} <span style="opacity:.7">(${count})</span>
-    </button>`;
-
-  el.innerHTML = `
-    <div class="metrics-grid" style="margin-bottom:14px">
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-brand-google"></i> ใน GSC</div><div class="metric-val blue">${withGSC.length}</div></div>
-      <div class="metric-card highlight-green"><div class="metric-label"><i class="ti ti-mouse"></i> Total Clicks</div><div class="metric-val green">${totalClicks.toLocaleString()}</div></div>
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-eye"></i> Impressions</div><div class="metric-val">${totalImpressions.toLocaleString()}</div></div>
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-percentage"></i> Avg CTR</div><div class="metric-val ${avgCTR>=2?'green':avgCTR>=1?'amber':'red'}">${avgCTR}%</div></div>
-    </div>
-
-    <!-- Tier Summary Bar -->
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px">
-      ${[
-        { key:'hot',   label:'🔥 Hot',   count:hot.length,   sub:'100+ clicks', color:'var(--green)' },
-        { key:'good',  label:'📈 Good',  count:good.length,  sub:'10-99 clicks', color:'var(--teal)' },
-        { key:'low',   label:'📉 Low',   count:low.length,   sub:'1-9 clicks',  color:'var(--amber)' },
-        { key:'ghost', label:'👻 Ghost', count:ghost.length, sub:'0 clicks',    color:'var(--text3)' },
-      ].map(t => `
-        <div onclick="window._gscTab='${t.key}';renderTrafficPage()" 
-          style="cursor:pointer;padding:10px 12px;border-radius:var(--radius-sm);border:1px solid ${tab===t.key?t.color:'var(--border)'};background:${tab===t.key?t.color.replace(')','-dim)').replace('var(--','var(--'):'transparent'};transition:all .15s">
-          <div style="font-size:20px;font-weight:700;color:${t.color}">${t.count}</div>
-          <div style="font-size:12px;font-weight:600;color:var(--text);margin-top:1px">${t.label}</div>
-          <div style="font-size:10px;color:var(--text3)">${t.sub}</div>
-        </div>
-      `).join('')}
-    </div>
-
-    <!-- Period + Tier Tabs -->
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
-      <span style="font-size:11px;color:var(--text3);font-weight:600">ช่วงเวลา:</span>
-      ${['d7','d30','d90'].map(p => {
-        const label = p==='d7'?'7 วัน':p==='d30'?'1 เดือน':'3 เดือน';
-        const active = period === p;
-        return '<button class="btn btn-sm" onclick="window._gscPeriod=\''+p+'\';renderTrafficPage()" style="'+(active?'background:var(--teal);color:#fff;border-color:var(--teal)':'')+'">'+label+'</button>';
-      }).join('')}
-      <span style="margin:0 4px;color:var(--border2)">|</span>
-      <span style="font-size:11px;color:var(--text3);font-weight:600">Tier:</span>
-      ${tierBtn('tier','ทั้งหมด', withGSC.length, 'var(--teal)')}
-      ${tierBtn('hot','🔥 Hot', hot.length, 'var(--green)')}
-      ${tierBtn('good','📈 Good', good.length, 'var(--teal)')}
-      ${tierBtn('low','📉 Low', low.length, 'var(--amber)')}
-      ${tierBtn('ghost','👻 Ghost', ghost.length, '#888')}
-      ${tierBtn('opp','💡 Opportunity', opps.length, 'var(--purple)')}
-    </div>
-
-    ${tab === 'opp' ? `
-    <!-- Opportunity Finder -->
-    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:12px 16px;margin-bottom:12px">
-      <div style="font-size:12px;color:var(--text2);margin-bottom:10px">
-        <i class="ti ti-bulb" style="color:var(--purple)"></i>
-        โดเมนที่มี Impression สูง แต่ CTR ต่ำ — แค่ปรับ Title/Meta อาจเพิ่ม Traffic ได้ทันที
-      </div>
-    </div>` : ''}
-
-    <!-- Table -->
-    <div class="table-container">
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>โดเมน</th>
-            <th>Tier</th>
-            <th>Clicks</th>
-            <th>Impressions</th>
-            <th>CTR</th>
-            <th>Avg Position</th>
-            <th>Top Keyword</th>
-          </tr></thead>
-          <tbody>
-            ${display.map(d => {
-              const pd = (d.gsc && d.gsc[period]) ? d.gsc[period] : d.gsc;
-              const clicks = pd?.clicks || 0;
-              const impressions = pd?.impressions || 0;
-              const tier = gscTier(clicks);
-              const ctr = gscCTR(clicks, impressions);
-              const ctrColor = ctr >= 5 ? 'var(--green)' : ctr >= 2 ? 'var(--teal)' : ctr >= 1 ? 'var(--amber)' : 'var(--red)';
-              return `<tr>
-                <td class="domain-name">${d.domain}</td>
-                <td><span style="font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;background:${tier.bg};color:${tier.color}">${tier.label}</span></td>
-                <td style="font-family:var(--mono);color:${clicks>0?'var(--green)':'var(--text3)'};font-weight:600">${clicks.toLocaleString()}</td>
-                <td style="font-family:var(--mono);color:var(--text2)">${impressions.toLocaleString()}</td>
-                <td style="font-family:var(--mono);color:${ctrColor};font-weight:600">${ctr}%</td>
-                <td style="font-family:var(--mono)">${pd?.avgPosition ? '#'+pd.avgPosition : '—'}</td>
-                <td style="font-size:11px;color:var(--text2)">${pd?.topKeyword||'—'} ${pd?.topPosition?'<span style="color:var(--green)">#'+pd.topPosition+'</span>':''}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
-}
-
-// ===== KEYWORDS PAGE =====
-function renderKeywordsPage() {
-  const el = document.getElementById('keywords-content');
-  if (!el) return;
-  const withKw = allDomains.filter(d => d.gsc?.keywordCount > 0);
-  if (!withKw.length) {
-    el.innerHTML = `<div class="empty-state"><i class="ti ti-award"></i><h3>ยังไม่มีข้อมูล Keywords</h3><p>Sync GSC เพื่อดูข้อมูล Keyword Rankings</p></div>`; return;
-  }
-  const sorted = [...withKw].sort((a,b)=>(a.gsc?.topPosition||999)-(b.gsc?.topPosition||999));
-  el.innerHTML = `
-    <div class="table-container">
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>โดเมน</th><th>Top Keyword</th><th>Position</th><th>Keywords ทั้งหมด</th><th>Status</th></tr></thead>
-          <tbody>
-            ${sorted.map(d => {
-              const pos = d.gsc.topPosition;
-              const posClass = pos<=1?'kw-top1':pos<=3?'kw-top3':pos<=10?'kw-top10':'kw-top30';
-              return `<tr>
-                <td class="domain-name">${d.domain}</td>
-                <td style="font-size:13px">${d.gsc.topKeyword}</td>
-                <td class="kw-pos ${posClass}" style="font-family:var(--mono);font-weight:600">#${pos}</td>
-                <td style="font-family:var(--mono);color:var(--blue)">${d.gsc.keywordCount}</td>
-                <td>${statusBadge(d)}</td>
-              </tr>`;
-            }).join('')}
-          </tbody>
-        </table>
-      </div>
-    </div>`;
-}
-
-// ===== DETAIL MODAL =====
-function viewDetail(domain) {
-  const d = allDomains.find(x => x.domain === domain);
-  if (!d) return;
-  document.getElementById('detail-modal-title').innerHTML = `<i class="ti ti-world" style="color:var(--green)"></i> ${d.domain}`;
-  document.getElementById('detail-sync-btn').onclick = () => syncGSCOne(domain);
-  document.getElementById('detail-check-btn').onclick = () => checkOne(domain);
-  const gsc = d.gsc;
-  document.getElementById('detail-modal-content').innerHTML = `
-    <div class="detail-grid">
-      <div class="detail-item"><div class="detail-item-label">สถานะ</div><div>${statusBadge(d)}</div></div>
-      <div class="detail-item"><div class="detail-item-label">Response Time</div><div class="detail-item-val" style="color:var(--blue)">${d.responseTime ? d.responseTime+'ms' : '—'}</div></div>
-      <div class="detail-item"><div class="detail-item-label">HTTP Status</div><div class="detail-item-val">${d.statusCode || '—'}</div></div>
-      <div class="detail-item"><div class="detail-item-label">เช็คล่าสุด</div><div style="font-size:13px;color:var(--text2)">${d.checkedAt ? timeAgo(d.checkedAt) : '—'}</div></div>
-      <div class="detail-item"><div class="detail-item-label">หมดอายุ</div><div>${expiryCell(d)} ${d.expiryDate ? `<span style="color:var(--text3);font-size:11px">(${d.expiryDate})</span>` : ''}</div></div>
-      <div class="detail-item"><div class="detail-item-label">Tags</div><div style="font-size:13px">${d.tags?.map(t=>`<span style="background:var(--bg4);color:var(--text2);font-size:11px;padding:2px 6px;border-radius:3px;margin-right:3px">${t}</span>`).join('')||'—'}</div></div>
-    </div>
-    ${d.error ? `<div style="background:var(--red-dim);border:1px solid rgba(240,82,82,0.2);border-radius:var(--radius-sm);padding:10px;margin-top:12px;font-size:12px;color:var(--red)"><i class="ti ti-circle-x"></i> ${d.error}</div>` : ''}
-    ${gsc ? `
-    <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
-      <div style="font-size:13px;font-weight:600;margin-bottom:12px;color:var(--text)"><i class="ti ti-brand-google" style="color:var(--blue)"></i> Google Search Console (30 วันล่าสุด)</div>
-      <div class="detail-grid">
-        <div class="detail-item"><div class="detail-item-label">Clicks</div><div class="detail-item-val green">${gsc.clicks.toLocaleString()}</div></div>
-        <div class="detail-item"><div class="detail-item-label">Impressions</div><div class="detail-item-val">${gsc.impressions.toLocaleString()}</div></div>
-        <div class="detail-item"><div class="detail-item-label">Avg Position</div><div class="detail-item-val blue">${gsc.avgPosition ? '#'+gsc.avgPosition : '—'}</div></div>
-        <div class="detail-item"><div class="detail-item-label">Keywords</div><div class="detail-item-val blue">${gsc.keywordCount}</div></div>
-        <div class="detail-item" style="grid-column:1/-1"><div class="detail-item-label">Top Keyword</div><div style="font-size:14px;color:var(--text);margin-top:2px">${gsc.topKeyword} <span style="color:var(--green);font-family:var(--mono)">#${gsc.topPosition}</span></div></div>
-      </div>
-      ${gsc.keywords?.length ? `
-      <div style="margin-top:12px">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:8px">Keywords ทั้งหมด (Top 10)</div>
-        <div class="kw-table-wrap"><table style="width:100%;font-size:12px"><thead><tr style="background:var(--bg3)"><th style="padding:6px 10px;color:var(--text3)">Keyword</th><th style="padding:6px 10px;color:var(--text3)">Position</th><th style="padding:6px 10px;color:var(--text3)">Clicks</th><th style="padding:6px 10px;color:var(--text3)">Imp</th><th style="padding:6px 10px;color:var(--text3)">CTR</th></tr></thead>
-        <tbody>${gsc.keywords.slice(0,10).map(k=>`<tr style="border-bottom:1px solid var(--border)"><td style="padding:6px 10px;color:var(--text)">${k.keyword}</td><td style="padding:6px 10px;font-family:var(--mono);color:var(--green)">#${k.position}</td><td style="padding:6px 10px;font-family:var(--mono)">${k.clicks}</td><td style="padding:6px 10px;font-family:var(--mono);color:var(--text2)">${k.impressions}</td><td style="padding:6px 10px;font-family:var(--mono);color:var(--text2)">${k.ctr}%</td></tr>`).join('')}</tbody></table></div>
-      </div>` : ''}
-    </div>` : `<div style="margin-top:16px;padding:16px;background:var(--bg3);border-radius:var(--radius-sm);text-align:center;font-size:13px;color:var(--text3)"><i class="ti ti-brand-google"></i> ยังไม่มีข้อมูล GSC — คลิก Sync GSC</div>`}`;
-  document.getElementById('detail-modal').style.display = 'flex';
-}
-
-// ===== ACTIONS =====
-async function addDomain() {
-  const domain = document.getElementById('add-domain').value.trim();
-  if (!domain) { toast('กรุณาระบุ domain', 'error'); return; }
-  const notes = document.getElementById('add-notes').value;
-  const tags = document.getElementById('add-tags').value.split(';').map(t=>t.trim()).filter(Boolean);
-  const expiry = document.getElementById('add-expiry').value;
-  const daysLeft = expiry ? Math.floor((new Date(expiry)-new Date())/(86400000)) : null;
+async function fetchPleskDomainsFromServer(srv) {
   try {
-    const res = await fetch(`${API}/api/domains/add`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({domain, notes, tags, expiryDate: expiry||null, daysLeft}) });
-    const data = await res.json();
-    if (data.error) { toast(data.error, 'error'); return; }
-    toast(`เพิ่ม ${domain} แล้ว`, 'success');
-    closeModal('add-modal');
-    await loadData();
-  } catch {
-    // Demo mode
-    const clean = domain.replace(/^https?:\/\//,'').replace(/\/.*/,'').toLowerCase();
-    if (allDomains.find(d=>d.domain===clean)) { toast('มีโดเมนนี้อยู่แล้ว','error'); return; }
-    allDomains.unshift({domain:clean,status:'unknown',statusCode:0,responseTime:0,checkedAt:null,error:null,expiryDate:expiry||null,daysLeft,notes,tags,gsc:null,addedAt:new Date().toISOString()});
-    toast(`เพิ่ม ${clean} แล้ว (Demo Mode)`, 'success');
-    closeModal('add-modal');
-    applyFilters(); renderQuickTable();
-  }
-}
-
-async function deleteDomain(domain) {
-  if (!confirm(`ลบ ${domain} ออกจากระบบ?`)) return;
-  try {
-    await fetch(`${API}/api/domains/${encodeURIComponent(domain)}`, { method:'DELETE' });
-  } catch {}
-  allDomains = allDomains.filter(d => d.domain !== domain);
-  toast(`ลบ ${domain} แล้ว`, 'success');
-  applyFilters(); renderQuickTable();
-  const stats = calcStats(allDomains);
-  updateSidebar(stats); updateStats(stats, {});
-}
-
-async function autoFixDomain(domain) {
-  showProgressModal(`⚡ Auto-fix ${domain}`, 1);
-  try {
-    updateProgress(0, 1, domain, 'loading', 'กำลังดำเนินการ...');
-    const res = await fetch(`${API}/api/autofix/${encodeURIComponent(domain)}`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      updateProgress(1, 1, domain, 'success', data.message || 'สำเร็จ');
-      updateProgressStats(1, 0, 0);
-      finishProgressModal(1, 0, 0);
-    } else {
-      updateProgress(1, 1, domain, 'failed', data.error || 'ไม่สำเร็จ');
-      updateProgressStats(0, 1, 0);
-      finishProgressModal(0, 1, 0);
+    console.log(`[Plesk] ดึงโดเมนจาก ${srv.name} (${srv.host})...`);
+    const domsRes = await pleskRequest('GET', '/domains', null, srv);
+    if (domsRes.status !== 200) {
+      console.log(`[Plesk] ${srv.name} error: ${domsRes.status}`);
+      return [];
     }
-  } catch {
-    updateProgress(1, 1, domain, 'failed', 'เชื่อมต่อ Server ไม่ได้');
-    updateProgressStats(0, 1, 0);
-    finishProgressModal(0, 1, 0);
+    const domains = Array.isArray(domsRes.data) ? domsRes.data : [];
+    console.log(`[Plesk] ${srv.name} พบ ${domains.length} โดเมน`);
+
+    // สร้าง domain list ก่อนโดยไม่รอ SSL
+    const results = domains
+      .filter(d => d.name || d.ascii_name)
+      .map(d => ({
+        domain: d.name || d.ascii_name,
+        pleskId: d.id,
+        pleskServer: srv.name,
+        pleskHost: srv.host,
+        pleskStatus: d.status || 'unknown',
+        pleskActive: d.status === 0 || d.status === '0' || d.status === null || d.status === undefined || d.status === '',
+        hostingType: d.hosting_type || '',
+        sslExpiry: null,
+        sslDaysLeft: null,
+        pleskSyncedAt: new Date().toISOString()
+      }));
+
+    // ดึง SSL แบบ parallel batch 20 ตัวพร้อมกัน (background ไม่บล็อก)
+    const SSL_BATCH = 20;
+    (async () => {
+      for (let i = 0; i < results.length; i += SSL_BATCH) {
+        const batch = results.slice(i, i + SSL_BATCH);
+        await Promise.all(batch.map(async (r, bi) => {
+          try {
+            const d = domains.find(x => (x.name || x.ascii_name) === r.domain);
+            if (!d) return;
+            const sslRes = await pleskRequest('GET', `/domains/${d.id}/ssl-certificate`, null, srv);
+            if (sslRes.status === 200 && sslRes.data?.valid_to) {
+              const expDate = new Date(sslRes.data.valid_to);
+              results[i + bi].sslExpiry = expDate.toISOString().split('T')[0];
+              results[i + bi].sslDaysLeft = Math.floor((expDate - new Date()) / 86400000);
+            }
+          } catch {}
+        }));
+      }
+      console.log(`[Plesk] ${srv.name} SSL sync เสร็จ`);
+    })();
+
+    return results;
+  } catch (err) {
+    console.error(`[Plesk] ${srv.name} Error:`, err.message);
+    return [];
   }
 }
 
-async function checkOne(domain) {
-  toast(`กำลังเช็ค ${domain}...`, 'info');
-  try {
-    const res = await fetch(`${API}/api/check/${encodeURIComponent(domain)}`, { method:'POST' });
-    const data = await res.json();
-    const idx = allDomains.findIndex(d=>d.domain===domain);
-    if (idx !== -1) Object.assign(allDomains[idx], data);
-    toast(`${domain}: ${data.status.toUpperCase()} (${data.responseTime}ms)`, data.status==='up'?'success':'error');
-    applyFilters();
-  } catch {
-    toast('ไม่สามารถเชื่อมต่อ Server ได้', 'error');
+async function fetchPleskDomains() {
+  if (!PLESK_SERVERS.length) return [];
+  const allResults = [];
+  for (const srv of PLESK_SERVERS) {
+    const domains = await fetchPleskDomainsFromServer(srv);
+    allResults.push(...domains);
   }
+  console.log(`[Plesk] รวมทั้งหมด ${allResults.length} โดเมนจาก ${PLESK_SERVERS.length} servers`);
+  return allResults;
 }
 
-async function checkAllNow() {
-  if (allDomains.length === 0) { showSyncPrompt(); return; }
-  showLoading('🔍 กำลังเช็คโดเมนทั้งหมด...', `ตรวจสอบ ${allDomains.length} โดเมน — อาจใช้เวลา 2-5 นาที`);
-  try {
-    const res = await fetch(`${API}/api/check-all`, { method:'POST' });
-    if (!res.ok) throw new Error('Server error: '+res.status);
-    toast('⚙️ เริ่มเช็คโดเมนแล้ว — อัพเดตใน 30-60 วินาที', 'info');
-    setTimeout(async () => { await loadData(); hideLoading(); }, 5000);
-    setTimeout(loadData, 30000);
-  } catch(e) {
-    hideLoading();
-    showConnectionError('เช็คโดเมนไม่สำเร็จ: '+e.message, 3);
-    toast('เชื่อมต่อ Server ไม่ได้', 'error');
-  }
-}
-
-async function syncGSCOne(domain) {
-  toast(`Sync GSC สำหรับ ${domain}...`, 'info');
-  try {
-    const res = await fetch(`${API}/api/gsc/sync/${encodeURIComponent(domain)}`, { method:'POST' });
-    const data = await res.json();
-    if (data.success) { toast(`Sync GSC สำเร็จ`, 'success'); await loadData(); }
-    else toast(data.error || 'Sync ไม่สำเร็จ', 'error');
-  } catch { toast('ต้องตั้งค่า GSC API ก่อน', 'error'); }
-}
-
-async function syncGSCAll() {
-  showLoading('📊 กำลัง Sync Google Search Console...', 'ดึงข้อมูล Traffic และ Keywords');
-  try {
-    await fetch(`${API}/api/gsc/sync-all`, { method:'POST' });
-    setTimeout(async () => { await loadData(); hideLoading(); toast('✅ Sync GSC เสร็จ!', 'success'); }, 5000);
-  } catch {
-    hideLoading();
-    toast('ต้องตั้งค่า GSC API ก่อน', 'error');
-  }
-}
-
-async function syncPlesk() {
-  const pin = prompt('🔒 กรุณาใส่ PIN เพื่อ Sync Plesk:');
-  if (pin === null) return;
-  if (pin !== '123456za') {
-    toast('❌ PIN ไม่ถูกต้อง', 'error');
-    return;
-  }
-  showLoading('🔄 กำลัง Sync Plesk...', 'ดึงโดเมนจากทุก Server กรุณารอสักครู่');
-  try {
-    const res = await fetch(`${API}/api/plesk/sync`, { method:'POST' });
-    const data = await res.json();
-    if (data.error) { hideLoading(); toast(data.error, 'error'); return; }
-    document.getElementById('global-loading-sub').textContent = 'กำลังดึงโดเมนจากทุก Plesk Server...';
-    setTimeout(async () => {
-      await loadData();
-      hideLoading();
-      toast('✅ Sync Plesk สำเร็จ!', 'success');
-    }, 8000);
-    setTimeout(loadData, 20000);
-  } catch {
-    hideLoading();
-    toast('เชื่อมต่อ Server ไม่ได้', 'error');
-  }
-}
-
-// ===== IMPORT =====
-function handleDrop(e) {
-  e.preventDefault();
-  document.getElementById('drop-zone').style.borderColor = 'var(--border2)';
-  const file = e.dataTransfer.files[0];
-  if (file) readCSVFile(file);
-}
-function handleFileSelect(input) {
-  if (input.files[0]) readCSVFile(input.files[0]);
-}
-function readCSVFile(file) {
-  const reader = new FileReader();
-  reader.onload = e => { document.getElementById('csv-text').value = e.target.result; };
-  reader.readAsText(file, 'UTF-8');
-}
-async function importCSV() {
-  const csv = document.getElementById('csv-text').value.trim();
-  if (!csv) { toast('กรุณาวาง CSV ก่อน', 'error'); return; }
-  const resultEl = document.getElementById('import-result');
-  resultEl.innerHTML = '<div class="loading"><div class="spinner"></div> กำลัง Import...</div>';
-  try {
-    const res = await fetch(`${API}/api/domains/import`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({csv}) });
-    const data = await res.json();
-    resultEl.innerHTML = `<div style="background:var(--green-dim);border:1px solid rgba(34,208,122,0.2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--green)"><i class="ti ti-circle-check"></i> Import สำเร็จ: เพิ่ม ${data.added} โดเมน (ข้าม ${data.skipped} ที่ซ้ำ) รวมทั้งหมด ${data.total} โดเมน</div>`;
-    await loadData();
-  } catch {
-    // Demo parse
-    const lines = csv.trim().split('\n');
-    const headers = lines[0].split(',').map(h=>h.trim().toLowerCase());
-    let added=0, skipped=0;
-    lines.slice(1).forEach(line => {
-      const vals = line.split(',').map(v=>v.trim());
-      const obj = {};
-      headers.forEach((h,i)=>obj[h]=vals[i]||'');
-      const domain = (obj.domain||'').replace(/^https?:\/\//,'').replace(/\/.*/,'').toLowerCase();
-      if (!domain) { skipped++; return; }
-      if (allDomains.find(d=>d.domain===domain)) { skipped++; return; }
-      allDomains.push({domain,status:'unknown',statusCode:0,responseTime:0,checkedAt:null,error:null,expiryDate:obj.expiry_date||null,daysLeft:obj.days_left?parseInt(obj.days_left):null,notes:obj.notes||'',tags:obj.tags?obj.tags.split(';'):[],gsc:null,addedAt:new Date().toISOString()});
+async function syncPleskDomains() {
+  const pleskDomains = await fetchPleskDomains();
+  if (!pleskDomains.length) return 0;
+  let added = 0, updated = 0;
+  for (const pd of pleskDomains) {
+    const idx = memoryDomains.findIndex(d => d.domain === pd.domain);
+    if (idx !== -1) {
+      // อัพเดตเฉพาะข้อมูล Plesk ไม่แตะ HTTP status ที่เช็คไว้แล้ว
+      const pleskFields = ['pleskId','pleskServer','pleskHost','pleskStatus','pleskActive','hostingType','sslExpiry','sslDaysLeft','pleskSyncedAt'];
+      pleskFields.forEach(f => { if (pd[f] !== undefined) memoryDomains[idx][f] = pd[f]; });
+      if (!memoryDomains[idx].tags) memoryDomains[idx].tags = [];
+      if (!memoryDomains[idx].tags.includes('plesk')) memoryDomains[idx].tags.push('plesk');
+      const serverTag = pd.pleskServer ? pd.pleskServer.toLowerCase().replace(/\s+/g,'-') : null;
+      if (serverTag && !memoryDomains[idx].tags.includes(serverTag)) memoryDomains[idx].tags.push(serverTag);
+      updated++;
+    } else {
+      const serverTag = pd.pleskServer ? pd.pleskServer.toLowerCase().replace(/\s+/g,'-') : 'plesk';
+      memoryDomains.push({ domain: pd.domain, status: 'unknown', statusCode: 0, responseTime: 0, checkedAt: null, error: null, expiryDate: pd.sslExpiry, daysLeft: pd.sslDaysLeft, notes: `นำเข้าจาก ${pd.pleskServer || 'Plesk'}`, tags: ['plesk', serverTag], gsc: null, addedAt: new Date().toISOString(), ...pd });
       added++;
-    });
-    resultEl.innerHTML = `<div style="background:var(--green-dim);border:1px solid rgba(34,208,122,0.2);border-radius:var(--radius-sm);padding:12px;font-size:13px;color:var(--green)"><i class="ti ti-circle-check"></i> (Demo) เพิ่ม ${added} โดเมน ข้าม ${skipped}</div>`;
-    applyFilters(); renderQuickTable();
-    const stats = calcStats(allDomains); updateSidebar(stats); updateStats(stats,{});
-  }
-}
-function downloadTemplate() {
-  const csv = 'domain,notes,tags,expiry_date,days_left\nexample.com,เว็บหลัก,seo;lead,2026-12-31,217\nexample2.net,แคมเปญ Q1,ppc,2026-06-30,32\nmyblog.co.th,บล็อก SEO,seo;content,2027-01-15,232';
-  const blob = new Blob([csv], {type:'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download='domain-template.csv'; a.click();
-  toast('ดาวน์โหลด template แล้ว', 'success');
-}
-
-// ===== EXPORT =====
-function exportCSV() {
-  const headers = ['domain','status','clicks','impressions','avg_position','keyword_count','top_keyword','top_position','days_left','expiry_date','response_time','notes'];
-  const rows = filteredDomains.map(d => [d.domain, d.status, d.gsc?.clicks||0, d.gsc?.impressions||0, d.gsc?.avgPosition||0, d.gsc?.keywordCount||0, d.gsc?.topKeyword||'', d.gsc?.topPosition||0, d.daysLeft??'', d.expiryDate||'', d.responseTime||0, d.notes||''].join(','));
-  const csv = [headers.join(','), ...rows].join('\n');
-  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a'); a.href=url; a.download=`domains-${new Date().toISOString().split('T')[0]}.csv`; a.click();
-  toast('Export CSV แล้ว', 'success');
-}
-
-// ===== SETTINGS =====
-async function testConnection() {
-  const url = document.getElementById('server-url').value.trim().replace(/\/$/, '');
-  API = url;
-  localStorage.setItem('api_url', url);
-  const el = document.getElementById('conn-status');
-  el.innerHTML = '<div class="spinner" style="width:14px;height:14px;display:inline-block"></div>';
-  try {
-    const res = await fetch(`${url}/api/stats`);
-    if (res.ok) {
-      el.innerHTML = '<span class="server-status server-ok"><i class="ti ti-circle-check"></i> เชื่อมต่อสำเร็จ</span>';
-      toast('เชื่อมต่อ Server สำเร็จ', 'success');
-      await loadData();
-    } else throw new Error();
-  } catch {
-    el.innerHTML = '<span class="server-status server-err"><i class="ti ti-circle-x"></i> เชื่อมต่อไม่ได้</span>';
-    toast('เชื่อมต่อ Server ไม่ได้ — ตรวจสอบว่า node server.js รันอยู่', 'error');
-  }
-}
-
-async function saveGSC() {
-  const body = { gsc: { clientId: document.getElementById('gsc-client-id').value, clientSecret: document.getElementById('gsc-client-secret').value, refreshToken: document.getElementById('gsc-refresh-token').value } };
-  try {
-    await fetch(`${API}/api/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    toast('บันทึก GSC Config แล้ว', 'success');
-  } catch { toast('บันทึกใน Demo Mode — ต้องรัน server.js', 'error'); }
-}
-
-async function saveSettings() {
-  await saveGSC();
-  const tgToken = document.getElementById('telegram-token').value.trim();
-  const tgChat = document.getElementById('telegram-chat').value.trim();
-  if (tgToken) localStorage.setItem('tg_token', tgToken);
-  if (tgChat) localStorage.setItem('tg_chat', tgChat);
-  const body = { alerts: { telegramToken: tgToken, telegramChatId: tgChat, notifyOnDown: document.getElementById('notify-down').checked, notifyOnExpiry: document.getElementById('notify-expiry').checked, expiryDaysThreshold: parseInt(document.getElementById('expiry-threshold').value) } };
-  try {
-    await fetch(`${API}/api/config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body) });
-    toast('บันทึก Settings แล้ว', 'success');
-  } catch { toast('บันทึกใน Local แล้ว', 'success'); }
-}
-
-async function testLineAlert() {
-  const tgToken = document.getElementById('telegram-token').value.trim() || localStorage.getItem('tg_token');
-  const tgChat = document.getElementById('telegram-chat').value.trim() || localStorage.getItem('tg_chat');
-  try {
-    const res = await fetch(`${API}/api/test-alert`, {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ message: 'DomainIntel Test Alert', telegramToken: tgToken, telegramChatId: tgChat })
-    });
-    const data = await res.json();
-    if (data.success) toast('ส่งแจ้งเตือน Telegram สำเร็จ! เช็ค Telegram ได้เลย', 'success');
-    else toast(data.error || 'ส่งไม่สำเร็จ', 'error');
-  } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
-}
-
-// ===== NAVIGATION =====
-// ===== BULK ACTIONS =====
-function getSelectedDomains() {
-  if (isSelectAllFiltered) return filteredDomains.map(d => d.domain);
-  return [...document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]:checked')]
-    .map(cb => cb.getAttribute('data-domain')).filter(Boolean);
-}
-
-function updateBulkBar() {
-  const selected = selectAllFiltered ? filteredDomains.map(d => d.domain) : getSelectedDomains();
-  const bar = document.getElementById('bulk-bar');
-  const count = document.getElementById('bulk-count');
-  const banner = document.getElementById('select-all-banner');
-  const allBtn = document.getElementById('select-all-btn');
-  const allCount = document.getElementById('select-all-count');
-  const bannerText = document.getElementById('select-all-banner-text');
-
-  if (selected.length > 0 || isSelectAllFiltered) {
-    bar.style.display = 'flex';
-    bar.style.flexDirection = 'column';
-    if (isSelectAllFiltered) {
-      count.textContent = `เลือกทั้งหมด ${filteredDomains.length} โดเมน ✓`;
-      banner.style.display = 'none';
-    } else {
-      count.textContent = `เลือก ${selected.length} โดเมน`;
-      // แสดง banner "เลือกทั้งหมด" ถ้าเลือกครบหน้า
-      const pageCount = document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]:checked').length;
-      const totalFiltered = filteredDomains.length;
-      if (pageCount > 0 && totalFiltered > pageCount && !isSelectAllFiltered) {
-        banner.style.display = 'flex';
-        bannerText.textContent = `เลือกแค่ ${pageCount} โดเมนในหน้านี้`;
-        if (allCount) allCount.textContent = totalFiltered;
-      } else {
-        banner.style.display = 'none';
-      }
     }
-  } else {
-    bar.style.display = 'none';
-    banner.style.display = 'none';
-    isSelectAllFiltered = false;
   }
+  await saveToSheets(memoryDomains);
+  console.log(`[Plesk Sync] เพิ่ม ${added} อัพเดต ${updated}`);
+  setTimeout(() => checkAllDomains(), 2000);
+  return added + updated;
 }
 
-function clearSelection() {
-  isSelectAllFiltered = false;
-  document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c => c.checked = false);
-  document.querySelectorAll('#domain-table-wrap thead input[type=checkbox]').forEach(c => c.checked = false);
-  updateBulkBar();
+// ===== DOMAIN CHECKER =====
+function getErrorLabel(code, errMsg) {
+  const labels = { 521:'CF 521 — Web server is down', 522:'CF 522 — Connection timed out', 523:'CF 523 — Origin unreachable', 524:'CF 524 — Timeout', 525:'CF 525 — SSL handshake failed', 526:'CF 526 — Invalid SSL', 530:'CF 530 — Origin DNS error', 520:'CF 520 — Unknown error', 500:'HTTP 500', 502:'HTTP 502 — Bad gateway', 503:'HTTP 503 — Unavailable', 504:'HTTP 504 — Gateway timeout' };
+  if (labels[code]) return labels[code];
+  if (errMsg?.includes('ECONNREFUSED')) return 'Connection refused';
+  if (errMsg?.includes('ENOTFOUND')) return 'Domain not found (DNS)';
+  if (errMsg?.includes('ETIMEDOUT')) return 'Connection timeout';
+  return errMsg || null;
 }
 
-function selectAllDomains() {
-  isSelectAllFiltered = true;
-  // ติ๊ก checkbox ทุกอันในหน้าปัจจุบัน
-  document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c => c.checked = true);
-  updateBulkBar();
-}
+function checkDomainOnce(domain, useHttps) {
+  return new Promise(resolve => {
+    const clean = domain.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+    const start = Date.now();
+    const headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'th,en;q=0.9',
+      'Connection': 'keep-alive',
+      'Cache-Control': 'no-cache',
+    };
+    const mod = useHttps ? https : http;
+    const req = mod.get(`${useHttps ? 'https' : 'http'}://${clean}`, { timeout: 12000, headers, rejectUnauthorized: false }, res => {
+      const responseTime = Date.now() - start;
+      const code = res.statusCode;
+      const cfRay = res.headers['cf-ray'];
+      const server = res.headers['server'] || '';
+      const denyReason = res.headers['x-deny-reason'];
 
-// Progress Modal helpers
-function showProgressModal(title, total) {
-  document.getElementById('progress-modal').style.display = 'flex';
-  document.getElementById('progress-title').textContent = title;
-  document.getElementById('progress-subtitle').textContent = `กำลังดำเนินการ ${total} โดเมน...`;
-  document.getElementById('progress-bar-fill').style.width = '0%';
-  document.getElementById('progress-count').textContent = `0 / ${total} โดเมน`;
-  document.getElementById('progress-pct').textContent = '0%';
-  document.getElementById('progress-log').innerHTML = '';
-  document.getElementById('stat-fixed').textContent = '0';
-  document.getElementById('stat-failed').textContent = '0';
-  document.getElementById('stat-skipped').textContent = '0';
-  document.getElementById('progress-close-btn').style.display = 'none';
-}
-
-function updateProgress(current, total, domain, status, message) {
-  const pct = Math.round(current / total * 100);
-  document.getElementById('progress-bar-fill').style.width = pct + '%';
-  document.getElementById('progress-count').textContent = `${current} / ${total} โดเมน`;
-  document.getElementById('progress-pct').textContent = pct + '%';
-  document.getElementById('progress-subtitle').textContent = `กำลังดำเนินการ: ${domain}`;
-  
-  // Log entry
-  const log = document.getElementById('progress-log');
-  const icon = status === 'success' ? '✅' : status === 'failed' ? '❌' : status === 'skip' ? '⏭️' : '⚙️';
-  const color = status === 'success' ? 'var(--green)' : status === 'failed' ? 'var(--red)' : status === 'skip' ? 'var(--text3)' : 'var(--amber)';
-  log.innerHTML += `<div style="color:${color}">${icon} <span style="color:var(--text2)">${domain}</span> — ${message}</div>`;
-  log.scrollTop = log.scrollHeight;
-}
-
-function updateProgressStats(fixed, failed, skipped) {
-  document.getElementById('stat-fixed').textContent = fixed;
-  document.getElementById('stat-failed').textContent = failed;
-  document.getElementById('stat-skipped').textContent = skipped;
-}
-
-function finishProgressModal(fixed, failed, skipped) {
-  const total = fixed + failed + skipped;
-  document.getElementById('progress-subtitle').textContent = 
-    fixed > 0 ? `🎉 เสร็จสิ้น! แก้ไขสำเร็จ ${fixed} จาก ${total} โดเมน` : `เสร็จสิ้น — ไม่สามารถแก้ไขได้อัตโนมัติ`;
-  document.getElementById('progress-bar-fill').style.width = '100%';
-  document.getElementById('progress-bar-fill').style.background = fixed > 0 ? 'linear-gradient(90deg,var(--green),#34d399)' : 'var(--red)';
-  document.getElementById('progress-close-btn').style.display = 'block';
-}
-
-function closeProgressModal() {
-  document.getElementById('progress-modal').style.display = 'none';
-  loadData();
-}
-
-async function bulkAutoFix() {
-  const domains = getSelectedDomains();
-  if (!domains.length) { toast('กรุณาเลือกโดเมนก่อน', 'error'); return; }
-  
-  const downDomains = domains.filter(d => {
-    const domObj = allDomains.find(x => x.domain === d);
-    return domObj?.status === 'down';
-  });
-  const skipDomains = domains.filter(d => {
-    const domObj = allDomains.find(x => x.domain === d);
-    return domObj?.status !== 'down';
-  });
-  
-  if (!downDomains.length) { toast('ไม่มีโดเมนที่ Down ในรายการที่เลือก', 'error'); return; }
-  
-  // แสดง Progress Modal
-  showProgressModal(`⚡ Auto-fix ${downDomains.length} โดเมน`, downDomains.length + skipDomains.length);
-  clearSelection();
-  
-  let fixed = 0, failed = 0, skipped = skipDomains.length;
-  let current = 0;
-  
-  // บอกโดเมนที่ข้าม
-  for (const d of skipDomains) {
-    current++;
-    updateProgress(current, downDomains.length + skipDomains.length, d, 'skip', 'ข้าม (ไม่ใช่ Down)');
-    updateProgressStats(fixed, failed, skipped);
-    await new Promise(r => setTimeout(r, 100));
-  }
-  
-  // แก้โดเมนที่ Down
-  for (const domain of downDomains) {
-    current++;
-    updateProgress(current, downDomains.length + skipDomains.length, domain, 'loading', 'กำลังดำเนินการ...');
-    
-    try {
-      const res = await fetch(`${API}/api/autofix/${encodeURIComponent(domain)}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        fixed++;
-        updateProgress(current, downDomains.length + skipDomains.length, domain, 'success', data.message || 'สำเร็จ');
-      } else {
-        failed++;
-        updateProgress(current, downDomains.length + skipDomains.length, domain, 'failed', data.error || 'ไม่สำเร็จ');
-      }
-    } catch {
-      failed++;
-      updateProgress(current, downDomains.length + skipDomains.length, domain, 'failed', 'เชื่อมต่อ Server ไม่ได้');
-    }
-    
-    updateProgressStats(fixed, failed, skipped);
-    await new Promise(r => setTimeout(r, 600));
-  }
-  
-  finishProgressModal(fixed, failed, skipped);
-}
-
-async function bulkCheck() {
-  const domains = getSelectedDomains();
-  if (!domains.length) { toast('กรุณาเลือกโดเมนก่อน', 'error'); return; }
-  toast(`กำลังเช็ค ${domains.length} โดเมน...`, 'info');
-  let done = 0;
-  for (const domain of domains) {
-    try {
-      await fetch(`${API}/api/check/${encodeURIComponent(domain)}`, { method: 'POST' });
-      done++;
-    } catch {}
-    await new Promise(r => setTimeout(r, 300));
-  }
-  toast(`เช็คเสร็จ ${done} โดเมน`, 'success');
-  clearSelection();
-  setTimeout(loadData, 2000);
-}
-
-async function bulkDelete() {
-  const domains = getSelectedDomains();
-  if (!domains.length) { toast('กรุณาเลือกโดเมนก่อน', 'error'); return; }
-  if (!confirm(`ลบ ${domains.length} โดเมนนี้ออกจากระบบ?`)) return;
-  for (const domain of domains) {
-    try { await fetch(`${API}/api/domains/${encodeURIComponent(domain)}`, { method: 'DELETE' }); } catch {}
-    allDomains = allDomains.filter(d => d.domain !== domain);
-  }
-  toast(`ลบ ${domains.length} โดเมนแล้ว`, 'success');
-  clearSelection();
-  applyFilters();
-  renderQuickTable();
-}
-
-let currentPageName = 'command';
-let isSelectAllFiltered = false; // ติ๊กทุกโดเมนในตัวกรองปัจจุบัน
-let countdownInterval = null;
-let secondsLeft = 30;
-
-function startCountdown() {
-  if (countdownInterval) clearInterval(countdownInterval);
-  secondsLeft = 30;
-  updateRefreshBtn();
-  countdownInterval = setInterval(() => {
-    secondsLeft--;
-    if (secondsLeft <= 0) secondsLeft = 30;
-    updateRefreshBtn();
-  }, 1000);
-}
-
-function updateRefreshBtn() {
-  const btn = document.getElementById('refresh-btn');
-  if (btn) btn.innerHTML = `<i class="ti ti-refresh"></i> รีเฟรช <span style="opacity:0.6;font-size:11px">(${secondsLeft}s)</span>`;
-}
-
-// ===== AUTO-FIX ALL VISIBLE =====
-async function autoFixAllVisible() {
-  const targets = filteredDomains.filter(d => 
-    d.status === 'down' || (d.pleskId && !d.pleskActive)
-  );
-  
-  if (!targets.length) {
-    toast('ไม่มีโดเมนที่ต้องแก้ไขในหมวดนี้', 'info');
-    return;
-  }
-  
-  if (allDomains.length === 0) {
-    showSyncPrompt();
-    return;
-  }
-
-  if (!confirm(`จะ Auto-fix ${targets.length} โดเมนในหมวดนี้ทั้งหมด ใช่ไหม?`)) return;
-
-  showProgressModal(`Auto-fix ${targets.length} โดเมน`, targets.length);
-
-  let fixed = 0, failed = 0, skipped = 0;
-  let current = 0;
-
-  for (const d of targets) {
-    current++;
-    updateProgress(current, targets.length, d.domain, 'loading', 'กำลังดำเนินการ...');
-
-    try {
-      const res = await fetch(`${API}/api/autofix/${encodeURIComponent(d.domain)}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success && data.message !== 'ไม่พบสาเหตุที่แก้ไขอัตโนมัติได้' && !data.message.includes('Origin Server')) {
-        fixed++;
-        updateProgress(current, targets.length, d.domain, 'success', data.message);
-      } else {
-        skipped++;
-        updateProgress(current, targets.length, d.domain, 'skip', data.message || 'ข้าม');
-      }
-    } catch {
-      failed++;
-      updateProgress(current, targets.length, d.domain, 'failed', 'เชื่อมต่อ Server ไม่ได้');
-    }
-
-    updateProgressStats(fixed, failed, skipped);
-    await new Promise(r => setTimeout(r, 400));
-  }
-
-  finishProgressModal(fixed, failed, skipped);
-}
-
-// ===== GLOBAL LOADING =====
-function showLoading(title = 'กำลังโหลด...', sub = 'กรุณารอสักครู่') {
-  const el = document.getElementById('global-loading');
-  if (el) {
-    el.style.display = 'flex';
-    document.getElementById('global-loading-title').textContent = title;
-    document.getElementById('global-loading-sub').textContent = sub;
-  }
-}
-function hideLoading() {
-  const el = document.getElementById('global-loading');
-  if (el) el.style.display = 'none';
-}
-
-async function refreshNow() {
-  const btn = document.getElementById('refresh-btn');
-  if (btn) btn.innerHTML = `<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...`;
-  showLoading('🔄 กำลังรีเฟรช Dashboard...', 'อัพเดตสถานะโดเมนทั้งหมด');
-  await loadData();
-  hideLoading();
-  secondsLeft = 30;
-  startCountdown();
-  toast('✅ อัพเดตข้อมูลแล้ว', 'success');
-}
-
-function showPage(name) {
-  document.querySelectorAll('[id^="page-"]').forEach(p => p.style.display = 'none');
-  const pageEl = document.getElementById('page-'+name);
-  if (pageEl) { pageEl.style.display = 'flex'; pageEl.style.flexDirection = 'column'; }
-  // set nav active — only exact showPage match
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => {
-    const oc = n.getAttribute('onclick') || '';
-    if (oc === "showPage('"+name+"')") n.classList.add('active');
-  });
-  currentPageName = name;
-  if (name === 'domains') applyFilters();
-  if (name === 'dashboard') { renderQuickTable(); loadCEOReport(); }
-  if (name === 'command') { setTimeout(loadCommandCenter, 100); }
-  if (name === 'traffic') renderTrafficPage();
-  if (name === 'keywords') renderKeywordsPage();
-  if (name === 'botwatch') {
-    initBotWatch();
-  }
-  if (name === 'overview') {
-    loadOverview();
-  }
-  if (name === 'sla') {
-    setTimeout(loadSLAPage, 100);
-  }
-  if (name === 'health') {
-    setTimeout(loadHealthPage, 100);
-  }
-  if (name === 'events') {
-    setTimeout(loadEventsPage, 100);
-  }
-  if (name === 'tasks') {
-    setTimeout(loadTasksPage, 100);
-  }
-  if (name === 'company') {
-    setTimeout(loadCompanyPage, 100);
-  }
-  if (name === 'approvals') {
-    setTimeout(loadApprovalsPage, 100);
-  }
-  if (name === 'problems') {
-    setTimeout(loadProblemsPage, 100);
-  }
-  if (name === 'resources') {
-    // resources page just shows the button
-  }
-  if (name === 'server-manager') {
-    if (!window._pleskServers || window._pleskServers.length === 0) {
-      loadData().then(() => refreshServerHealth());
-    } else if (!window._smCacheRendered) {
-      // First time - fetch fresh data
-      refreshServerHealth();
-    } else {
-      // Return to page - restore cached data instantly
-      renderServerCards(Object.values(window._currentServerStats || {}));
-      renderSSLExpiry();
-      renderDomainHealthSummary();
-    }
-    // Auto-update every 60s while on this page
-    if (window._smAutoRefresh) clearInterval(window._smAutoRefresh);
-    window._smAutoRefresh = setInterval(() => {
-      if (currentPageName === 'server-manager') {
-        (window._pleskServers || []).forEach(srv => updateServerCardStats(srv.name));
-      } else {
-        clearInterval(window._smAutoRefresh);
-        window._smAutoRefresh = null;
-      }
-    }, 60000);
-  } else {
-    if (window._smAutoRefresh) { clearInterval(window._smAutoRefresh); window._smAutoRefresh = null; }
-  }
-}
-
-function showPageFiltered(page, filter) {
-  // show page first
-  document.querySelectorAll('[id^="page-"]').forEach(p => p.style.display = 'none');
-  const pageEl = document.getElementById('page-'+page);
-  if (pageEl) { pageEl.style.display = 'flex'; pageEl.style.flexDirection = 'column'; }
-  currentPageName = page;
-  
-  // set nav active — match exact showPageFiltered call
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => {
-    const oc = n.getAttribute('onclick') || '';
-    if (oc === "showPageFiltered('"+page+"','"+filter+"')") n.classList.add('active');
-  });
-  
-  // set tab
-  currentTab = filter;
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  const tabEl = document.querySelector('[data-tab="'+filter+'"]') || Array.from(document.querySelectorAll('.tab')).find(t => t.getAttribute('onclick') && t.getAttribute('onclick').includes("'"+filter+"'"));
-  if (tabEl) tabEl.classList.add('active');
-  applyFilters();
-}
-
-function goToFilter(type) {
-  // reset filters ก่อน
-  const si = document.getElementById('search-input');
-  const fs = document.getElementById('filter-status');
-  const ft = document.getElementById('filter-traffic');
-  const fe = document.getElementById('filter-expiry');
-  if (si) si.value = '';
-  if (fs) fs.value = '';
-  if (ft) ft.value = '';
-  if (fe) fe.value = '';
-  currentTab = 'all';
-
-  // map แต่ละ type ไปหา filter ที่ถูกต้อง
-  const tabMap = { down: 'down', warn: 'warn', notraffic: 'notraffic', expiring: 'expiring', traffic: 'ranked' };
-  const statusMap = { up: 'up', down: 'down', warn: 'warn' };
-  const trafficMap = { traffic: 'high', notraffic: 'none' };
-
-  showPage('domains');
-
-  if (type === 'all') {
-    currentTab = 'all';
-  } else if (type === 'up') {
-    if (fs) fs.value = 'up';
-  } else if (type === 'down') {
-    currentTab = 'down';
-  } else if (type === 'warn') {
-    currentTab = 'warn';
-  } else if (type === 'notraffic') {
-    currentTab = 'notraffic';
-  } else if (type === 'traffic') {
-    currentTab = 'ranked';
-  } else if (type === 'expiring') {
-    currentTab = 'expiring';
-  } else if (type === 'plesk-active') {
-    currentTab = 'all';
-    filteredDomains = allDomains.filter(d => d.pleskActive === true);
-    currentPage = 1;
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    renderDomainTable();
-    return;
-  } else if (type === 'plesk-suspended') {
-    currentTab = 'all';
-    filteredDomains = allDomains.filter(d => d.pleskId && d.pleskActive === false);
-    currentPage = 1;
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    renderDomainTable();
-    return;
-  }
-
-  // อัพเดต tab UI
-  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-  const tabKey = { down: 'down', warn: 'warn', notraffic: 'notraffic', expiring: 'expiring', ranked: 'ranked' }[currentTab];
-  if (tabKey) {
-    const tabEl = document.querySelector(`[onclick="setDomainTab('${currentTab}',this)"]`);
-    if (tabEl) tabEl.classList.add('active');
-  } else {
-    const allTab = document.querySelector(`[onclick="setDomainTab('all',this)"]`);
-    if (allTab) allTab.classList.add('active');
-  }
-  applyFilters();
-}
-
-// ===== MODAL =====
-function openAddModal() {
-  ['add-domain','add-notes','add-tags','add-expiry'].forEach(id => { const el = document.getElementById(id); if(el) el.value=''; });
-  document.getElementById('add-modal').style.display = 'flex';
-}
-function closeModal(id) { document.getElementById(id).style.display = 'none'; }
-document.addEventListener('keydown', e => { if(e.key==='Escape') document.querySelectorAll('.modal-overlay').forEach(m=>m.style.display='none'); });
-
-// ===== TOAST =====
-function toast(msg, type='info') {
-  const icons = {success:'fa-circle-check', error:'fa-circle-xmark', info:'fa-circle-info'};
-  const c = document.getElementById('toast-container');
-  const t = document.createElement('div');
-  t.className = `toast ${type}`;
-  t.innerHTML = `<i class="fa-solid ${icons[type]}"></i> ${msg}`;
-  c.appendChild(t);
-  setTimeout(() => { t.style.opacity='0'; t.style.transform='translateX(20px)'; t.style.transition='all 0.2s'; setTimeout(()=>t.remove(),200); }, 3500);
-}
-
-function selectAll(cb) {
-  isSelectAllFiltered = false;
-  document.querySelectorAll('#domain-table-wrap tbody input[type=checkbox]').forEach(c => c.checked = cb.checked);
-  updateBulkBar();
-}
-</script>
-<script>
-// ===== SERVER MANAGER =====
-let autofixLog = [];
-
-async function refreshServerHealth() {
-  const btn = document.getElementById('sm-refresh-btn');
-  if (btn) { btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังโหลด...'; btn.disabled = true; }
-  await loadAutoHealConfig();
-  // Loading shown via button state only - no popup block
-  
-  // แสดงข้อมูลจาก allDomains ทันที ไม่รอ Agent
-  const servers = window._pleskServers || [];
-  
-  if (!servers.length) {
-    document.getElementById('server-cards').innerHTML = '<div style="text-align:center;padding:40px;color:var(--amber)"><i class="ti ti-server" style="font-size:24px;display:block;margin-bottom:12px"></i><b>ยังไม่มีข้อมูล Server</b><br><span style="font-size:12px;color:var(--text3)">กรุณา Sync Plesk ก่อน</span><br><br><button onclick="syncPlesk()" class="btn" style="margin-top:8px"><i class="ti ti-refresh"></i> Sync Plesk</button></div>';
-    if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
-    return;
-  }
-  
-  // Build basic stats from allDomains (instant)
-  const basicStats = servers.map(srv => ({
-    ...srv,
-    connected: null, // unknown until agent responds
-    load: null, ramUsed: 0, ramTotal: 0, ramPct: 0,
-    diskUsed: '?', diskTotal: '?', diskPct: 0,
-    apache: 0, phpfpm: 0
-  }));
-  
-  renderServerCards(basicStats);
-  renderSSLExpiry();
-  renderDomainHealthSummary();
-  
-  if (btn) { btn.innerHTML = '<i class="ti ti-refresh"></i> รีเฟรช'; btn.disabled = false; }
-  // Fetch agent stats in background - update each card when ready
-  servers.forEach(async (srv) => {
-    try {
-      const cmdId = await sendAgentCommand(srv.name, 
-        'L=$(cat /proc/loadavg | cut -d" " -f1); D=$(df / | tail -1 | awk "{print $5}" | tr -d "%"); A=$(ps aux | grep httpd | grep -v grep | wc -l); P=$(ps aux | grep php-fpm | grep -v grep | wc -l); MU=$(free -m | awk "NR==2{print $3}"); MT=$(free -m | awk "NR==2{print $2}"); echo LOAD:$L RAM:$MU/$MT DISK:$D APACHE:$A PHPFPM:$P'
-      );
-      if (!cmdId) return;
-      
-      // Poll result max 90 seconds
-      for (let i = 0; i < 90; i++) {
-        await new Promise(r => setTimeout(r, 1000));
-        const res = await fetch(`${API}/api/agent/result/${cmdId}`);
-        const data = await res.json();
-        if (data.success) {
-          const parsed = parseServerStats(srv, data.output);
-          updateServerCard(parsed);
+      // อ่าน body เล็กน้อยเพื่อตรวจ error page จาก Cloudflare
+      let body = '';
+      res.on('data', chunk => { if (body.length < 6000) body += chunk.toString(); });
+      res.on('end', () => {
+        // Railway proxy block
+        if (denyReason) {
+          resolve({ domain: clean, status: 'unknown', statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: `Proxy block: ${denyReason}` });
           return;
         }
-      }
-      // Timeout - mark as connected but no stats
-      updateServerCard({ ...srv, connected: false, error: 'Agent timeout' });
-    } catch(e) {
-      updateServerCard({ ...srv, connected: false, error: e.message });
-    }
+
+        let status = 'up', errorLabel = null;
+
+        // Cloudflare error codes = down
+        if (CF_DOWN_CODES.has(code)) {
+          status = 'down';
+          errorLabel = getErrorLabel(code);
+        }
+        // ตรวจ CF error page ใน body แม้ code จะเป็น 200/530
+        else if (cfRay && (
+          body.includes('Error 521') || body.includes('Web server is down') ||
+          body.includes('Error 522') || body.includes('Error 523') ||
+          body.includes('Error 524') || body.includes('Error 530') ||
+          body.includes('Ray ID') && body.includes('origin') && body.includes('error')
+        )) {
+          status = 'down';
+          const cfErr = body.match(/Error (5\d{2})/);
+          errorLabel = cfErr ? `CF ${cfErr[1]} — Web server is down` : 'Cloudflare error page';
+        }
+        // 5xx จาก origin = down
+        else if (code >= 500) {
+          status = 'down';
+          errorLabel = getErrorLabel(code);
+        }
+        // CF warn
+        else if (CF_WARN_CODES.has(code)) {
+          status = 'warn';
+          errorLabel = getErrorLabel(code);
+        }
+        // WordPress พังจริง แม้ตอบ 200 (DB ล่ม / fatal error)
+        else if (WP_FATAL_MARKERS.some(m => body.includes(m))) {
+          status = 'down';
+          errorLabel = body.includes('database') ? 'WordPress: ต่อ DB ไม่ได้' : 'WordPress: critical error';
+        }
+        // 403 — ต้องแยกว่า "โดนบล็อกจริง" หรือแค่ "CF กัน bot" (เว็บยังปกติ)
+        else if (code === 403) {
+          if (CF_CHALLENGE_MARKERS.some(m => body.includes(m))) {
+            status = 'up';
+            errorLabel = 'HTTP 403 (Cloudflare กัน bot — เว็บปกติ)';
+          } else if (BLOCKPAGE_MARKERS.some(m => body.includes(m))) {
+            status = 'warn';
+            errorLabel = 'HTTP 403 — โดนบล็อกการเข้าถึง (ปลั๊กอิน/ไฟร์วอลล์)';
+          } else {
+            status = 'warn';
+            errorLabel = 'HTTP 403 — เข้าถึงไม่ได้';
+          }
+        }
+        // 404 หน้าแรก = ผิดปกติ (เว็บทำงานแต่หน้าแรกหาย)
+        else if (code === 404) {
+          status = 'warn';
+          errorLabel = 'HTTP 404 — ไม่พบหน้าแรก';
+        }
+        // 200-399 = up
+        else if (code >= 200 && code < 400) {
+          status = 'up';
+        }
+        else {
+          status = 'warn';
+          errorLabel = `HTTP ${code}`;
+        }
+
+        resolve({ domain: clean, status, statusCode: code, responseTime, checkedAt: new Date().toISOString(), error: errorLabel });
+      });
+    });
+    req.on('error', err => {
+      resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: Date.now() - start, checkedAt: new Date().toISOString(), error: getErrorLabel(0, err.message) });
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      resolve({ domain: clean, status: 'down', statusCode: 0, responseTime: 12000, checkedAt: new Date().toISOString(), error: 'Connection timeout' });
+    });
   });
 }
 
-function updateServerCard(srv) {
-  // Re-render just this server's card
-  const allSrvData = window._currentServerStats || {};
-  allSrvData[srv.name] = srv;
-  window._currentServerStats = allSrvData;
-  
-  // Re-render all cards with updated data
-  const servers = window._pleskServers || [];
-  const stats = servers.map(s => allSrvData[s.name] || { ...s, connected: null });
-  renderServerCards(stats);
+// ยิง HTTPS ก่อน — ถ้าเชื่อมต่อไม่ติดเลย (statusCode 0) ค่อย fallback ไป HTTP
+// เว็บที่เข้าได้เฉพาะ HTTP = SSL มีปัญหา => นับเป็น warn (ไม่ใช่ up เฉยๆ)
+async function checkDomain(domain) {
+  const r = await checkDomainOnce(domain, true);
+  if (r.statusCode !== 0 || r.status === 'unknown') return r; // ได้ response แล้ว
+  const r2 = await checkDomainOnce(domain, false);
+  if (r2.statusCode !== 0) {
+    if (r2.status === 'up') { r2.status = 'warn'; r2.error = 'เข้าได้ทาง HTTP เท่านั้น — HTTPS/SSL มีปัญหา'; }
+    return r2;
+  }
+  return r; // ทั้ง HTTPS และ HTTP ไม่ติด = down จริง
 }
 
+let isCheckingDomains = false;
+// ===== ISP BLOCK CHECK (added feature) =====
+// ตรวจว่าโดเมนโดนบล็อกในค่ายเน็ตไหน (DNS-based screening)
+// resolver ค่ายไหนไม่ตอบ => unknown (ไม่ฟันธงว่า blocked) · เว็บหลัง CDN ที่ IP ต่าง => ok
+const ISP_RESOLVERS = { ais:['1.1.1.1'], true:['8.8.8.8'], '3bb':['9.9.9.9'], tot:['208.67.222.222'], dtac:['1.0.0.1'] };
+const ISP_BASELINE_RESOLVERS = ['1.1.1.1','8.8.8.8'];
+const ISP_BLOCK_PAGE_IPS = new Set([]); // เติม IP หน้า "ปิดกั้นโดย กสทช." ถ้ารู้ เพื่อเพิ่มความแม่น
+const ISP_TIMEOUT_MS = 4000;
+const ISP_AGENT_KEY = process.env.ISP_AGENT_KEY || 'change-this-key'; // คีย์ให้ agent ไทยใช้ยืนยันตัว (เปลี่ยนก่อนใช้จริง)
+let lastAgentReportAt = null;
 
-async function sendAgentCommand(serverName, command) {
+function ispResolveWith(servers, domain, timeoutMs) {
+  const dnsMod = require('dns');
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = (r) => { if (!done) { done = true; resolve(r); } };
+    const t = setTimeout(() => finish({ ips: [], error: 'TIMEOUT' }), timeoutMs || ISP_TIMEOUT_MS);
+    try {
+      const r = new dnsMod.Resolver();
+      r.setServers(servers);
+      r.resolve4(domain, (err, addrs) => { clearTimeout(t); finish(err ? { ips: [], error: err.code || 'ERR' } : { ips: addrs || [], error: null }); });
+    } catch (e) { clearTimeout(t); finish({ ips: [], error: 'RESOLVER_ERR' }); }
+  });
+}
+function ispClassify(baseline, isp) {
+  if (!baseline.ips.length && baseline.error) return { status:'unknown', why:'baseline resolve ไม่ได้' };
+  if (isp.error === 'TIMEOUT' || isp.error === 'ECONNREFUSED' || isp.error === 'RESOLVER_ERR')
+    return { status:'unknown', why:'resolver ค่ายนี้ไม่ตอบจากเซิร์ฟเวอร์ ('+isp.error+')' };
+  if (isp.ips.some(ip => ISP_BLOCK_PAGE_IPS.has(ip))) return { status:'blocked', why:'ชี้ไป IP หน้าปิดกั้น', confidence:'high' };
+  if (!isp.ips.length && baseline.ips.length) return { status:'blocked', why:'resolve ไม่ได้ ('+(isp.error||'empty')+') แต่ baseline ได้', confidence:'medium' };
+  const net24 = (ip) => ip.split('.').slice(0,3).join('.');
+  const baseNets = new Set(baseline.ips.map(net24));
+  if (isp.ips.some(ip => baseline.ips.includes(ip) || baseNets.has(net24(ip)))) return { status:'ok', why:'IP ตรง/subnet เดียวกับ baseline' };
+  return { status:'ok', why:'resolve ได้ IP ปกติ (ต่าง baseline — น่าจะ CDN)', confidence:'low' };
+}
+async function checkISPBlock(domain, opts) {
+  opts = opts || {};
+  const clean = String(domain).replace(/^https?:\/\//,'').replace(/\/.*$/,'').trim();
+  const baseline = await ispResolveWith(opts.baseline || ISP_BASELINE_RESOLVERS, clean);
+  const isps = {};
+  await Promise.all(Object.entries(opts.resolvers || ISP_RESOLVERS).map(async ([name, servers]) => {
+    const res = await ispResolveWith(servers, clean);
+    const cls = ispClassify(baseline, res);
+    isps[name] = { status: cls.status, why: cls.why, confidence: cls.confidence || null, ips: res.ips };
+  }));
+  const blockedIsps = Object.entries(isps).filter(([,v]) => v.status === 'blocked').map(([k]) => k);
+  return { domain: clean, baselineIps: baseline.ips, isps, blockedIsps, anyBlocked: blockedIsps.length > 0, checkedAt: new Date().toISOString() };
+}
+let ispChecking = false, lastISPCheckAt = null;
+async function checkAllISPBlocks() {
+  if (ispChecking) return; ispChecking = true;
   try {
-    const res = await fetch(`${API}/api/agent/run/${encodeURIComponent(serverName)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command })
+    const list = memoryDomains.filter(d => d.domain);
+    const BATCH = 15;
+    for (let i = 0; i < list.length; i += BATCH) {
+      const batch = list.slice(i, i + BATCH);
+      await Promise.all(batch.map(async d => {
+        try {
+          const r = await checkISPBlock(d.domain);
+          const idx = memoryDomains.findIndex(x => x.domain === d.domain);
+          if (idx !== -1) memoryDomains[idx].ispBlock = { blockedIsps: r.blockedIsps, isps: r.isps, anyBlocked: r.anyBlocked, checkedAt: r.checkedAt };
+        } catch (e) {}
+      }));
+      await new Promise(r => setTimeout(r, 300));
+    }
+    lastISPCheckAt = new Date().toISOString();
+    try { logEvent('info', 'เช็ก ISP block ครบ ' + list.length + ' โดเมน'); } catch (e) {}
+  } finally { ispChecking = false; }
+}
+
+// ===== HISTORY + BACKUP DOMAIN GROUPS (added feature) =====
+const HISTORY_FILE = path.join('/tmp', 'domainintel-history.json');
+const GROUPS_FILE = path.join('/tmp', 'domainintel-groups.json');
+let statusHistory = [];
+let domainGroups = [];
+try { statusHistory = JSON.parse(fs.readFileSync(HISTORY_FILE, 'utf8')) || []; } catch (e) {}
+try { domainGroups = JSON.parse(fs.readFileSync(GROUPS_FILE, 'utf8')) || []; } catch (e) {}
+function saveGroups() { try { fs.writeFileSync(GROUPS_FILE, JSON.stringify(domainGroups)); } catch (e) {} }
+function domainIsBlocked(d) {
+  if (d.ispBlock && d.ispBlock.anyBlocked) return true;
+  if (d.thAgent && d.thAgent.status === 'blocked') return true;
+  if (d.thAgents) return Object.keys(d.thAgents).some(k => d.thAgents[k].status === 'blocked');
+  return false;
+}
+function snapshotHistory() {
+  try {
+    let up = 0, down = 0, warn = 0, blocked = 0;
+    memoryDomains.forEach(d => {
+      if (d.status === 'up') up++; else if (d.status === 'down') down++; else if (d.status === 'warn') warn++;
+      if (domainIsBlocked(d)) blocked++;
     });
-    const data = await res.json();
-    return data.cmdId || null;
-  } catch { return null; }
+    statusHistory.push({ at: new Date().toISOString(), up, down, warn, blocked, total: memoryDomains.length });
+    if (statusHistory.length > 720) statusHistory = statusHistory.slice(-720);
+    fs.writeFileSync(HISTORY_FILE, JSON.stringify(statusHistory));
+  } catch (e) {}
+}
+// สถานะแต่ละกลุ่ม + แนะนำโดเมนที่ควรใช้ (ตัวแรกที่ up และไม่โดนบล็อก)
+function groupsWithStatus() {
+  return domainGroups.map(g => {
+    const domains = (g.domains || []).map(dom => {
+      const d = memoryDomains.find(x => x.domain === dom) || {};
+      return { domain: dom, status: d.status || 'unknown', blocked: domainIsBlocked(d) };
+    });
+    const active = domains.find(x => x.status === 'up' && !x.blocked) || null;
+    return { id: g.id, name: g.name, domains, recommended: active ? active.domain : null };
+  });
 }
 
-function parseServerStats(srv, output) {
-  const o = (output || '').replace(/~/g, ' ');
-  
-  const load = parseFloat((o.match(/LOAD:([\d.]+)/) || [])[1] || 0);
-  const ramUsed = parseInt((o.match(/RAMU:(\d+)/) || [])[1] || 0);
-  const ramTotal = parseInt((o.match(/RAMT:(\d+)/) || [])[1] || 1);
-  const diskPct = parseInt((o.match(/DISKPCT:(\d+)/) || [])[1] || 0);
-  const diskUsed = (o.match(/DISKUSED:(\S+)/) || [])[1] || '?';
-  const diskTotal = (o.match(/DISKTOTAL:(\S+)/) || [])[1] || '?';
-  const apache = parseInt((o.match(/APACHE:(\d+)/) || [])[1] || 0);
-  const phpfpm = parseInt((o.match(/PHPFPM:(\d+)/) || [])[1] || 0);
-  const ramPct = ramTotal > 0 ? Math.round(ramUsed / ramTotal * 100) : 0;
-  
-  console.log('[parseServerStats]', srv.name, 'load:', load, 'ram:', ramUsed+'/'+ramTotal, 'disk:', diskPct+'%', 'raw:', o.slice(0,100));
-  
-  return {
-    ...srv, connected: true,
-    load, ramUsed, ramTotal, ramPct,
-    diskUsed, diskTotal, diskPct,
-    apache, phpfpm
+async function checkAllDomains() {
+  if (!memoryDomains.length) return;
+  if (isCheckingDomains) { console.log('[Check] already running, skip'); return; }
+  isCheckingDomains = true;
+
+  // เช็คเฉพาะโดเมนที่อยู่บนโฮสเรา — ข้าม GSC-only (import มาเป็น property เฉยๆ ไม่ได้อยู่บน server)
+  const isGscOnly = d => {
+    const tags = d.tags || [];
+    return tags.includes('gsc') && !tags.includes('plesk') && !d.pleskServer;
   };
+  const checkable = memoryDomains.filter(d => !isGscOnly(d));
+
+  // reset GSC-only ที่เคยถูก mark down ให้เป็น unknown (ครั้งเดียว)
+  memoryDomains.forEach(d => {
+    if (isGscOnly(d) && d.status === 'down') {
+      d.status = 'unknown'; d.statusCode = 0; d.error = null;
+    }
+  });
+
+  console.log(`[Check] ${checkable.length} domains (ข้าม GSC-only ${memoryDomains.length - checkable.length})...`);
+  const BATCH = 10; // ลดจาก 20 เป็น 10 เพื่อลด memory
+  let downCount = 0;
+  const cycleNewIncidents = []; // incident ใหม่ในรอบนี้ (classify ตอนจบรอบ)
+  try {
+    for (let i = 0; i < checkable.length; i += BATCH) {
+      const batch = checkable.slice(i, i + BATCH);
+      const results = await Promise.all(batch.map(d => checkDomain(d.domain)));
+      for (const r of results) {
+        const idx = memoryDomains.findIndex(d => d.domain === r.domain);
+        if (idx === -1) continue;
+        const prev = memoryDomains[idx].status;
+        Object.assign(memoryDomains[idx], r);
+        // incident history (added feature) — ครอบคลุมทั้ง down และ warn
+        trackIncident(memoryDomains[idx], prev, r, cycleNewIncidents);
+      // Track performance
+      if (r.responseTime && r.status === 'up') trackPerformance(r.domain, r.responseTime);
+        // Track SLA uptime
+        recordUptimeCheck(r.domain, r.status === 'up');
+        if (r.status === 'down') { downCount++; autoFix(memoryDomains[idx], prev).catch(()=>{}); }
+      }
+      // หยุดพัก 200ms ระหว่าง batch เพื่อลด memory spike
+      await new Promise(r => setTimeout(r, 200));
+      // Save ทุก 100 โดเมน แทนที่จะรอจนครบ
+      if ((i + BATCH) % 100 === 0) {
+        await saveToSheets(memoryDomains).catch(()=>{});
+      }
+    }
+    await saveToSheets(memoryDomains);
+    // สรุปสาเหตุ incident ของรอบนี้
+    try { if (cycleNewIncidents.length) classifyIncidents(cycleNewIncidents); saveIncidents(); } catch (e) {}
+    console.log(`[Check] done — down: ${downCount}`);
+  } catch(e) {
+    console.error('[Check] error:', e.message);
+  } finally {
+    isCheckingDomains = false;
+  }
 }
 
-function getLoadColor(load) {
-  if (load < 5) return 'var(--green)';
-  if (load < 15) return 'var(--amber)';
-  return 'var(--red)';
+// ===== AUTO FIX =====
+async function autoFix(domainObj, prevStatus) {
+  const domain = domainObj.domain;
+  const code = domainObj.statusCode;
+  const isNewDown = prevStatus !== 'down';
+  let fixed = false;
+
+  // 1. Plesk Suspended -> Unsuspend อัตโนมัติ
+  if (domainObj.pleskId && !domainObj.pleskActive) {
+    console.log(`[AutoFix] Unsuspend ${domain}...`);
+    const ok = await pleskUnsuspend(domainObj.pleskId, domainObj.pleskHost);
+    if (ok) {
+      const idx = memoryDomains.findIndex(d => d.domain === domain);
+      if (idx !== -1) { memoryDomains[idx].pleskActive = true; memoryDomains[idx].pleskStatus = 0; }
+      console.log(`[AutoFix] Unsuspend ${domain} OK`);
+      smartAlert('info', `🔧 Auto-Fix: Unsuspend Plesk สำเร็จ</b>
+🌐 โดเมน: <code>${domain}</code>
+✅ เปิดใช้งานแล้ว
+🕐 ${new Date().toLocaleString('th-TH')}`);
+      fixed = true;
+      setTimeout(async () => {
+        const r = await checkDomain(domain);
+        const i = memoryDomains.findIndex(d => d.domain === domain);
+        if (i !== -1) { Object.assign(memoryDomains[i], r); await saveToSheets(memoryDomains); }
+      }, 30000);
+    } else {
+      console.log(`[AutoFix] Unsuspend ${domain} FAILED`);
+    }
+  }
+
+  // 2. CF 521/522/523/524 -> Pause Cloudflare อัตโนมัติ
+  if (CF_API_TOKEN && [521, 522, 523, 524].includes(code)) {
+    console.log(`[AutoFix] Pause CF ${domain} (${code})...`);
+    const zoneId = await pauseCloudflareZone(domain);
+    if (zoneId) {
+      console.log(`[AutoFix] Pause CF ${domain} OK`);
+      smartAlert('info', `☁️ Auto-Fix: Pause Cloudflare สำเร็จ</b>
+🌐 โดเมน: <code>${domain}</code>
+⚡ Error: CF ${code}
+✅ Traffic ไป Origin โดยตรงแล้ว
+🕐 ${new Date().toLocaleString('th-TH')}`);
+      fixed = true;
+      let attempts = 0;
+      const iv = setInterval(async () => {
+        attempts++;
+        const r = await checkDomain(domain);
+        console.log(`[AutoFix] check ${domain} #${attempts}: ${r.status}`);
+        if (r.status === 'up' || attempts >= 6) {
+          clearInterval(iv);
+          await unpauseCloudflareZone(domain, zoneId);
+          const i = memoryDomains.findIndex(d => d.domain === domain);
+          if (i !== -1) { Object.assign(memoryDomains[i], r); await saveToSheets(memoryDomains); }
+          sendLineAlert(r.status === 'up' ? `${domain} is back online` : `${domain} still down after 30min - check needed`);
+        }
+      }, 5 * 60 * 1000);
+    } else {
+      console.log(`[AutoFix] Pause CF ${domain} FAILED - zone not found`);
+    }
+  }
+
+  if (isNewDown && !fixed) smartAlert('critical', `🚨 โดเมนล่ม
+🌐 โดเมน: <code>${domain}</code>
+❌ สาเหตุ: ${domainObj.error || 'HTTP ' + code}
+⏱️ Response: ${domainObj.responseTime}ms
+🕐 เวลา: ${new Date().toLocaleString('th-TH')}
+👨‍💻 ไม่สามารถแก้อัตโนมัติได้ กรุณาตรวจสอบ`);
 }
 
-function getBarColor(pct) {
-  if (pct < 60) return 'var(--green)';
-  if (pct < 80) return 'var(--amber)';
-  return 'var(--red)';
+// ===== PLESK UNSUSPEND =====
+async function pleskUnsuspend(pleskId, pleskHost = null) {
+  if (!PLESK_SERVERS.length) return false;
+  // หา server ที่ถูกต้องจาก pleskHost
+  const srv = pleskHost
+    ? PLESK_SERVERS.find(s => s.host === pleskHost) || PLESK_SERVERS[0]
+    : PLESK_SERVERS[0];
+  try {
+    console.log(`[Plesk] Unsuspend domain ${pleskId} บน ${srv.name}...`);
+    let result = await pleskRequest('PUT', `/domains/${pleskId}`, { status: 0 }, srv);
+    if (result?.status === 200) return true;
+    result = await pleskRequest('POST', `/domains/${pleskId}/enable`, null, srv);
+    if (result?.status === 200) return true;
+    result = await pleskRequest('POST', `/domains/${pleskId}/hosting/enable`, null, srv);
+    if (result?.status === 200) return true;
+    console.log(`[Plesk] All unsuspend methods failed for pleskId ${pleskId}`);
+    return false;
+  } catch(e) {
+    console.error(`[Plesk] Unsuspend error:`, e.message);
+    return false;
+  }
 }
 
-function metricBar(label, value, max, unit='', color='') {
-  const pct = max > 0 ? Math.min(100, Math.round(value / max * 100)) : 0;
-  const c = color || getBarColor(pct);
-  return `<div style="margin-bottom:10px">
-    <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-      <span style="color:var(--text3)">${label}</span>
-      <span style="color:${c};font-weight:600">${value}${unit} / ${max}${unit} (${pct}%)</span>
-    </div>
-    <div style="background:var(--bg4);border-radius:4px;height:6px;overflow:hidden">
-      <div style="width:${pct}%;background:${c};height:100%;border-radius:4px;transition:width 0.5s"></div>
-    </div>
-  </div>`;
+// ===== CLOUDFLARE =====
+async function cfRequest(method, cfPath, body = null) {
+  return new Promise(resolve => {
+    const bodyStr = body ? JSON.stringify(body) : null;
+    const headers = { 'Authorization': `Bearer ${CF_API_TOKEN}`, 'Content-Type': 'application/json' };
+    if (bodyStr) headers['Content-Length'] = Buffer.byteLength(bodyStr);
+    const req = https.request({ hostname: 'api.cloudflare.com', path: `/client/v4${cfPath}`, method, headers }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => { try { resolve(JSON.parse(data)); } catch { resolve(null); } });
+    });
+    req.on('error', () => resolve(null));
+    if (bodyStr) req.write(bodyStr);
+    req.end();
+  });
 }
 
-function renderServerCards(servers) {
-  window._smCacheRendered = true;
-  const container = document.getElementById('server-cards');
-  if (!container) return;
-  
-  // Merge with domain stats
-  const merged = servers.map(srv => {
-    const domains = allDomains.filter(d => d.pleskServer === srv.name);
+async function pauseCloudflareZone(domain) {
+  if (!CF_API_TOKEN) return null;
+  try {
+    // ลองหา zone หลายวิธี
+    const domainVariants = [
+      domain,
+      domain.replace(/^www\./, ''), // ตัด www ออก
+      domain.split('.').slice(-2).join('.'), // เอาแค่ root domain เช่น example.com
+    ];
+    
+    for (const d of [...new Set(domainVariants)]) {
+      console.log(`[CF] หา zone สำหรับ ${d}...`);
+      const zones = await cfRequest('GET', `/zones?name=${d}&status=active`);
+      if (zones?.result?.length) {
+        const zoneId = zones.result[0].id;
+        console.log(`[CF] พบ zone ${zoneId} สำหรับ ${d}`);
+        const r = await cfRequest('PATCH', `/zones/${zoneId}`, { paused: true });
+        if (r?.success) return zoneId;
+      }
+    }
+    
+    // ลองดึง zone ทั้งหมดแล้วค้นหา
+    console.log(`[CF] ลองดึง zones ทั้งหมด...`);
+    const allZones = await cfRequest('GET', '/zones?per_page=100&status=active');
+    if (allZones?.result?.length) {
+      const rootDomain = domain.split('.').slice(-2).join('.');
+      const match = allZones.result.find(z => 
+        z.name === domain || z.name === rootDomain || domain.endsWith('.' + z.name)
+      );
+      if (match) {
+        console.log(`[CF] พบ zone ${match.id} (${match.name}) จากรายการทั้งหมด`);
+        const r = await cfRequest('PATCH', `/zones/${match.id}`, { paused: true });
+        if (r?.success) return match.id;
+      }
+      console.log(`[CF] Zones ที่มี:`, allZones.result.map(z => z.name).join(', '));
+    }
+    
+    console.log(`[CF] ไม่พบ zone สำหรับ ${domain}`);
+    return null;
+  } catch(e) { 
+    console.error(`[CF] Error:`, e.message);
+    return null; 
+  }
+}
+
+async function unpauseCloudflareZone(domain, zoneId) {
+  if (!CF_API_TOKEN) return;
+  try {
+    if (!zoneId) {
+      const zones = await cfRequest('GET', `/zones?name=${domain}`);
+      if (zones?.result?.length) zoneId = zones.result[0].id;
+    }
+    if (zoneId) {
+      await cfRequest('PATCH', `/zones/${zoneId}`, { paused: false });
+      console.log(`[CF] Unpause ${domain} done`);
+    }
+  } catch {}
+}
+
+
+// ===== TELEGRAM BOT COMMANDS =====
+async function handleTelegramMessage(msg) {
+  const chatId = msg.chat?.id?.toString();
+  const text = (msg.text || '').trim();
+  if (!text) return;
+
+  console.log(`[TG Bot] ข้อความจาก ${chatId}: ${text}`);
+
+  // /status - สรุปภาพรวม
+  if (text === '/status' || text === '/start') {
+    const d = memoryDomains;
+    const up = d.filter(x => x.status === 'up').length;
+    const down = d.filter(x => x.status === 'down').length;
+    const warn = d.filter(x => x.status === 'warn').length;
+    const unknown = d.filter(x => x.status === 'unknown').length;
+    const suspended = d.filter(x => x.pleskId && !x.pleskActive).length;
+    sendTelegramTo(chatId, '📊 <b>DomainIntel สรุปภาพรวม</b>\n🌐 โดเมนทั้งหมด: '+d.length+'\n✅ Up: '+up+'\n🔴 Down: '+down+'\n⚠️ Warning: '+warn+'\n❓ Unknown: '+unknown+'\n🚫 Plesk Suspended: '+suspended+'\n🕐 อัพเดตล่าสุด: '+new Date().toLocaleString('th-TH'));
+    return;
+  }
+
+  // /down - รายการโดเมนที่ Down
+  if (text === '/down') {
+    const downs = memoryDomains.filter(d => d.status === 'down').slice(0, 20);
+    if (!downs.length) { sendTelegramTo(chatId, '✅ ไม่มีโดเมนที่ Down ตอนนี้'); return; }
+    const list = downs.map((d,i) => (i+1)+'. '+d.domain+' - '+(d.error||'HTTP '+d.statusCode)).join('\n');
+    const _downTotal = memoryDomains.filter(d=>d.status==='down').length;
+    sendTelegramTo(chatId, '🔴 <b>โดเมนที่ Down ('+downs.length+' ตัว)</b>\n'+list+(_downTotal>20?'\n...และอีก '+(_downTotal-20)+' ตัว':''));
+    return;
+  }
+
+  // /suspended - รายการ Plesk Suspended
+  if (text === '/suspended') {
+    const sus = memoryDomains.filter(d => d.pleskId && !d.pleskActive).slice(0, 20);
+    if (!sus.length) { sendTelegramTo(chatId, '✅ ไม่มีโดเมนที่ Suspended'); return; }
+    const list = sus.map((d,i) => (i+1)+'. '+d.domain+' - '+(d.pleskServer||'Plesk')).join('\n');
+    sendTelegramTo(chatId, '🚫 <b>Plesk Suspended ('+sus.length+' ตัว)</b>\n'+list);
+    return;
+  }
+
+  // /server1 /server2 /server3 /server4
+  const serverMatch = text.match(/^\/server([1-4])$/);
+  if (serverMatch) {
+    const num = serverMatch[1];
+    const srv = PLESK_SERVERS[parseInt(num)-1];
+    const domains = memoryDomains.filter(d => d.pleskServer === `Server ${num}`);
+    if (!srv) { sendTelegramTo(chatId, `❌ ไม่พบ Server ${num}`); return; }
     const up = domains.filter(d => d.status === 'up').length;
     const down = domains.filter(d => d.status === 'down').length;
-    const suspended = domains.filter(d => d.pleskId && !d.pleskActive).length;
-    return { ...srv, domains: domains.length, up, down, suspended };
-  });
+    sendTelegramTo(chatId, '🖥️ <b>Server '+num+' ('+srv.host+')</b>\n📦 โดเมนทั้งหมด: '+domains.length+'\n✅ Up: '+up+'\n🔴 Down: '+down+'\n🚫 Suspended: '+domains.filter(d=>d.pleskId&&!d.pleskActive).length);
+    return;
+  }
 
-  container.innerHTML = merged.map(srv => {
-    const loadColor = srv.connected ? getLoadColor(srv.load || 0) : 'var(--text3)';
-    const statusDot = srv.connected ? '🟢' : '🔴';
-    const loadBar = srv.load ? Math.min(100, srv.load / 20 * 100) : 0;
+  // /fix domain.com - Auto-fix โดเมน
+  if (text.startsWith('/fix ')) {
+    const domain = text.replace('/fix ', '').trim().toLowerCase();
+    const domainObj = memoryDomains.find(d => d.domain === domain);
+    if (!domainObj) { sendTelegramTo(chatId, `❌ ไม่พบโดเมน <code>${domain}</code>`); return; }
+    sendTelegramTo(chatId, `⚙️ กำลัง Auto-fix <code>${domain}</code>...`);
+    const actions = [];
+    if (domainObj.pleskId && !domainObj.pleskActive) {
+      const ok = await pleskUnsuspend(domainObj.pleskId, domainObj.pleskHost);
+      if (ok) { const i = memoryDomains.findIndex(d=>d.domain===domain); if(i!==-1){memoryDomains[i].pleskActive=true;} actions.push('Unsuspend Plesk OK'); }
+      else actions.push('Unsuspend Plesk FAILED');
+    }
+    if (CF_API_TOKEN && [521,522,523,524].includes(domainObj.statusCode)) {
+      const zoneId = await pauseCloudflareZone(domain);
+      if (zoneId) actions.push('Pause CF OK');
+      else actions.push('CF zone not found');
+    }
+    await saveToSheets(memoryDomains);
+    sendTelegramTo(chatId, actions.length ? `✅ Fix <code>${domain}</code>: ${actions.join(', ')}` : `⚠️ ไม่พบการแก้ไขอัตโนมัติสำหรับ <code>${domain}</code>`);
+    return;
+  }
 
-    return `<div style="background:var(--bg2);border:1px solid var(--border${srv.connected && srv.load > 15 ? '2' : ''});border-radius:var(--radius);padding:20px${srv.connected && srv.load > 15 ? ';box-shadow:0 0 0 1px '+loadColor+'22' : ''}">
-      
-      <!-- Header -->
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:16px">
-        <div>
-          <div style="font-weight:700;font-size:15px">${srv.name} ${statusDot}</div>
-          <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${srv.host}</div>
-        </div>
-        ${srv.connected && srv.load > 15 ? `<span style="background:${loadColor}22;color:${loadColor};padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700">⚠️ Load สูง</span>` : ''}
-      </div>
-
-      ${srv.connected ? `
-      <!-- Load Average -->
-      <div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-          <span style="color:var(--text3)">Load Average</span>
-          <span style="color:${loadColor};font-weight:700;font-size:14px">${srv.load}</span>
-        </div>
-        <div style="background:var(--bg4);border-radius:4px;height:8px;overflow:hidden">
-          <div style="width:${loadBar}%;background:${loadColor};height:100%;border-radius:4px;transition:width 0.5s"></div>
-        </div>
-      </div>
-
-      <!-- RAM -->
-      ${metricBar('RAM', srv.ramUsed, srv.ramTotal, ' MB')}
-      
-      <!-- Disk -->
-      <div style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px">
-          <span style="color:var(--text3)">Disk</span>
-          <span style="color:${getBarColor(srv.diskPct)};font-weight:600">${srv.diskUsed} / ${srv.diskTotal} (${srv.diskPct}%)</span>
-        </div>
-        <div style="background:var(--bg4);border-radius:4px;height:6px;overflow:hidden">
-          <div style="width:${srv.diskPct}%;background:${getBarColor(srv.diskPct)};height:100%;border-radius:4px;transition:width 0.5s"></div>
-        </div>
-      </div>
-
-      <!-- Process counts -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px">
-        <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
-          <div style="font-size:16px;font-weight:700;color:var(--green)">${srv.up}</div>
-          <div style="font-size:10px;color:var(--text3)">Up</div>
-        </div>
-        <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
-          <div style="font-size:16px;font-weight:700;color:var(--red)">${srv.down}</div>
-          <div style="font-size:10px;color:var(--text3)">Down</div>
-        </div>
-        <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
-          <div style="font-size:16px;font-weight:700;color:var(--text2)">${srv.apache}</div>
-          <div style="font-size:10px;color:var(--text3)">Apache</div>
-        </div>
-        <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center">
-          <div style="font-size:16px;font-weight:700;color:var(--text2)">${srv.phpfpm}</div>
-          <div style="font-size:10px;color:var(--text3)">PHP-FPM</div>
-        </div>
-      </div>
-
-      <!-- Action Buttons -->
-      <div style="display:flex;flex-wrap:wrap;gap:6px">
-        <button onclick="serverAction('${srv.name}','restart-apache')" class="btn btn-sm" style="font-size:11px"><i class="ti ti-refresh"></i> Apache</button>
-        <button onclick="serverAction('${srv.name}','restart-phpfpm')" class="btn btn-sm" style="font-size:11px"><i class="ti ti-refresh"></i> PHP-FPM</button>
-        <button onclick="serverAction('${srv.name}','restart-mysql')" class="btn btn-sm" style="font-size:11px"><i class="ti ti-refresh"></i> MySQL</button>
-        <button onclick="serverAction('${srv.name}','fix-load')" class="btn btn-sm" style="font-size:11px;background:var(--amber-dim);color:var(--amber)"><i class="ti ti-wand"></i> Fix Load</button>
-        <button onclick="serverAction('${srv.name}','kill-heavy')" class="btn btn-sm" style="font-size:11px;background:rgba(239,68,68,0.15);color:var(--red)"><i class="ti ti-skull"></i> Kill Heavy</button>
-        ${srv.suspended > 0 ? `<button onclick="unsuspendServer('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:var(--green-dim);color:var(--green)"><i class="ti ti-player-play"></i> Unsuspend ${srv.suspended}</button>` : ''}
-        <button onclick="openSSHTerminal('${srv.name}','${srv.host}')" class="btn btn-sm" style="font-size:11px;background:rgba(99,102,241,0.15);color:#818cf8;border-color:rgba(99,102,241,0.3)"><i class="ti ti-terminal-2"></i> SSH Terminal</button>
-        ${ahIsOff(srv.name, srv.host)
-          ? `<button onclick="toggleAutoHeal('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:rgba(148,163,184,0.15);color:var(--text3);border-color:rgba(148,163,184,0.3)" title="Auto-heal ปิดอยู่ — กดเพื่อเปิด"><i class="ti ti-robot-off"></i> Auto-heal: ปิด</button>`
-          : `<button onclick="toggleAutoHeal('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:rgba(16,185,129,0.12);color:var(--green);border-color:rgba(16,185,129,0.3)" title="Auto-heal เปิดอยู่ — กดเพื่อปิด"><i class="ti ti-robot"></i> Auto-heal: เปิด</button>`}
-      </div>
-      <div id="ssh-terminal-${srv.name.replace(/\s+/g,'-')}" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <span style="font-size:12px;color:#818cf8;font-weight:600"><i class="ti ti-terminal-2"></i> SSH Terminal — ${srv.name} (${srv.host})</span>
-          <button onclick="closeSSHTerminal('${srv.name}')" style="background:none;border:none;color:var(--text3);cursor:pointer"><i class="ti ti-x"></i></button>
-        </div>
-        <div id="ssh-output-${srv.name.replace(/\s+/g,'-')}" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:var(--mono);font-size:12px;color:#e6edf3;min-height:120px;max-height:300px;overflow-y:auto;margin-bottom:8px;white-space:pre-wrap;word-break:break-all">
-          <span style="color:#7d8590">root@${srv.host}:~# </span>
-        </div>
-        <div style="display:flex;gap:8px">
-          <span style="color:#818cf8;font-family:var(--mono);font-size:12px;padding:6px 0;flex-shrink:0">$</span>
-          <input type="text" id="ssh-input-${srv.name.replace(/\s+/g,'-')}" 
-            placeholder="พิมพ์คำสั่ง..." 
-            style="flex:1;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:6px 10px;color:#e6edf3;font-family:var(--mono);font-size:12px;outline:none"
-            onkeydown="if(event.key==='Enter')runSSHCommand('${srv.name}','${srv.host}',this)"
-            autocomplete="off" spellcheck="false"
-          />
-          <button onclick="runSSHCommand('${srv.name}','${srv.host}',document.getElementById('ssh-input-${srv.name.replace(/\s+/g,'-')}'))" 
-            class="btn btn-sm" style="background:#818cf8;color:#fff;border-color:#818cf8;font-size:11px">
-            <i class="ti ti-send"></i> รัน
-          </button>
-        </div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px">
-          <span style="font-size:10px;color:var(--text3);margin-right:4px">Quick:</span>
-          ${['uptime','free -m','df -h','ps aux --sort=-%cpu | head -8','systemctl restart httpd','systemctl restart sw-engine','tail -20 /var/log/nginx/error.log'].map(cmd => 
-            `<button onclick="quickSSH('${srv.name}','${srv.host}','${cmd}')" style="background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:2px 6px;font-size:10px;color:var(--text2);cursor:pointer;font-family:var(--mono)">${cmd.length > 20 ? cmd.slice(0,20)+'...' : cmd}</button>`
-          ).join('')}
-        </div>
-      </div>
-      ` : `<div style="color:var(--red);text-align:center;padding:20px"><i class="ti ti-wifi-off"></i><br>${srv.error || 'Agent ไม่ตอบสนอง'}<br><small style="color:var(--text3)">ตรวจสอบ Scheduled Task ใน Plesk</small></div>`}
-    </div>`;
-  }).join('');
+  // ค้นหาโดเมน (พิมพ์ชื่อโดเมนตรงๆ)
+  const searchTerm = text.toLowerCase().replace(/^https?:\/\//, '').replace(/\/$/, '');
+  const found = memoryDomains.filter(d => d.domain.includes(searchTerm)).slice(0, 5);
+  if (found.length === 0) {
+    sendTelegramTo(chatId, `❌ ไม่พบโดเมน <code>${searchTerm}</code>`);
+    return;
+  }
+  if (found.length === 1) {
+    const d = found[0];
+    const statusIcon = d.status === 'up' ? '✅' : d.status === 'down' ? '🔴' : d.status === 'warn' ? '⚠️' : '❓';
+    const pleskStatus = d.pleskActive ? '✅ Active' : d.pleskId ? '🚫 Suspended' : '—';
+    const srv = PLESK_SERVERS.find(s => s.host === d.pleskHost);
+    const errLine = d.error ? '❌ Error: '+d.error+'\n' : '';
+    const fixLine = (d.status==='down'||(d.pleskId&&!d.pleskActive)) ? '\n💡 พิมพ์ /fix '+d.domain+' เพื่อ Auto-fix' : '';
+    const sslLine = d.sslDaysLeft!==null ? '('+d.sslDaysLeft+' วัน)' : '';
+    sendTelegramTo(chatId, '🌐 <b>'+d.domain+'</b>\n'+statusIcon+' สถานะ: '+(d.status||'').toUpperCase()+' '+(d.statusCode?'('+d.statusCode+')':'')+' '+(d.responseTime?d.responseTime+'ms':'')+'\n'+errLine+'🖥️ Server: '+(d.pleskServer||'—')+' ('+(d.pleskHost||'—')+')\n👤 User: '+(srv?.user||'admin')+'\n⚡ Plesk: '+pleskStatus+'\n🔒 SSL: '+(d.sslExpiry||'—')+' '+sslLine+'\n🕐 เช็คล่าสุด: '+(d.checkedAt?new Date(d.checkedAt).toLocaleString('th-TH'):'—')+fixLine);
+  } else {
+    const list = found.map(d => (d.status==='up'?'✅':d.status==='down'?'🔴':'⚠️')+' '+d.domain+' - '+(d.pleskServer||'—')).join('\n');
+    sendTelegramTo(chatId, '🔍 พบ '+found.length+' โดเมนที่ตรงกับ "'+searchTerm+'":\n'+list+'\n\n💡 พิมพ์ชื่อโดเมนแบบเต็มเพื่อดูรายละเอียด');
+  }
 }
 
-async function serverAction(serverName, action) {
-  const commands = {
-    'restart-apache': 'systemctl restart httpd 2>/dev/null || systemctl restart apache2 2>/dev/null; echo "Restart Apache OK"',
-    'restart-phpfpm': 'systemctl restart sw-engine; echo "Restart PHP-FPM OK"',
-    'restart-mysql': 'systemctl restart mariadb 2>/dev/null || systemctl restart mysql 2>/dev/null; echo "Restart MySQL OK"',
-    'fix-load': 'sed -i "s/pm = ondemand/pm = static/" /etc/sw-engine/pool.d/plesk.conf 2>/dev/null; sed -i "s/pm.max_children = [0-9]*/pm.max_children = 40/" /etc/sw-engine/pool.d/plesk.conf 2>/dev/null; systemctl restart sw-engine; pkill -f "wp-toolkit" 2>/dev/null; pkill -f "auto-update" 2>/dev/null; echo "Fix Load OK"',
-    'kill-heavy': 'ps aux --sort=-%cpu | awk "NR>1 && $3>50 {print $2}" | head -5 | xargs kill -9 2>/dev/null; echo "Kill Heavy OK"'
+function sendTelegramTo(chatId, message) {
+  const token = TG_TOKEN;
+  if (!token || !chatId) return;
+  const body = JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' });
+  const req = https.request({
+    hostname: 'api.telegram.org',
+    path: `/bot${token}/sendMessage`,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+  }, () => {});
+  req.on('error', () => {});
+  req.write(body); req.end();
+}
+
+// ===== TELEGRAM ALERT =====
+function sendLineAlert(message) {
+  sendTelegram(message);
+}
+
+function sendTelegram(message) {
+  const token = TG_TOKEN;
+  const chatId = TG_CHAT;
+  if (!token || !chatId) { console.log('[Telegram] No token/chat configured'); return; }
+  sendTelegramDirect(message, token, chatId);
+}
+
+function sendTelegramDirect(message, token, chatId) {
+  return new Promise(resolve => {
+    const body = JSON.stringify({ chat_id: chatId, text: message, parse_mode: 'HTML' });
+    const req = https.request({
+      hostname: 'api.telegram.org',
+      path: `/bot${token}/sendMessage`,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let data = '';
+      res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(data);
+          if (!r.ok) console.error('[Telegram] Error:', r.description);
+          else console.log('[Telegram] Sent OK');
+          resolve(r.ok);
+        } catch { resolve(false); }
+      });
+    });
+    req.on('error', err => { console.error('[Telegram] Error:', err.message); resolve(false); });
+    req.write(body);
+    req.end();
+  });
+}
+
+// ===== CONFIG (local file — เล็กพอ) =====
+const CONFIG_FILE = path.join('/tmp', 'config.json');
+function loadConfig() {
+  try { return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); }
+  catch { return { gsc: { clientId: '', clientSecret: '', refreshToken: '', accessToken: '' }, alerts: { lineToken: '', notifyOnDown: true, notifyOnExpiry: true, expiryDaysThreshold: 30 } }; }
+}
+function saveConfig(cfg) { fs.writeFileSync(CONFIG_FILE, JSON.stringify(cfg, null, 2)); }
+
+// ===== GSC =====
+// cache token in memory
+let _gscToken = null;
+let _gscTokenExp = 0;
+
+async function refreshGSCToken() {
+  if (_gscToken && Date.now() < _gscTokenExp) return _gscToken;
+  const cid = process.env.GSC_CLIENT_ID;
+  const csec = process.env.GSC_CLIENT_SECRET;
+  const rtok = process.env.GSC_REFRESH_TOKEN;
+  if (!cid || !csec || !rtok) { console.log('[GSC] env vars missing'); return null; }
+  return new Promise(resolve => {
+    const body = JSON.stringify({ client_id: cid, client_secret: csec, refresh_token: rtok, grant_type: 'refresh_token' });
+    const req = https.request({ hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) } }, res => {
+      let data = ''; res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const t = JSON.parse(data);
+          if (t.access_token) {
+            _gscToken = t.access_token;
+            _gscTokenExp = Date.now() + ((t.expires_in||3600) - 120) * 1000;
+            console.log('[GSC] Token refreshed OK');
+            resolve(t.access_token);
+          } else { console.log('[GSC] Token error:', JSON.stringify(t).slice(0,80)); resolve(null); }
+        } catch(e) { resolve(null); }
+      });
+    });
+    req.on('error', e => { console.log('[GSC] error:', e.message); resolve(null); });
+    req.write(body); req.end();
+  });
+}
+
+// cache site list
+let _gscSites = null;
+
+async function getGSCSiteList(token) {
+  if (_gscSites) return _gscSites;
+  return new Promise(resolve => {
+    const req = https.request({ hostname: 'www.googleapis.com', path: '/webmasters/v3/sites', headers: { 'Authorization': 'Bearer ' + token } }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        try {
+          const sites = (JSON.parse(d).siteEntry || []).map(s => s.siteUrl.toLowerCase().replace(/\/$/,''));
+          _gscSites = sites;
+          console.log('[GSC] Site list loaded:', sites.length);
+          resolve(sites);
+        } catch { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.end();
+  });
+}
+
+// ดึงข้อมูล GSC สำหรับ 1 period
+function fetchGSCPeriod(token, siteUrl, days) {
+  return new Promise(resolve => {
+    const endDate = new Date().toISOString().split('T')[0];
+    const startDate = new Date(Date.now() - days * 86400000).toISOString().split('T')[0];
+    const body = JSON.stringify({ startDate, endDate, dimensions: ['query'], rowLimit: 1000 });
+    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(siteUrl + '/') + '/searchAnalytics/query';
+    const req = https.request({
+      hostname: 'www.googleapis.com', path: apiPath, method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let data = ''; res.on('data', c => data += c);
+      res.on('end', () => {
+        try {
+          const rows = JSON.parse(data)?.rows || [];
+          const kw = rows.map(r => ({ keyword: r.keys[0], clicks: r.clicks, impressions: r.impressions, position: Math.round(r.position*10)/10 }));
+          resolve({
+            clicks: rows.reduce((s,r) => s+r.clicks, 0),
+            impressions: rows.reduce((s,r) => s+r.impressions, 0),
+            avgPosition: kw.length ? Math.round(kw.reduce((s,k) => s+k.position,0)/kw.length*10)/10 : 0,
+            keywords: kw, topKeyword: kw[0]?.keyword||'-', topPosition: kw[0]?.position||0,
+            keywordCount: kw.length
+          });
+        } catch(e) {
+          resolve({ clicks:0, impressions:0, avgPosition:0, keywords:[], topKeyword:'-', topPosition:0, keywordCount:0 });
+        }
+      });
+    });
+    req.on('error', () => resolve({ clicks:0, impressions:0, avgPosition:0, keywords:[], topKeyword:'-', topPosition:0, keywordCount:0 }));
+    req.write(body); req.end();
+  });
+}
+
+async function syncGSCForDomain(domainObj) {
+  const token = await refreshGSCToken();
+  if (!token) return domainObj;
+  const sites = await getGSCSiteList(token);
+  const normalized = 'https://' + domainObj.domain.toLowerCase().replace(/\/$/,'');
+  if (sites.indexOf(normalized) < 0) return domainObj;
+
+  // ดึงข้อมูล 3 periods พร้อมกัน
+  const [d7, d30, d90] = await Promise.all([
+    fetchGSCPeriod(token, normalized, 7),
+    fetchGSCPeriod(token, normalized, 30),
+    fetchGSCPeriod(token, normalized, 90)
+  ]);
+
+  domainObj.gsc = {
+    inGSC: true,
+    // default แสดงข้อมูล 30 วัน
+    clicks: d30.clicks, impressions: d30.impressions,
+    avgPosition: d30.avgPosition, keywords: d30.keywords,
+    topKeyword: d30.topKeyword, topPosition: d30.topPosition,
+    keywordCount: d30.keywordCount,
+    // เก็บแยกทุก period
+    d7, d30, d90,
+    syncedAt: new Date().toISOString()
   };
-  
-  const cmd = commands[action];
-  if (!cmd) return;
-  
-  const actionNames = {
-    'restart-apache': 'Restart Apache',
-    'restart-phpfpm': 'Restart PHP-FPM', 
-    'restart-mysql': 'Restart MySQL',
-    'fix-load': 'Fix Load',
-    'kill-heavy': 'Kill Heavy Processes'
-  };
-  
-  if (!confirm(`${actionNames[action]} บน ${serverName}?`)) return;
-  
-  showActionModal(serverName, actionNames[action]);
-  addActionLog(serverName, actionNames[action], 'pending');
-  
+  console.log('[GSC] ' + domainObj.domain + ': 7d=' + d7.clicks + ' 30d=' + d30.clicks + ' 90d=' + d90.clicks);
+  return domainObj;
+}
+
+// ===== CSV PARSER =====
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  const headers = lines[0].split(',').map(h => h.trim().toLowerCase().replace(/"/g, ''));
+  return lines.slice(1).map(line => {
+    const vals = line.split(',').map(v => v.trim().replace(/"/g, ''));
+    const obj = {};
+    headers.forEach((h, i) => obj[h] = vals[i] || '');
+    return obj;
+  }).filter(r => r.domain || r['domain name']);
+}
+
+// ===== ROUTER =====
+// ===== SERVER HEALTH (Plesk API) =====
+
+async function getServerStats(srv) {
   try {
-    const cmdId = await sendAgentCommand(serverName, cmd);
-    if (!cmdId) {
-      updateActionModal('❌', 'Agent ไม่ตอบสนอง', 'ตรวจสอบ Scheduled Task ใน Plesk', true);
-      addActionLog(serverName, actionNames[action], 'failed', 'Agent ไม่ตอบสนอง');
+    // ดึงข้อมูล server info
+    const serverInfo = await pleskRequest('GET', '/server', null, srv);
+    
+    // ดึงข้อมูล statistics
+    const stats = await pleskRequest('GET', '/server/statistics', null, srv);
+    
+    // ดึง services status
+    const services = await pleskRequest('GET', '/server/services', null, srv);
+
+    return {
+      name: srv.name,
+      host: srv.host,
+      connected: true,
+      hostname: serverInfo?.data?.hostname,
+      version: serverInfo?.data?.panel_version,
+      stats: stats?.data || null,
+      services: Array.isArray(services?.data) ? services.data : Array.isArray(services) ? services : [],
+    };
+  } catch(e) {
+    return { name: srv.name, host: srv.host, connected: false, error: e.message };
+  }
+}
+
+async function restartService(srv, serviceName) {
+  try {
+    console.log(`[Server] Restart ${serviceName} on ${srv.name}...`);
+    // Plesk API: POST /server/services/{name}/restart
+    const result = await pleskRequest('POST', `/server/services/${serviceName}/restart`, null, srv);
+    if (result?.status === 200) {
+      smartAlert('info', `🔄 Restart ${serviceName} บน ${srv.name} สำเร็จ`);
+      return { success: true };
+    }
+    return { success: false, error: result?.data };
+  } catch(e) {
+    return { success: false, error: e.message };
+  }
+}
+
+// ตรวจสอบ server health ทุก 5 นาที
+async function checkServerHealth() {
+  for (const srv of PLESK_SERVERS) {
+    try {
+      const services = await pleskRequest('GET', '/server/services', null, srv);
+      if (!services?.data) continue;
+      
+      const svcList = Array.isArray(services?.data) ? services.data : 
+                     Array.isArray(services) ? services : [];
+      const stopped = svcList.filter(s => s.status !== 'running' && s.status !== 'active');
+      for (const svc of stopped) {
+        console.log(`[Health] ${srv.name}: ${svc.name} หยุดทำงาน! กำลัง restart...`);
+        smartAlert('warning', `⚠️ ${srv.name}: service ${svc.name} หยุดทำงาน\nกำลัง restart อัตโนมัติ...`);
+        await restartService(srv, svc.name);
+      }
+    } catch(e) {
+      console.error(`[Health] ${srv.name}:`, e.message);
+    }
+  }
+}
+
+// ===== AGENT SYSTEM =====
+const agentCommands = {}; // { server1: [{id, cmd, status}] }
+const agentResults = {};  // { commandId: result }
+
+function queueCommand(serverHost, command) {
+  const id = Date.now() + '_' + Math.random().toString(36).slice(2);
+  const serverKey = serverHost.replace(/\./g, '_');
+  if (!agentCommands[serverKey]) agentCommands[serverKey] = [];
+  agentCommands[serverKey].push({ id, cmd: command, status: 'pending', queuedAt: new Date().toISOString() });
+  console.log(`[Agent] Queue command for ${serverHost}: ${command.slice(0,60)}`);
+  return id;
+}
+
+async function runOnServer(serverName, command) {
+  const srv = PLESK_SERVERS.find(s => 
+    s.name === serverName || 
+    s.host === serverName ||
+    s.name.toLowerCase() === serverName.toLowerCase() ||
+    s.name.toLowerCase().replace(/\s+/g,'') === serverName.toLowerCase().replace(/\s+/g,'')
+  );
+  if (!srv) throw new Error('ไม่พบ server: ' + serverName);
+  const cmdId = queueCommand(srv.host, command);
+  
+  // รอผล max 30 วินาที
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 500));
+    if (agentResults[cmdId]) {
+      const result = agentResults[cmdId];
+      delete agentResults[cmdId];
+      return result;
+    }
+  }
+  throw new Error('Agent timeout');
+}
+
+// ===== CLOUDFLARE MANAGED CHALLENGE (added feature) — ตั้ง WAF กัน wp-login ผ่าน CF API =====
+const CF_API = 'https://api.cloudflare.com/client/v4';
+const CF_TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
+const CF_TAG = '[auto-waf]';
+let cfBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, failures: [] }; // ป้ายระบุ rule ที่ระบบสร้าง (ไม่ยุ่งกับ rule ที่ผู้ใช้ตั้งเอง)
+function cfRules() {
+  return [
+    { description: CF_TAG + ' challenge wp-login', expression: '(http.request.uri.path contains "/wp-login.php")', action: 'managed_challenge' },
+    { description: CF_TAG + ' block xmlrpc', expression: '(http.request.uri.path contains "/xmlrpc.php")', action: 'block' }
+  ];
+}
+function cfApi(path, opts) {
+  opts = opts || {};
+  return new Promise((resolve, reject) => {
+    let u;
+    try { u = new URL(CF_API + path); } catch (e) { return reject(new Error('URL ไม่ถูกต้อง')); }
+    const payload = opts.body ? JSON.stringify(opts.body) : null;
+    const headers = { 'Authorization': 'Bearer ' + CF_TOKEN, 'Content-Type': 'application/json' };
+    if (payload) headers['Content-Length'] = Buffer.byteLength(payload);
+    const req = https.request(u, { method: opts.method || 'GET', headers, timeout: 15000 }, (res) => {
+      let data = '';
+      res.on('data', c => { data += c; });
+      res.on('end', () => {
+        let j;
+        try { j = JSON.parse(data); } catch (e) { return reject(new Error('CF ตอบไม่ใช่ JSON (HTTP ' + res.statusCode + ')')); }
+        if (!j.success) {
+          const msg = (j.errors || []).map(e => e.message).join('; ') || ('HTTP ' + res.statusCode);
+          const err = new Error(msg); err.cfErrors = j.errors; return reject(err);
+        }
+        resolve(j);
+      });
+    });
+    req.on('error', e => reject(new Error(e.message)));
+    req.on('timeout', () => { req.destroy(); reject(new Error('CF timeout')); });
+    if (payload) req.write(payload);
+    req.end();
+  });
+}
+// หา zone id จากชื่อโดเมน (รองรับ subdomain — ตัดเหลือ root)
+async function cfFindZone(domain) {
+  const root = domain.replace(/^www\./, '');
+  let j = await cfApi('/zones?name=' + encodeURIComponent(root));
+  if (j.result && j.result.length) return j.result[0];
+  // ลองตัด subdomain ทีละชั้น (a.b.co.th -> b.co.th ...)
+  const parts = root.split('.');
+  for (let i = 1; i < parts.length - 1; i++) {
+    const cand = parts.slice(i).join('.');
+    j = await cfApi('/zones?name=' + encodeURIComponent(cand));
+    if (j.result && j.result.length) return j.result[0];
+  }
+  return null;
+}
+async function cfGetEntrypoint(zoneId) {
+  try {
+    const j = await cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_firewall_custom/entrypoint');
+    return j.result.rules || [];
+  } catch (e) {
+    if (/could not find|does not exist|10\d{3}/i.test(e.message)) return [];
+    throw e;
+  }
+}
+async function cfPutRules(zoneId, rules) {
+  return cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_firewall_custom/entrypoint',
+    { method: 'PUT', body: { rules } });
+}
+// cache สถานะ CF ต่อโดเมน — กันยิง CF ซ้ำทุกครั้ง (เก็บ /tmp, refresh ได้)
+const CF_STATUS_FILE = path.join('/tmp', 'domainintel-cfstatus.json');
+let cfStatusCache = {}; // { domain: { hasZone, hasRule, zone, at } }
+try { cfStatusCache = JSON.parse(fs.readFileSync(CF_STATUS_FILE, 'utf8')) || {}; } catch (e) {}
+function saveCfStatus() { try { fs.writeFileSync(CF_STATUS_FILE, JSON.stringify(cfStatusCache)); } catch (e) {} }
+async function cfCheckDomain(domain) {
+  const zone = await cfFindZone(domain);
+  if (!zone) { const s = { hasZone: false, hasRule: false, zone: null, at: Date.now() }; cfStatusCache[domain] = s; return s; }
+  let hasRule = false;
+  try {
+    const rules = await cfGetEntrypoint(zone.id);
+    const ours = new Set(cfRules().map(r => r.description));
+    hasRule = rules.some(r => ours.has(r.description));
+  } catch (e) {}
+  const s = { hasZone: true, hasRule, zone: zone.name, at: Date.now() };
+  cfStatusCache[domain] = s;
+  return s;
+}
+let cfScan = { running: false, total: 0, done: 0 };
+async function cfScanAll(domains) {
+  if (cfScan.running) return;
+  cfScan = { running: true, total: domains.length, done: 0 };
+  for (const dom of domains) {
+    try { await cfCheckDomain(dom); } catch (e) {}
+    cfScan.done++;
+    if (cfScan.done % 25 === 0) saveCfStatus();
+    await new Promise(r => setTimeout(r, 200));
+  }
+  saveCfStatus();
+  cfScan.running = false;
+}
+
+// ใส่ rule (merge ไม่ลบของเดิม) หรือถอด rule ของระบบออก
+async function cfApplyDomain(domain, enable) {
+  const zone = await cfFindZone(domain);
+  if (!zone) return { domain, ok: false, error: 'ไม่พบ zone นี้ในบัญชี Cloudflare' };
+  try {
+    const existing = await cfGetEntrypoint(zone.id);
+    const ours = new Set(cfRules().map(r => r.description));
+    const kept = existing.filter(r => !ours.has(r.description)); // rule ของผู้ใช้ เก็บไว้
+    let merged;
+    if (enable) {
+      const mine = cfRules().map(r => ({ description: r.description, expression: r.expression, action: r.action, enabled: true }));
+      merged = [...mine, ...kept];
+      if (merged.length > 5) return { domain, ok: false, error: 'zone นี้มี rule เกิน 5 (ขีดจำกัด CF Free) — ลบ rule เดิมก่อน' };
+    } else {
+      merged = kept; // ถอดเฉพาะของเรา
+    }
+    await cfPutRules(zone.id, merged);
+    cfStatusCache[domain] = { hasZone: true, hasRule: enable, zone: zone.name, at: Date.now() };
+    return { domain, ok: true, zone: zone.name, enabled: enable };
+  } catch (e) {
+    return { domain, ok: false, error: e.message };
+  }
+}
+
+// ===== WP-ADMIN TOGGLE (added feature) — เปิด/ปิด wp-login รายโดเมน จากแดชบอร์ด =====
+// ปลอดภัย: ทุกคำสั่งจะ apachectl configtest ก่อน reload — ถ้า config ผิด rollback อัตโนมัติ
+// source of truth = ไฟล์ .wpadmin-open.list บนเครื่อง (ระบบอ่านของเดิมก่อนแก้ ไม่ลืมเว็บที่เปิดไว้)
+function validDomainName(d) {
+  return typeof d === 'string' && /^[a-z0-9.-]{3,253}$/i.test(d) && !d.includes('..') && !/^[.-]|[.-]$/.test(d);
+}
+
+// สคริปต์ (read-only) อ่านสถานะ wp-admin ของเครื่อง
+function buildWpadminStatusCmd() {
+  return [
+    'CONF=/etc/httpd/conf.d/zzz-emergency.conf',
+    'LIST=/etc/httpd/conf.d/.wpadmin-open.list',
+    'if command -v apachectl >/dev/null 2>&1; then echo "APACHE:yes"; else echo "APACHE:no"; fi',
+    'if [ -f "$CONF" ]; then echo "BLOCK:on"; else echo "BLOCK:off"; fi',
+    // เผื่อยังไม่มี list แต่มี conf เดิมที่เปิดบางโดเมนไว้ → ดึงจาก conf มาโชว์
+    'if [ ! -f "$LIST" ] && [ -f "$CONF" ]; then sed -n \'s/.*(?!\\([^)]*\\)).*/\\1/p\' "$CONF" 2>/dev/null | tr \'|\' \'\\n\' | sed \'s#/$##; s#\\\\##g\' | grep . ; else [ -f "$LIST" ] && sort -u "$LIST"; fi'
+  ].join('\n');
+}
+
+// สคริปต์เปิด/ปิด 1 โดเมน — domain ต้องผ่าน validDomainName มาแล้วเท่านั้น
+function buildWpadminToggleCmd(domain, open) {
+  const action = open ? 'add' : 'remove';
+  return [
+    'set -e',
+    'CONF=/etc/httpd/conf.d/zzz-emergency.conf',
+    'LIST=/etc/httpd/conf.d/.wpadmin-open.list',
+    'if ! command -v apachectl >/dev/null 2>&1; then echo "RESULT:NOT_APACHE"; exit 0; fi',
+    'touch "$LIST"',
+    // seed list จาก conf เดิม (กันลืมโดเมนที่เปิดไว้ก่อนใช้ระบบนี้)
+    'if [ ! -s "$LIST" ] && [ -f "$CONF" ]; then sed -n \'s/.*(?!\\([^)]*\\)).*/\\1/p\' "$CONF" 2>/dev/null | tr \'|\' \'\\n\' | sed \'s#/$##; s#\\\\##g\' | grep . > "$LIST" || true; fi',
+    'DOM="' + domain + '"',
+    action === 'add'
+      ? 'grep -qxF "$DOM" "$LIST" || echo "$DOM" >> "$LIST"'
+      : 'grep -vxF "$DOM" "$LIST" > "$LIST.tmp" 2>/dev/null || true; mv -f "$LIST.tmp" "$LIST" 2>/dev/null || true',
+    // สร้าง negative-lookahead จาก list
+    'OPEN=$(sort -u "$LIST" | grep . | sed \'s/\\./\\\\./g; s#$#/#\' | paste -sd\'|\' - || true)',
+    'if [ -n "$OPEN" ]; then LA="(?!$OPEN)"; else LA=""; fi',
+    '[ -f "$CONF" ] && cp -f "$CONF" "$CONF.bak" || true',
+    'cat > "$CONF" <<DICONF',
+    '<DirectoryMatch "^/var/www/vhosts/${LA}[^/]+/httpdocs">',
+    '    <FilesMatch "^(wp-login|xmlrpc)\\.php\\$">',
+    '        Require all denied',
+    '    </FilesMatch>',
+    '</DirectoryMatch>',
+    'DICONF',
+    'if apachectl configtest >/dev/null 2>&1; then systemctl reload httpd && echo "RESULT:OK"; else [ -f "$CONF.bak" ] && mv -f "$CONF.bak" "$CONF" || rm -f "$CONF"; systemctl reload httpd >/dev/null 2>&1 || true; echo "RESULT:CONFIGTEST_FAILED"; fi',
+    'rm -f "$CONF.bak" 2>/dev/null || true'
+  ].join('\n');
+}
+
+// เปิด/หยุด "บล็อกทั้งเครื่อง" — enable=true สร้างบล็อก (เก็บ list เดิมที่เปิดไว้), enable=false ถอดออกหมด
+function buildWpadminBlockCmd(enable) {
+  if (!enable) {
+    return [
+      'CONF=/etc/httpd/conf.d/zzz-emergency.conf',
+      'if ! command -v apachectl >/dev/null 2>&1; then echo "RESULT:NOT_APACHE"; exit 0; fi',
+      'rm -f "$CONF"',
+      'if apachectl configtest >/dev/null 2>&1; then systemctl reload httpd && echo "RESULT:OK"; else echo "RESULT:CONFIGTEST_FAILED"; fi'
+    ].join('\n');
+  }
+  return [
+    'set -e',
+    'CONF=/etc/httpd/conf.d/zzz-emergency.conf',
+    'LIST=/etc/httpd/conf.d/.wpadmin-open.list',
+    'if ! command -v apachectl >/dev/null 2>&1; then echo "RESULT:NOT_APACHE"; exit 0; fi',
+    'touch "$LIST"',
+    // ถ้ามี conf เดิมที่เปิดบางโดเมนไว้ ให้ seed list ไว้ก่อน จะได้ไม่ลืม
+    'if [ ! -s "$LIST" ] && [ -f "$CONF" ]; then sed -n \'s/.*(?!\\([^)]*\\)).*/\\1/p\' "$CONF" 2>/dev/null | tr \'|\' \'\\n\' | sed \'s#/$##; s#\\\\##g\' | grep . > "$LIST" || true; fi',
+    'OPEN=$(sort -u "$LIST" | grep . | sed \'s/\\./\\\\./g; s#$#/#\' | paste -sd\'|\' - || true)',
+    'if [ -n "$OPEN" ]; then LA="(?!$OPEN)"; else LA=""; fi',
+    '[ -f "$CONF" ] && cp -f "$CONF" "$CONF.bak" || true',
+    'cat > "$CONF" <<DICONF',
+    '<DirectoryMatch "^/var/www/vhosts/${LA}[^/]+/httpdocs">',
+    '    <FilesMatch "^(wp-login|xmlrpc)\\.php\\$">',
+    '        Require all denied',
+    '    </FilesMatch>',
+    '</DirectoryMatch>',
+    'DICONF',
+    'if apachectl configtest >/dev/null 2>&1; then systemctl reload httpd && echo "RESULT:OK"; else [ -f "$CONF.bak" ] && mv -f "$CONF.bak" "$CONF" || rm -f "$CONF"; systemctl reload httpd >/dev/null 2>&1 || true; echo "RESULT:CONFIGTEST_FAILED"; fi',
+    'rm -f "$CONF.bak" 2>/dev/null || true'
+  ].join('\n');
+}
+
+function parseWpadminStatus(raw) {
+  const out = { apache: null, blockOn: null, openDomains: [] };
+  if (!raw) return out;
+  raw.split('\n').forEach(line => {
+    const t = line.trim();
+    if (t === 'APACHE:yes') out.apache = true;
+    else if (t === 'APACHE:no') out.apache = false;
+    else if (t === 'BLOCK:on') out.blockOn = true;
+    else if (t === 'BLOCK:off') out.blockOn = false;
+    else if (t && !t.startsWith('APACHE:') && !t.startsWith('BLOCK:') && validDomainName(t)) out.openDomains.push(t);
+  });
+  return out;
+}
+
+// ===== RESOURCE MEASUREMENT (ระดับ B1 — วัดจริงจากในเครื่องอัตโนมัติ) =====
+// ใช้ช่อง agent เดิม (runOnServer) รันคำสั่ง "อ่านอย่างเดียว" วัดว่าโดเมนไหนแย่งทรัพยากรจริง
+const RESOURCE_FILE = path.join('/tmp', 'domainintel-resources.json');
+let resourceStats = {}; // { serverName: { at, phpfpm:[{domain,active,max,pct}], mysql:[...], hotDomains:[...], load } }
+try { resourceStats = JSON.parse(fs.readFileSync(RESOURCE_FILE, 'utf8')) || {}; } catch (e) {}
+function saveResourceStats() { try { fs.writeFileSync(RESOURCE_FILE, JSON.stringify(resourceStats)); } catch (e) {} }
+
+// สร้างสคริปต์วัด (read-only) — รับรายชื่อโดเมนที่อยากดู access log เจาะจง
+function buildMeasureScript(focusDomains) {
+  const list = (focusDomains || []).filter(Boolean).slice(0, 15)
+    .map(d => d.replace(/[^a-zA-Z0-9.\-]/g, '')).join(' ');
+  return [
+    'echo "===PHPFPM_ACTIVE==="',
+    // นับ worker ที่กำลังทำงานจริง ต่อ pool (pool = โดเมน บน Plesk)
+    "ps -eo args 2>/dev/null | awk '/php-fpm: pool /{print $NF}' | sort | uniq -c | sort -rn | head -30",
+    'echo "===PHPFPM_MAX==="',
+    // เพดาน max_children ต่อ pool
+    "grep -h -E '^\\s*pm.max_children' /opt/plesk/php/*/etc/php-fpm.d/*.conf 2>/dev/null > /dev/null; " +
+    "for f in /opt/plesk/php/*/etc/php-fpm.d/*.conf; do [ -f \"$f\" ] || continue; " +
+    "d=$(basename \"$f\" .conf); m=$(grep -E '^\\s*pm.max_children' \"$f\" 2>/dev/null | head -1 | grep -oE '[0-9]+'); " +
+    "[ -n \"$m\" ] && echo \"$m $d\"; done | head -60",
+    'echo "===MYSQL==="',
+    // query ที่ค้างนานเกิน 2 วิ (ไม่ใช่ Sleep) — บอก DB ไหนหนัก
+    "MYSQL_PWD=$(cat /etc/psa/.psa.shadow 2>/dev/null) mysql -uadmin -N -e " +
+    "\"SELECT CONCAT(db,'|',time,'|',LEFT(REPLACE(state,'|',' '),20)) FROM information_schema.processlist " +
+    "WHERE command!='Sleep' AND time>2 ORDER BY time DESC LIMIT 15;\" 2>/dev/null",
+    'echo "===HOT==="',
+    // เฉพาะโดเมนที่โฟกัส: นับ request 1 ชม.ล่าสุด + IP ที่ยิงเยอะสุด
+    list ? ('for d in ' + list + '; do ' +
+      'L="/var/www/vhosts/$d/logs/proxy_access_log"; [ -f "$L" ] || continue; ' +
+      'C=$(tail -20000 "$L" 2>/dev/null | wc -l); ' +
+      'TOP=$(tail -20000 "$L" 2>/dev/null | awk \'{print $1}\' | sort | uniq -c | sort -rn | head -1); ' +
+      'echo "$d|$C|$TOP"; done') : 'echo ""',
+    'echo "===LOAD==="',
+    "uptime | awk -F'load average:' '{print $2}' | tr -d ' '",
+    'echo "===END==="'
+  ].join('\n');
+}
+
+function parseMeasureOutput(raw) {
+  const out = { phpfpm: [], mysql: [], hotDomains: [], load: null };
+  if (!raw) return out;
+  const sec = {};
+  let cur = null;
+  raw.split('\n').forEach(line => {
+    const m = line.match(/^===([A-Z_]+)===$/);
+    if (m) { cur = m[1]; sec[cur] = []; return; }
+    if (cur) sec[cur].push(line);
+  });
+  // จับคู่ active vs max ต่อโดเมน
+  const active = {}, max = {};
+  (sec.PHPFPM_ACTIVE || []).forEach(l => {
+    const mm = l.trim().match(/^(\d+)\s+(\S+)$/);
+    if (mm) active[mm[2]] = parseInt(mm[1], 10);
+  });
+  (sec.PHPFPM_MAX || []).forEach(l => {
+    const mm = l.trim().match(/^(\d+)\s+(\S+)$/);
+    if (mm) max[mm[2]] = parseInt(mm[1], 10);
+  });
+  Object.keys(active).forEach(dom => {
+    const a = active[dom], mx = max[dom] || null;
+    out.phpfpm.push({ domain: dom, active: a, max: mx, pct: mx ? Math.round(a / mx * 100) : null });
+  });
+  out.phpfpm.sort((x, y) => (y.pct || 0) - (x.pct || 0) || y.active - x.active);
+  (sec.MYSQL || []).forEach(l => {
+    const p = l.split('|');
+    if (p.length >= 2 && p[0]) out.mysql.push({ db: p[0], time: parseInt(p[1], 10) || 0, state: p[2] || '' });
+  });
+  (sec.HOT || []).forEach(l => {
+    const p = l.split('|');
+    if (p.length >= 2 && p[0]) {
+      const top = (p[2] || '').trim().match(/^(\d+)\s+(\S+)/);
+      out.hotDomains.push({ domain: p[0], requests: parseInt(p[1], 10) || 0,
+        topIp: top ? top[2] : null, topIpHits: top ? parseInt(top[1], 10) : 0 });
+    }
+  });
+  out.hotDomains.sort((x, y) => y.requests - x.requests);
+  if ((sec.LOAD || []).length) out.load = (sec.LOAD[0] || '').trim();
+  return out;
+}
+
+let measuring = {}; // server -> bool กันวัดซ้อน
+async function measureServer(serverName, focusDomains) {
+  if (measuring[serverName]) return { success: false, error: 'กำลังวัดอยู่' };
+  measuring[serverName] = true;
+  try {
+    const script = buildMeasureScript(focusDomains);
+    const result = await runOnServer(serverName, script);
+    const parsed = parseMeasureOutput(result.output || '');
+    resourceStats[serverName] = { at: new Date().toISOString(), ...parsed };
+    saveResourceStats();
+    return { success: true, server: serverName, ...parsed };
+  } catch (e) {
+    return { success: false, error: e.message };
+  } finally { measuring[serverName] = false; }
+}
+
+// หาโดเมนที่ควรเพ่งเล็งบนเครื่องหนึ่ง (จาก incident 24 ชม.) เพื่อส่งให้ measureServer โฟกัส
+function focusDomainsFor(serverName) {
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const set = {};
+  incidents.filter(i => i.server === serverName && (i.startAt || '') >= since)
+    .forEach(i => { set[i.domain] = (set[i.domain] || 0) + 1; });
+  return Object.keys(set).sort((a, b) => set[b] - set[a]).slice(0, 15);
+}
+
+// ตัววัดอัตโนมัติ: ทุก 30 นาที วัดเครื่องที่มี incident ใน 24 ชม.ล่าสุด
+let autoMeasureRunning = false;
+async function autoMeasureLoop() {
+  if (autoMeasureRunning) return;
+  autoMeasureRunning = true;
+  try {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    const servers = [...new Set(incidents.filter(i => (i.startAt || '') >= since && i.server).map(i => i.server))];
+    for (const srv of servers) {
+      try { await measureServer(srv, focusDomainsFor(srv)); } catch (e) {}
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  } catch (e) {} finally { autoMeasureRunning = false; }
+}
+
+// ===== PRIVATE VAULT (added feature) — ข้อมูลลับส่วนตัว เข้ารหัสจริงด้วยรหัสผ่านแยก =====
+// ข้อมูลถูกเข้ารหัส AES-256-GCM ด้วยกุญแจที่ได้จากรหัสผ่าน (scrypt) — เซิร์ฟเวอร์ไม่เก็บรหัสผ่าน
+// ตั้งที่เก็บถาวรได้ด้วย env VAULT_DIR (เช่น Railway Volume ที่ /data) — ไม่งั้นใช้ /tmp (หายตอน redeploy)
+const VAULT_DIR = process.env.VAULT_DIR || '/tmp';
+const VAULT_FILE = path.join(VAULT_DIR, 'domainintel-vault.json');
+let vaultData = null; // { salt, check:{iv,ct,tag}, items:[{id,title,iv,ct,tag,updatedAt}] }
+try { vaultData = JSON.parse(fs.readFileSync(VAULT_FILE, 'utf8')); } catch (e) { vaultData = null; }
+function saveVault() { try { fs.mkdirSync(VAULT_DIR, { recursive: true }); fs.writeFileSync(VAULT_FILE, JSON.stringify(vaultData)); return true; } catch (e) { return false; } }
+
+function vaultDeriveKey(passphrase, saltHex) {
+  return crypto.scryptSync(Buffer.from(String(passphrase), 'utf8'), Buffer.from(saltHex, 'hex'), 32, { N: 16384, r: 8, p: 1 });
+}
+function vaultEncrypt(key, plaintext) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(Buffer.from(String(plaintext), 'utf8')), cipher.final()]);
+  return { iv: iv.toString('hex'), ct: ct.toString('hex'), tag: cipher.getAuthTag().toString('hex') };
+}
+function vaultDecrypt(key, blob) {
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(blob.iv, 'hex'));
+  decipher.setAuthTag(Buffer.from(blob.tag, 'hex'));
+  const pt = Buffer.concat([decipher.update(Buffer.from(blob.ct, 'hex')), decipher.final()]);
+  return pt.toString('utf8');
+}
+// ตรวจรหัสผ่านถูกไหม โดยลองถอดรหัส check-blob (ถ้า auth tag ผ่าน = รหัสถูก)
+function vaultVerify(passphrase) {
+  if (!vaultData || !vaultData.check) return null;
+  try {
+    const key = vaultDeriveKey(passphrase, vaultData.salt);
+    if (vaultDecrypt(key, vaultData.check) === 'VALID') return key;
+  } catch (e) {}
+  return null;
+}
+
+// rate limit สำหรับ unlock (กันเดารหัสตู้เซฟ) — แยกจาก login
+const vaultAttempts = {};
+function vaultRateCheck(ip) {
+  const r = vaultAttempts[ip];
+  if (r && r.until && Date.now() < r.until) return Math.ceil((r.until - Date.now()) / 1000);
+  return 0;
+}
+function vaultRateFail(ip) {
+  const r = vaultAttempts[ip] || { count: 0, until: 0 };
+  r.count++;
+  if (r.count >= 5) { r.until = Date.now() + 15 * 60 * 1000; r.count = 0; }
+  vaultAttempts[ip] = r;
+}
+function vaultRateReset(ip) { delete vaultAttempts[ip]; }
+
+// ===== AUTH LAYER (added feature) — login จริงฝั่งเซิร์ฟเวอร์ + rate limit + 2FA =====
+const crypto = require('crypto');
+// ตั้งค่าใน Railway:
+//   DASHBOARD_PASSWORD = รหัสผ่านเข้าแดชบอร์ด (ถ้าไม่ตั้ง = ระบบเปิดโล่งแบบเดิม เพื่อไม่ให้ล็อกตัวเอง)
+//   DASHBOARD_TOTP_SECRET = (ไม่บังคับ) secret สำหรับ 2FA — ตั้งเมื่อพร้อมใช้ Authenticator
+//   SESSION_SECRET = (ไม่บังคับ) กุญแจเซ็น session cookie — ถ้าไม่ตั้งจะสุ่มตอนบูต (redeploy แล้วต้อง login ใหม่)
+const DASHBOARD_PASSWORD = process.env.DASHBOARD_PASSWORD || '';
+const DASHBOARD_TOTP_SECRET = process.env.DASHBOARD_TOTP_SECRET || '';
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const AUTH_ENABLED = !!DASHBOARD_PASSWORD; // ถ้าไม่ตั้งรหัส = ไม่บังคับ login (กันล็อกตัวเอง)
+const SESSION_HOURS = 12;
+
+// เส้นทางที่ไม่ต้อง login: หน้า login, ตัว agent (ใช้ ISP_AGENT_KEY ยืนยันตัวเองอยู่แล้ว), health
+const AUTH_EXEMPT_EXACT = new Set(['/api/login', '/api/auth-status', '/health', '/healthz']);
+function isAuthExempt(url, method) {
+  if (AUTH_EXEMPT_EXACT.has(url)) return true;
+  // ช่อง agent ทั้งหมด (poll/report) — ยืนยันด้วย ISP_AGENT_KEY ในตัวเอง ไม่ผ่าน session
+  if (url.startsWith('/api/agent/')) return true;
+  if (url.startsWith('/api/isp-agent/')) return true;
+  if (url.startsWith('/api/isp-check') || url === '/api/isp-status' || url === '/api/isp-check-all') return true;
+  // ไฟล์หน้าเว็บ (index.html, css, js) — ให้โหลดได้ แต่ API ข้อมูลจะโดน gate
+  if (method === 'GET' && !url.startsWith('/api/')) return true;
+  return false;
+}
+
+// --- session cookie (เซ็นด้วย HMAC กันปลอม) ---
+function signSession(payload) {
+  const data = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+  return data + '.' + sig;
+}
+function verifySession(token) {
+  if (!token || token.indexOf('.') < 0) return null;
+  const [data, sig] = token.split('.');
+  const expect = crypto.createHmac('sha256', SESSION_SECRET).update(data).digest('base64url');
+  if (sig.length !== expect.length || !crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expect))) return null;
+  try {
+    const p = JSON.parse(Buffer.from(data, 'base64url').toString());
+    if (!p.exp || Date.now() > p.exp) return null;
+    return p;
+  } catch (e) { return null; }
+}
+function parseCookies(req) {
+  const out = {}; const h = req.headers.cookie || '';
+  h.split(';').forEach(c => { const i = c.indexOf('='); if (i > 0) out[c.slice(0, i).trim()] = decodeURIComponent(c.slice(i + 1).trim()); });
+  return out;
+}
+function isLoggedIn(req) {
+  if (!AUTH_ENABLED) return true;
+  const c = parseCookies(req);
+  return !!verifySession(c.di_session);
+}
+
+// --- rate limit: กันเดารหัส (ต่อ IP) ---
+const loginAttempts = {}; // ip -> { count, until }
+function clientIp(req) {
+  const xff = (req.headers['x-forwarded-for'] || '').split(',')[0].trim();
+  return xff || req.socket.remoteAddress || 'unknown';
+}
+function rateLimitCheck(ip) {
+  const r = loginAttempts[ip];
+  if (r && r.until && Date.now() < r.until) return Math.ceil((r.until - Date.now()) / 1000);
+  return 0;
+}
+function rateLimitFail(ip) {
+  const r = loginAttempts[ip] || { count: 0, until: 0 };
+  r.count++;
+  if (r.count >= 5) { r.until = Date.now() + 10 * 60 * 1000; r.count = 0; } // ผิด 5 ครั้ง ล็อก 10 นาที
+  loginAttempts[ip] = r;
+}
+function rateLimitReset(ip) { delete loginAttempts[ip]; }
+
+// --- TOTP (2FA) — ตรวจรหัส 6 หลักจาก Google Authenticator/Authy ---
+function base32Decode(s) {
+  const alph = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+  let bits = '', out = [];
+  s = s.replace(/=+$/, '').toUpperCase().replace(/\s/g, '');
+  for (const ch of s) { const v = alph.indexOf(ch); if (v < 0) continue; bits += v.toString(2).padStart(5, '0'); }
+  for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
+  return Buffer.from(out);
+}
+function totpAt(secret, counter) {
+  const key = base32Decode(secret);
+  const buf = Buffer.alloc(8);
+  buf.writeBigInt64BE(BigInt(counter));
+  const hmac = crypto.createHmac('sha1', key).update(buf).digest();
+  const off = hmac[hmac.length - 1] & 0xf;
+  const code = ((hmac[off] & 0x7f) << 24) | ((hmac[off + 1] & 0xff) << 16) | ((hmac[off + 2] & 0xff) << 8) | (hmac[off + 3] & 0xff);
+  return (code % 1000000).toString().padStart(6, '0');
+}
+function verifyTotp(secret, token) {
+  if (!secret || !token) return false;
+  token = String(token).replace(/\s/g, '');
+  const step = Math.floor(Date.now() / 1000 / 30);
+  for (let w = -1; w <= 1; w++) { // ยอมเหลื่อม ±30 วิ
+    if (totpAt(secret, step + w) === token) return true;
+  }
+  return false;
+}
+
+async function handleRequest(req, res) {
+  if (req.method === 'OPTIONS') { cors(res); res.writeHead(204); res.end(); return; }
+  const url = req.url.split('?')[0];
+  const rawUrl = req.url;
+
+  // --- PRIVATE VAULT ENDPOINTS (ข้อมูลลับส่วนตัว) ---
+  if (req.method === 'GET' && url === '/api/vault/status') {
+    json(res, { success: true, initialized: !!(vaultData && vaultData.check), persistent: VAULT_DIR !== '/tmp' });
+    return;
+  }
+  // ตั้งรหัสตู้เซฟครั้งแรก
+  if (req.method === 'POST' && url === '/api/vault/init') {
+    if (vaultData && vaultData.check) { json(res, { success: false, error: 'ตั้งรหัสตู้เซฟไว้แล้ว' }); return; }
+    const body = await parseBody(req) || {};
+    const pass = String(body.passphrase || '');
+    if (pass.length < 6) { json(res, { success: false, error: 'รหัสตู้เซฟต้องยาวอย่างน้อย 6 ตัว' }); return; }
+    const salt = crypto.randomBytes(16).toString('hex');
+    const key = vaultDeriveKey(pass, salt);
+    vaultData = { salt, check: vaultEncrypt(key, 'VALID'), items: [] };
+    if (!saveVault()) { json(res, { success: false, error: 'บันทึกไม่สำเร็จ' }); return; }
+    json(res, { success: true });
+    return;
+  }
+  // ปลดล็อก → คืนรายการที่ถอดรหัสแล้ว (ไม่เก็บรหัส)
+  if (req.method === 'POST' && url === '/api/vault/unlock') {
+    const ip = clientIp(req);
+    const wait = vaultRateCheck(ip);
+    if (wait > 0) { json(res, { success: false, error: 'ใส่รหัสผิดหลายครั้ง รออีก ' + Math.ceil(wait/60) + ' นาที', lockedSec: wait }, 429); return; }
+    if (!vaultData || !vaultData.check) { json(res, { success: false, error: 'ยังไม่ได้ตั้งรหัสตู้เซฟ' }); return; }
+    const body = await parseBody(req) || {};
+    const key = vaultVerify(String(body.passphrase || ''));
+    if (!key) { vaultRateFail(ip); json(res, { success: false, error: 'รหัสตู้เซฟไม่ถูกต้อง' }, 401); return; }
+    vaultRateReset(ip);
+    const items = (vaultData.items || []).map(it => {
+      let title = it.title, content = '', file = null;
+      try {
+        const dec = vaultDecrypt(key, it);
+        // รูปแบบใหม่: payload เป็น JSON {content, file} · รูปแบบเก่า: เป็นข้อความล้วน
+        if (dec && dec[0] === '{') {
+          try { const p = JSON.parse(dec); content = p.content || ''; file = p.file || null; }
+          catch (e) { content = dec; }
+        } else { content = dec; }
+      } catch (e) { content = '(ถอดรหัสไม่ได้)'; }
+      return { id: it.id, title, content, file, updatedAt: it.updatedAt };
+    });
+    json(res, { success: true, items });
+    return;
+  }
+  // บันทึกรายการทั้งหมด (ส่งรหัสมาด้วยทุกครั้ง — เข้ารหัสใหม่)
+  if (req.method === 'POST' && url === '/api/vault/save') {
+    const ip = clientIp(req);
+    if (vaultRateCheck(ip) > 0) { json(res, { success: false, error: 'ถูกล็อกชั่วคราว' }, 429); return; }
+    if (!vaultData || !vaultData.check) { json(res, { success: false, error: 'ยังไม่ได้ตั้งรหัสตู้เซฟ' }); return; }
+    const body = await parseBody(req) || {};
+    const key = vaultVerify(String(body.passphrase || ''));
+    if (!key) { vaultRateFail(ip); json(res, { success: false, error: 'รหัสตู้เซฟไม่ถูกต้อง' }, 401); return; }
+    const items = Array.isArray(body.items) ? body.items : [];
+    if (items.length > 500) { json(res, { success: false, error: 'เก็บได้สูงสุด 500 รายการ' }); return; }
+    // จำกัดขนาดไฟล์ต่ออัน 3MB (base64) และรวมทั้งตู้ 40MB กันไฟล์ใหญ่เกิน
+    const MAX_FILE_B64 = 3 * 1024 * 1024;
+    let totalSize = 0;
+    for (const it of items) {
+      if (it.file && it.file.data) {
+        if (it.file.data.length > MAX_FILE_B64) { json(res, { success: false, error: 'ไฟล์ "' + (it.file.name || '') + '" ใหญ่เกิน 3MB' }); return; }
+        totalSize += it.file.data.length;
+      }
+    }
+    if (totalSize > 40 * 1024 * 1024) { json(res, { success: false, error: 'ไฟล์รวมทั้งหมดใหญ่เกิน 40MB' }); return; }
+    vaultData.items = items.slice(0, 500).map(it => {
+      const payload = JSON.stringify({
+        content: String(it.content || ''),
+        file: (it.file && it.file.data) ? { name: String(it.file.name || 'file').slice(0, 200), type: String(it.file.type || '').slice(0, 100), data: String(it.file.data) } : null
+      });
+      const enc = vaultEncrypt(key, payload);
+      return { id: String(it.id || Date.now() + '' + Math.random()).slice(0, 40),
+        title: String(it.title || 'ไม่มีชื่อ').slice(0, 200),
+        iv: enc.iv, ct: enc.ct, tag: enc.tag, updatedAt: new Date().toISOString() };
+    });
+    if (!saveVault()) { json(res, { success: false, error: 'บันทึกไม่สำเร็จ' }); return; }
+    json(res, { success: true, count: vaultData.items.length });
+    return;
+  }
+  // เปลี่ยนรหัสตู้เซฟ (ต้องรู้รหัสเดิม — เข้ารหัสข้อมูลใหม่ทั้งหมด)
+  if (req.method === 'POST' && url === '/api/vault/change-pass') {
+    const ip = clientIp(req);
+    if (vaultRateCheck(ip) > 0) { json(res, { success: false, error: 'ถูกล็อกชั่วคราว' }, 429); return; }
+    const body = await parseBody(req) || {};
+    const oldKey = vaultVerify(String(body.oldPassphrase || ''));
+    if (!oldKey) { vaultRateFail(ip); json(res, { success: false, error: 'รหัสเดิมไม่ถูกต้อง' }, 401); return; }
+    const np = String(body.newPassphrase || '');
+    if (np.length < 6) { json(res, { success: false, error: 'รหัสใหม่ต้องยาวอย่างน้อย 6 ตัว' }); return; }
+    // ถอดด้วยรหัสเก่า (ได้ payload เต็มรวมไฟล์) → เข้ารหัสใหม่ด้วยรหัสใหม่
+    const plain = (vaultData.items || []).map(it => { try { return { id: it.id, title: it.title, blob: vaultDecrypt(oldKey, it) }; } catch (e) { return null; } }).filter(Boolean);
+    const newSalt = crypto.randomBytes(16).toString('hex');
+    const newKey = vaultDeriveKey(np, newSalt);
+    vaultData = { salt: newSalt, check: vaultEncrypt(newKey, 'VALID'),
+      items: plain.map(it => { const enc = vaultEncrypt(newKey, it.blob); return { id: it.id, title: it.title, iv: enc.iv, ct: enc.ct, tag: enc.tag, updatedAt: new Date().toISOString() }; }) };
+    if (!saveVault()) { json(res, { success: false, error: 'บันทึกไม่สำเร็จ' }); return; }
+    json(res, { success: true });
+    return;
+  }
+
+  // --- AUTH ENDPOINTS ---
+  if (req.method === 'GET' && url === '/api/auth-status') {
+    json(res, { authEnabled: AUTH_ENABLED, twoFactor: !!DASHBOARD_TOTP_SECRET, loggedIn: isLoggedIn(req) });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/login') {
+    if (!AUTH_ENABLED) { json(res, { success: true, note: 'ยังไม่ได้ตั้ง DASHBOARD_PASSWORD — เข้าได้เลย' }); return; }
+    const ip = clientIp(req);
+    const wait = rateLimitCheck(ip);
+    if (wait > 0) { json(res, { success: false, error: 'ลองผิดหลายครั้ง ถูกล็อกชั่วคราว รออีก ' + Math.ceil(wait / 60) + ' นาที', lockedSec: wait }, 429); return; }
+    const body = await parseBody(req) || {};
+    const pass = String(body.password || '');
+    const otp = String(body.otp || '');
+    // เทียบรหัสแบบ timing-safe
+    const a = Buffer.from(pass), b = Buffer.from(DASHBOARD_PASSWORD);
+    const passOk = a.length === b.length && crypto.timingSafeEqual(a, b);
+    if (!passOk) { rateLimitFail(ip); json(res, { success: false, error: 'รหัสผ่านไม่ถูกต้อง' }, 401); return; }
+    // ถ้าเปิด 2FA ต้องมี otp ถูกด้วย
+    if (DASHBOARD_TOTP_SECRET) {
+      if (!otp) { json(res, { success: false, needOtp: true, error: 'ใส่รหัส 6 หลักจากแอป Authenticator' }, 401); return; }
+      if (!verifyTotp(DASHBOARD_TOTP_SECRET, otp)) { rateLimitFail(ip); json(res, { success: false, needOtp: true, error: 'รหัส 2FA ไม่ถูกต้อง' }, 401); return; }
+    }
+    rateLimitReset(ip);
+    const token = signSession({ u: 'admin', exp: Date.now() + SESSION_HOURS * 3600 * 1000 });
+    const secure = (req.headers['x-forwarded-proto'] === 'https') ? '; Secure' : '';
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'application/json',
+      'Set-Cookie': 'di_session=' + token + '; HttpOnly; SameSite=Lax; Path=/; Max-Age=' + (SESSION_HOURS * 3600) + secure });
+    res.end(JSON.stringify({ success: true }));
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/logout') {
+    cors(res);
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Set-Cookie': 'di_session=; HttpOnly; Path=/; Max-Age=0' });
+    res.end(JSON.stringify({ success: true }));
+    return;
+  }
+
+  // --- AUTH GATE ---
+  if (AUTH_ENABLED && !isAuthExempt(url, req.method) && !isLoggedIn(req)) {
+    if (url.startsWith('/api/')) { json(res, { success: false, error: 'ต้อง login ก่อน', needLogin: true }, 401); return; }
+    cors(res); res.writeHead(302, { Location: '/' }); res.end(); return;
+  }
+
+  if (req.method === 'GET' && url === '/api/domains') {
+    const cfg = loadConfig();
+    // ส่ง server configs แบบ masked password
+    const pleskServerConfigs = PLESK_SERVERS.map(s => ({
+      name: s.name,
+      host: s.host,
+      user: s.user,
+      pass: s.pass // frontend จะซ่อนด้วย *** แสดงเฉพาะตอนกดค้าง
+    }));
+    json(res, { domains: memoryDomains, lastUpdated, gscConnected: !!process.env.GSC_REFRESH_TOKEN, pleskConnected: PLESK_SERVERS.length > 0, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskServerConfigs });
+    return;
+  }
+
+  if (req.method === 'GET' && url === '/api/stats') {
+    const d = memoryDomains;
+    json(res, {
+      total: d.length, up: d.filter(x => x.status === 'up').length,
+      down: d.filter(x => x.status === 'down').length, warn: d.filter(x => x.status === 'warn').length,
+      unknown: d.filter(x => x.status === 'unknown').length,
+      withTraffic: d.filter(x => x.gsc?.clicks > 0).length,
+      noTraffic: d.filter(x => x.gsc && x.gsc.clicks === 0).length,
+      expiringIn30: d.filter(x => x.sslDaysLeft !== null && x.sslDaysLeft <= 30 && x.sslDaysLeft >= 0).length,
+      pleskActive: d.filter(x => x.pleskActive === true).length,
+      pleskSuspended: d.filter(x => x.pleskId && x.pleskActive === false).length,
+      totalClicks: d.reduce((s, x) => s + (x.gsc?.clicks || 0), 0),
+      totalImpressions: d.reduce((s, x) => s + (x.gsc?.impressions || 0), 0),
+    });
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/plesk/sync') {
+    if (!PLESK_SERVERS.length) { json(res, { error: 'ไม่มี Plesk credentials' }, 400); return; }
+    syncPleskDomains().catch(console.error);
+    json(res, { success: true, message: 'กำลัง sync โดเมนจาก Plesk...' });
+    return;
+  }
+
+  if (req.method === 'GET' && url === '/api/plesk/status') {
+    if (!PLESK_SERVERS.length) { json(res, { connected: false, servers: [] }); return; }
+    const statuses = [];
+    for (const srv of PLESK_SERVERS) {
+      try {
+        const r = await pleskRequest('GET', '/server', null, srv);
+        statuses.push({ name: srv.name, host: srv.host, connected: r.status === 200, hostname: r.data?.hostname, version: r.data?.panel_version });
+      } catch (e) {
+        statuses.push({ name: srv.name, host: srv.host, connected: false, reason: e.message });
+      }
+    }
+    json(res, { connected: statuses.some(s => s.connected), servers: statuses });
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/domains/add') {
+    const body = await parseBody(req);
+    const domain = body.domain?.replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase();
+    if (!domain) { json(res, { error: 'ต้องระบุ domain' }, 400); return; }
+    if (memoryDomains.find(d => d.domain === domain)) { json(res, { error: 'มีโดเมนนี้อยู่แล้ว' }, 409); return; }
+    const newD = { domain, status: 'unknown', statusCode: 0, responseTime: 0, checkedAt: null, error: null, sslExpiry: null, sslDaysLeft: null, expiryDate: null, daysLeft: null, notes: body.notes || '', tags: body.tags || [], gsc: null, addedAt: new Date().toISOString() };
+    memoryDomains.push(newD);
+    await saveToSheets(memoryDomains);
+    checkDomain(domain).then(r => { const idx = memoryDomains.findIndex(d => d.domain === domain); if (idx !== -1) { Object.assign(memoryDomains[idx], r); saveToSheets(memoryDomains); } });
+    json(res, { success: true, domain: newD });
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/domains/import') {
+    const body = await parseBody(req);
+    const rows = parseCSV(body.csv || '');
+    let added = 0, skipped = 0;
+    rows.forEach(row => {
+      const domain = (row.domain || '').replace(/^https?:\/\//, '').replace(/\/.*$/, '').toLowerCase().trim();
+      if (!domain || memoryDomains.find(d => d.domain === domain)) { skipped++; return; }
+      memoryDomains.push({ domain, status: 'unknown', statusCode: 0, responseTime: 0, checkedAt: null, error: null, sslExpiry: null, sslDaysLeft: null, expiryDate: row.expiry_date || null, daysLeft: row.days_left ? parseInt(row.days_left) : null, notes: row.notes || '', tags: row.tags ? row.tags.split(';') : [], gsc: null, addedAt: new Date().toISOString() });
+      added++;
+    });
+    await saveToSheets(memoryDomains);
+    setTimeout(() => checkAllDomains(), 500);
+    json(res, { success: true, added, skipped, total: memoryDomains.length });
+    return;
+  }
+
+  if (req.method === 'DELETE' && url.startsWith('/api/domains/')) {
+    const domain = decodeURIComponent(url.split('/api/domains/')[1]);
+    const before = memoryDomains.length;
+    memoryDomains = memoryDomains.filter(d => d.domain !== domain);
+    await saveToSheets(memoryDomains);
+    json(res, { success: true, removed: before - memoryDomains.length });
+    return;
+  }
+
+  if (req.method === 'POST' && url.startsWith('/api/check/')) {
+    const domain = decodeURIComponent(url.split('/api/check/')[1]);
+    const result = await checkDomain(domain);
+    const idx = memoryDomains.findIndex(d => d.domain === domain);
+    if (idx !== -1) { Object.assign(memoryDomains[idx], result); await saveToSheets(memoryDomains); }
+    json(res, result);
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/check-all') {
+    checkAllDomains().catch(console.error);
+    json(res, { success: true, message: 'กำลังเช็คทุกโดเมน...' });
+    return;
+  }
+
+  // Debug: เช็ค domain overlap ระหว่าง GSC และ DomainIntel
+  // Import domains จาก GSC เข้า DomainIntel
+  if (req.method === 'POST' && url === '/api/gsc/import-domains') {
+    (async () => {
+      const token = await refreshGSCToken();
+      if (!token) return json(res, { error: 'no token' });
+
+      _gscSites = null;
+      const sites = await getGSCSiteList(token);
+      const existingDomains = new Set(memoryDomains.map(d => d.domain.toLowerCase()));
+
+      let imported = 0;
+      const newDomains = [];
+
+      for (const site of sites) {
+        // แปลง https://domain.com → domain.com
+        const domain = site.replace('https://', '').replace('http://', '').replace(/\/$/, '').toLowerCase();
+        if (!existingDomains.has(domain)) {
+          const newD = {
+            domain,
+            status: 'unknown',
+            statusCode: 0,
+            responseTime: 0,
+            checkedAt: null,
+            error: null,
+            sslExpiry: null,
+            sslDaysLeft: null,
+            expiryDate: null,
+            daysLeft: null,
+            notes: 'นำเข้าจาก GSC',
+            tags: ['gsc'],
+            gsc: null,
+            addedAt: new Date().toISOString()
+          };
+          memoryDomains.push(newD);
+          newDomains.push(domain);
+          imported++;
+        }
+      }
+
+      if (imported > 0) {
+        await saveToSheets(memoryDomains);
+        console.log('[GSC] Import', imported, 'domains from GSC');
+        smartAlert('info', '📥 GSC Import เสร็จ\n✅ เพิ่ม ' + imported + ' โดเมนจาก GSC\nรวมทั้งหมด: ' + memoryDomains.length + ' โดเมน');
+      }
+
+      json(res, {
+        success: true,
+        imported,
+        total: memoryDomains.length,
+        newDomains: newDomains.slice(0, 20)
+      });
+    })().catch(e => { console.error('[GSC Import]', e.message); json(res, { error: e.message }); });
+    return;
+  }
+
+  if (req.method === 'GET' && url === '/api/gsc/debug') {
+    (async () => {
+      const token = await refreshGSCToken();
+      if (!token) return json(res, { error: 'no token' });
+      _gscSites = null;
+      const sites = await getGSCSiteList(token);
+      const domainList = memoryDomains.map(d => d.domain.toLowerCase());
+      const matched = sites.filter(s => {
+        const domain = s.replace('https://', '').replace(/\/$/, '');
+        return domainList.includes(domain);
+      });
+      const notMatched = sites.filter(s => {
+        const domain = s.replace('https://', '').replace(/\/$/, '');
+        return !domainList.includes(domain);
+      });
+      json(res, {
+        gscTotal: sites.length,
+        domainIntelTotal: domainList.length,
+        matched: matched.length,
+        matchedSample: matched.slice(0, 10),
+        notMatchedSample: notMatched.slice(0, 10),
+        domainSample: domainList.slice(0, 5),
+        gscSample: sites.slice(0, 5)
+      });
+    })().catch(e => json(res, { error: e.message }));
+    return;
+  }
+
+  if (req.method === 'POST' && url.startsWith('/api/gsc/sync/')) {
+    const domain = decodeURIComponent(url.split('/api/gsc/sync/')[1]);
+    const idx = memoryDomains.findIndex(d => d.domain === domain);
+    if (idx === -1) { json(res, { error: 'ไม่พบโดเมน' }, 404); return; }
+    memoryDomains[idx] = await syncGSCForDomain(memoryDomains[idx]);
+    await saveToSheets(memoryDomains);
+    json(res, { success: true });
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/gsc/sync-all') {
+    (async () => {
+      _gscSites = null; // reset site cache
+      console.log('[GSC] sync-all start:', memoryDomains.length, 'domains');
+      let synced = 0;
+      for (let i = 0; i < memoryDomains.length; i++) {
+        memoryDomains[i] = await syncGSCForDomain(memoryDomains[i]);
+        if (memoryDomains[i].gsc && memoryDomains[i].gsc.inGSC) synced++;
+        if (i > 0 && i % 20 === 0) {
+          await saveToSheets(memoryDomains);
+          await new Promise(r => setTimeout(r, 300));
+        }
+      }
+      await saveToSheets(memoryDomains);
+      console.log('[GSC] sync-all done:', synced, 'in GSC');
+      smartAlert('info', '✅ GSC Sync เสร็จ\n📊 ' + synced + ' โดเมนใน GSC');
+    })().catch(e => console.error('[GSC] sync-all error:', e.message));
+    json(res, { success: true, message: 'Sync GSC กำลังทำงาน...' });
+    return;
+  }
+
+  if (url === '/api/config') {
+    if (req.method === 'GET') {
+      const cfg = loadConfig();
+      const safe = JSON.parse(JSON.stringify(cfg));
+      if (safe.gsc?.clientSecret) safe.gsc.clientSecret = '***';
+      if (safe.alerts?.lineToken) safe.alerts.lineToken = safe.alerts.lineToken.slice(0, 8) + '...';
+      json(res, { ...safe, pleskHost: PLESK_SERVERS.map(s=>s.name).join(', '), pleskConnected: PLESK_SERVERS.length > 0, pleskServers: PLESK_SERVERS.length, sheetsConnected: !!(SHEET_ID && SERVICE_ACCOUNT?.client_email) });
+    } else {
+      const body = await parseBody(req);
+      const cfg = loadConfig();
+      if (body.gsc) Object.assign(cfg.gsc, body.gsc);
+      if (body.alerts) Object.assign(cfg.alerts, body.alerts);
+      saveConfig(cfg);
+      json(res, { success: true });
+    }
+    return;
+  }
+
+  // Bulk auto-fix
+  if (req.method === 'POST' && url === '/api/autofix-all') {
+    const body = await parseBody(req);
+    const domains = body.domains || [];
+    const results = [];
+    for (const domain of domains) {
+      const idx = memoryDomains.findIndex(d => d.domain === domain);
+      if (idx === -1) { results.push({ domain, success: false, message: 'ไม่พบโดเมน' }); continue; }
+      const domainObj = memoryDomains[idx];
+      if (domainObj.status !== 'down') { results.push({ domain, success: false, message: 'ไม่ใช่สถานะ Down' }); continue; }
+      const actions = [];
+      if (domainObj.pleskId && !domainObj.pleskActive) {
+        const ok = await pleskUnsuspend(domainObj.pleskId, domainObj.pleskHost);
+        if (ok) { memoryDomains[idx].pleskActive = true; actions.push('Unsuspend Plesk OK'); }
+        else actions.push('Unsuspend Plesk FAILED');
+      }
+      if (CF_API_TOKEN && [521,522,523,524].includes(domainObj.statusCode)) {
+        const zoneId = await pauseCloudflareZone(domain);
+        if (zoneId) actions.push('Pause CF OK');
+        else actions.push('Pause CF ไม่พบ zone');
+      }
+      results.push({ domain, success: true, message: actions.join(', ') || 'ไม่มีการแก้ไข' });
+    }
+    await saveToSheets(memoryDomains);
+    // แจ้ง Telegram สรุป
+    const fixed = results.filter(r => r.success && r.message !== 'ไม่มีการแก้ไข').length;
+    if (fixed > 0) {
+      smartAlert('info', `🔧 Bulk Auto-Fix สำเร็จ</b>
+✅ แก้ไขได้: ${fixed} โดเมน
+📋 ทั้งหมด: ${domains.length} โดเมน
+🕐 ${new Date().toLocaleString('th-TH')}`);
+    }
+    json(res, { success: true, results });
+    return;
+  }
+
+  if (req.method === 'POST' && url.startsWith('/api/autofix/')) {
+    const domain = decodeURIComponent(url.split('/api/autofix/')[1]);
+    const idx = memoryDomains.findIndex(d => d.domain === domain);
+    if (idx === -1) { json(res, { error: 'ไม่พบโดเมน' }, 404); return; }
+    const domainObj = memoryDomains[idx];
+    const actions = [];
+
+    // 1. Plesk Unsuspend
+    if (domainObj.pleskId && !domainObj.pleskActive) {
+      const ok = await pleskUnsuspend(domainObj.pleskId, domainObj.pleskHost);
+      if (ok) {
+        memoryDomains[idx].pleskActive = true;
+        memoryDomains[idx].pleskStatus = 0;
+        actions.push('Unsuspend Plesk สำเร็จ');
+        smartAlert('info', `🔧 Auto-Fix สำเร็จ</b>
+🌐 โดเมน: <code>${domain}</code>
+⚡ การดำเนินการ: Unsuspend ผ่าน Plesk
+✅ สถานะ: เปิดใช้งานแล้ว
+🕐 เวลา: ${new Date().toLocaleString('th-TH')}`)
+      } else {
+        actions.push('Unsuspend Plesk ไม่สำเร็จ');
+      }
+    }
+
+    // 2. Cloudflare Pause ถ้าเป็น CF error
+    if (CF_API_TOKEN && [521, 522, 523, 524].includes(domainObj.statusCode)) {
+      const zoneId = await pauseCloudflareZone(domain);
+      if (zoneId) {
+        actions.push('Pause Cloudflare สำเร็จ');
+        smartAlert('warning', `☁️ Auto-Fix Cloudflare</b>
+🌐 โดเมน: <code>${domain}</code>
+⚡ การดำเนินการ: Pause Cloudflare (Error ${domainObj.statusCode})
+✅ Traffic ไป Origin โดยตรงแล้ว
+🕐 เวลา: ${new Date().toLocaleString('th-TH')}`);
+        // Unpause หลัง 10 นาทีถ้าเว็บกลับมา
+        setTimeout(async () => {
+          const r = await checkDomain(domain);
+          if (r.status === 'up') {
+            await unpauseCloudflareZone(domain, zoneId);
+            smartAlert('info', `✅ โดเมนกลับมาแล้ว
+🌐 โดเมน: <code>${domain}</code>
+☁️ Unpause Cloudflare แล้ว
+🕐 ${new Date().toLocaleString('th-TH')}`);
+          }
+          const i = memoryDomains.findIndex(d => d.domain === domain);
+          if (i !== -1) { Object.assign(memoryDomains[i], r); await saveToSheets(memoryDomains); }
+        }, 10 * 60 * 1000);
+      } else {
+        actions.push('Pause Cloudflare ไม่พบ zone');
+      }
+    }
+
+    // เช็คสถานะใหม่หลัง 30 วินาที
+    setTimeout(async () => {
+      const r = await checkDomain(domain);
+      const i = memoryDomains.findIndex(d => d.domain === domain);
+      if (i !== -1) { Object.assign(memoryDomains[i], r); await saveToSheets(memoryDomains); }
+    }, 30000);
+
+    await saveToSheets(memoryDomains);
+    let noFixReason = 'ไม่พบสาเหตุที่แก้ไขอัตโนมัติได้';
+    if (!domainObj.pleskId) noFixReason = 'ไม่พบข้อมูล Plesk — กรุณา Sync Plesk ใหม่';
+    else if (domainObj.pleskActive && ![521,522,523,524].includes(domainObj.statusCode)) {
+      noFixReason = `Plesk Active แล้ว และ Error ${domainObj.statusCode || 'Timeout'} — ปัญหาที่ Origin Server`;
+      // mark as cannot-fix
+      const cidx = memoryDomains.findIndex(d => d.domain === domain);
+      if (cidx !== -1) memoryDomains[cidx].cannotAutoFix = true;
+    } else if (!CF_API_TOKEN) {
+      noFixReason = 'ไม่มี Cloudflare API Token';
+    }
+    const msg = actions.length ? actions.join(', ') : noFixReason;
+    json(res, { success: true, message: msg, actions });
+    return;
+  }
+
+
+
+
+
+  // ===== BULK GSC API =====
+  if (req.method === 'POST' && url === '/api/gsc/bulk-add') {
+    let body = '';
+    req.on('data', ch => body += ch);
+    req.on('end', async () => {
+      try {
+        const { domains } = JSON.parse(body || '{}');
+        if (!domains || !domains.length) return json(res, { error: 'ไม่มีโดเมน' });
+        const result = await bulkAddToGSC(domains);
+        json(res, result);
+      } catch(e) { json(res, { error: e.message }); }
+    });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/gsc/bulk-progress') {
+    json(res, { success: true, progress: bulkGSCProgress });
+    return;
+  }
+  // ตรวจ DNS provider ของโดเมน (preview ก่อน bulk)
+  if (req.method === 'GET' && url.startsWith('/api/gsc/check-dns/')) {
+    const domain = decodeURIComponent(url.split('/api/gsc/check-dns/')[1]);
+    const info = await detectDNSProvider(domain);
+    json(res, { success: true, domain, ...info });
+    return;
+  }
+
+
+  // Verify โดเมนที่ค้าง (TXT เขียนแล้ว รอ propagate)
+  if (req.method === 'POST' && url === '/api/gsc/verify-pending') {
+    let body = '';
+    req.on('data', ch => body += ch);
+    req.on('end', async () => {
+      try {
+        const token = await refreshGSCToken();
+        if (!token) return json(res, { error: 'GSC token ใช้ไม่ได้' });
+        // หาโดเมนที่ pendingVerify จาก progress
+        const pending = (bulkGSCProgress.results || []).filter(r => r.pendingVerify && !r.ok);
+        if (!pending.length) return json(res, { error: 'ไม่มีโดเมนที่ค้าง verify' });
+
+        let verified = 0, stillPending = 0;
+        for (const r of pending) {
+          const vr = await gscVerifyDomain(token, r.domain);
+          if (vr.ok) {
+            r.ok = true; r.pendingVerify = false;
+            r.error = ''; verified++;
+            bulkGSCProgress.success++; bulkGSCProgress.failed--;
+            logEvent('gsc', 'เพิ่ม ' + r.domain + ' เข้า GSC สำเร็จ (retry)', { domain: r.domain });
+          } else {
+            stillPending++;
+          }
+          await new Promise(rs => setTimeout(rs, 1000));
+        }
+        json(res, { success: true, verified, stillPending, total: pending.length });
+      } catch(e) { json(res, { error: e.message }); }
+    });
+    return;
+  }
+
+
+  // ===== EMPLOYEES / COMPANY API =====
+  if (req.method === 'GET' && url === '/api/employees') {
+    const list = EMPLOYEES.map(e => ({
+      ...e,
+      state: employeeState[e.id] || { status:'idle', tasksToday:0, tasksTotal:0, lastActiveAt:null, lastTask:null }
+    }));
+    json(res, { success: true, employees: list,
+      totalToday: Object.values(employeeState).reduce((s,st)=>s+(st.tasksToday||0),0),
+      totalAll: Object.values(employeeState).reduce((s,st)=>s+(st.tasksTotal||0),0)
+    });
+    return;
+  }
+  if (req.method === 'GET' && url.startsWith('/api/employees/activity')) {
+    const u = new URL('http://x' + url);
+    const empId = u.searchParams.get('emp');
+    const limit = parseInt(u.searchParams.get('limit') || '100');
+    let acts = employeeActivity;
+    if (empId && empId !== 'all') acts = acts.filter(a => a.empId === empId);
+    json(res, { success: true, activity: acts.slice(0, limit) });
+    return;
+  }
+
+
+
+  // ให้ Diagnostician วิเคราะห์แล้วเสนองาน (เข้า approval queue)
+  if (req.method === 'POST' && url === '/api/employees/propose') {
+    proposeActionsFromAnalysis().then(result => json(res, result))
+      .catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+  // ดู safe actions ที่มี
+  if (req.method === 'GET' && url === '/api/safe-actions') {
+    const actions = Object.entries(SAFE_ACTIONS).map(([key, a]) => ({ key, label: a.label, desc: a.desc, emp: a.emp }));
+    json(res, { success: true, actions });
+    return;
+  }
+
+
+  // ดึงงานที่พนักงานคนนี้ทำได้
+  if (req.method === 'GET' && url.startsWith('/api/employees/tasks/')) {
+    const empId = url.split('/api/employees/tasks/')[1];
+    const tasks = (EMPLOYEE_TASKS[empId] || []).map(t => ({ id: t.id, type: t.type, label: t.label }));
+    json(res, { success: true, tasks, hasAI: !!process.env.ANTHROPIC_API_KEY });
+    return;
+  }
+  // รันงานของพนักงาน (real-time)
+  if (req.method === 'POST' && url.startsWith('/api/employees/run/')) {
+    const rest = url.split('/api/employees/run/')[1];
+    const [empId, taskId] = rest.split('/');
+    runEmployeeTask(empId, taskId).then(result => json(res, result))
+      .catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+  // Live activity feed (สำหรับ polling แบบ real-time)
+  if (req.method === 'GET' && url.startsWith('/api/employees/live')) {
+    const u = new URL('http://x' + url);
+    const since = u.searchParams.get('since');
+    let acts = employeeActivity;
+    if (since) acts = acts.filter(a => a.at > since);
+    json(res, { success: true, activity: acts.slice(0, 30), now: new Date().toISOString() });
+    return;
+  }
+
+
+  // ดึงรายการปัญหาที่ตรวจพบ (พร้อม action แก้)
+  if (req.method === 'GET' && url === '/api/problems') {
+    const problems = [];
+    // โดเมน down
+    const down = memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer);
+    down.slice(0, 50).forEach(d => {
+      problems.push({
+        id: 'down-' + d.domain, severity: 'high', emoji: '🔴',
+        title: 'โดเมน down: ' + d.domain,
+        detail: 'Server: ' + (d.pleskServer||'-') + ' · Status: ' + (d.statusCode||'timeout'),
+        action: 'fix-down-domain', actionLabel: 'กู้โดเมน', meta: { domain: d.domain },
+        canAutoFix: true
+      });
+    });
+    // server สุขภาพต่ำ
+    const health = (typeof getAllHealthScores === 'function') ? getAllHealthScores() : [];
+    health.filter(h => h.score < 70).forEach(h => {
+      problems.push({
+        id: 'health-' + h.server, severity: h.score < 50 ? 'high' : 'medium', emoji: '⚠️',
+        title: h.server + ' สุขภาพต่ำ (เกรด ' + h.grade + ')',
+        detail: 'คะแนน ' + h.score + '/100 · down ' + h.down + ' โดเมน',
+        action: 'disk-cleanup', actionLabel: 'ทำความสะอาด', meta: {},
+        canAutoFix: true
+      });
+    });
+    // SSL ใกล้หมด
+    const sslSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0);
+    sslSoon.slice(0, 30).forEach(d => {
+      problems.push({
+        id: 'ssl-' + d.domain, severity: d.sslDaysLeft <= 7 ? 'high' : 'medium', emoji: '🔒',
+        title: 'SSL ใกล้หมด: ' + d.domain,
+        detail: 'เหลือ ' + d.sslDaysLeft + ' วัน',
+        action: null, actionLabel: null, meta: { domain: d.domain },
+        canAutoFix: false, note: 'certbot ต่ออายุอัตโนมัติทุก 90 วัน'
+      });
+    });
+    // โดเมนใกล้หมดอายุ
+    const expSoon = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0);
+    expSoon.slice(0, 30).forEach(d => {
+      problems.push({
+        id: 'exp-' + d.domain, severity: d.daysLeft <= 7 ? 'high' : 'low', emoji: '📅',
+        title: 'โดเมนใกล้หมดอายุ: ' + d.domain,
+        detail: 'เหลือ ' + d.daysLeft + ' วัน',
+        action: null, actionLabel: null, meta: { domain: d.domain },
+        canAutoFix: false, note: 'ต้องต่ออายุที่ผู้ให้บริการโดเมน'
+      });
+    });
+
+    problems.sort((a,b) => {
+      const order = { high: 0, medium: 1, low: 2 };
+      return order[a.severity] - order[b.severity];
+    });
+    json(res, { success: true, problems, total: problems.length,
+      autoFixable: problems.filter(p => p.canAutoFix).length });
+    return;
+  }
+
+  // แก้ปัญหาทันที (กดจากรายงาน) — งานปลอดภัยทำเลย งานเสี่ยงขออนุมัติ
+  if (req.method === 'POST' && url === '/api/problems/fix') {
+    let body = '';
+    req.on('data', ch => body += ch);
+    req.on('end', async () => {
+      try {
+        const { action, meta, immediate } = JSON.parse(body || '{}');
+        if (!action || !SAFE_ACTIONS[action]) return json(res, { ok: false, error: 'action ไม่ถูกต้อง' });
+        const act = SAFE_ACTIONS[action];
+
+        if (immediate) {
+          // ทำเลย (เฉพาะ action ปลอดภัย)
+          setEmployeeWorking(act.emp, act.label, 30000);
+          const result = await act.run(meta || {});
+          logAutoFix(act.emp, 'สั่งแก้จากรายงาน', act.label, result);
+          empLog(act.emp, 'แก้ปัญหา (สั่งด้วยมือ)', act.label);
+          json(res, { ok: true, immediate: true, result });
+        } else {
+          // ขออนุมัติ
+          requestApproval(act.emp, act.label, act.desc, action, meta || {});
+          json(res, { ok: true, immediate: false, message: 'ส่งขออนุมัติแล้ว' });
+        }
+      } catch(e) { json(res, { ok: false, error: e.message }); }
+    });
+    return;
+  }
+
+  // Auto-fix history + toggle
+  if (req.method === 'GET' && url === '/api/autofix/history') {
+    json(res, { success: true, history: autoFixHistory.slice(0, 50), enabled: autoFixEnabled });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/autofix/toggle') {
+    autoFixEnabled = !autoFixEnabled;
+    json(res, { success: true, enabled: autoFixEnabled });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/autofix/run') {
+    runAutoFixCycle().then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
+
+
+  // วินิจฉัย server ทีละตัว
+  if (req.method === 'GET' && url.startsWith('/api/diagnose/')) {
+    const serverName = decodeURIComponent(url.split('/api/diagnose/')[1]);
+    const srv = PLESK_SERVERS.find(s => s.name === serverName);
+    if (!srv) return json(res, { ok: false, error: 'ไม่พบ server' });
+    empLog('diagnostician', 'วินิจฉัย server', serverName);
+    diagnoseServer(srv).then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
+
+  // Deep remediation — วินิจฉัยแล้วแก้เอง
+  if (req.method === 'POST' && url === '/api/remediate/run') {
+    runDeepRemediation().then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/remediate/status') {
+    const today = new Date().toISOString().split('T')[0];
+    if (today !== autoFixDayStamp) { autoFixDayStamp = today; autoFixDailyCount = 0; }
+    json(res, { success: true, enabled: autoRemediateEnabled, dailyCount: autoFixDailyCount, dailyCap: AUTO_FIX_DAILY_CAP,
+      cooldowns: Object.entries(autoFixCooldowns).map(([k,t]) => ({ key: k, minsLeft: Math.max(0, Math.ceil((AUTO_FIX_COOLDOWN_MS-(Date.now()-t))/60000)) })).filter(c=>c.minsLeft>0) });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/remediate/toggle') {
+    autoRemediateEnabled = !autoRemediateEnabled;
+    json(res, { success: true, enabled: autoRemediateEnabled });
+    return;
+  }
+
+
+  // Live server metrics (จาก cache — เร็ว ไม่แตะ agent)
+  if (req.method === 'GET' && url === '/api/server-metrics-live') {
+    json(res, { success: true, cache: serverMetricsCache, lastCollectAt, collecting: isCollectingMetrics });
+    return;
+  }
+  // สั่ง collect ทันที (manual refresh)
+  if (req.method === 'POST' && url === '/api/server-metrics-collect') {
+    if (!isCollectingMetrics) collectServerMetrics().catch(()=>{});
+    json(res, { success: true, started: !isCollectingMetrics ? false : true, collecting: isCollectingMetrics });
+    return;
+  }
+
+
+  // วินิจฉัยโดเมนเดี่ยว
+  if (req.method === 'GET' && url.startsWith('/api/diagnose-domain/')) {
+    const domain = decodeURIComponent(url.split('/api/diagnose-domain/')[1]);
+    empLog('diagnostician', 'วินิจฉัยโดเมน', domain);
+    diagnoseDomain(domain).then(r => json(res, { success: true, ...r })).catch(e => json(res, { success: false, error: e.message }));
+    return;
+  }
+
+
+  // ตรวจลึก nginx (อ่านอย่างเดียว)
+  if (req.method === 'GET' && url.startsWith('/api/deep-nginx/')) {
+    const serverName = decodeURIComponent(url.split('/api/deep-nginx/')[1]);
+    empLog('diagnostician', 'ตรวจลึก nginx', serverName);
+    deepCheckNginx(serverName).then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
+
+  // Reload nginx (ปลอดภัย: เช็ค nginx -t ก่อนเสมอ ถ้า config error จะไม่ reload)
+  if (req.method === 'POST' && url.startsWith('/api/nginx-reload/')) {
+    const serverName = decodeURIComponent(url.split('/api/nginx-reload/')[1]);
+    const srv = PLESK_SERVERS.find(s => s.name === serverName);
+    if (!srv) return json(res, { ok: false, error: 'ไม่พบ server' });
+    (async () => {
+      // สำคัญ! เช็ค nginx -t ก่อน ถ้า fail จะไม่ reload (กันโฮสดับ)
+      const cmd = 'export PATH=$PATH:/usr/sbin:/usr/local/sbin:/sbin; NGINX=$(command -v nginx || echo /usr/sbin/nginx); $NGINX -t 2>&1 | tail -3; echo "=RESULT="; if $NGINX -t 2>/dev/null; then $NGINX -s reload 2>&1 && echo "RELOADED" || echo "RELOAD_FAIL"; else echo "TEST_FAIL_SKIP_RELOAD"; fi; echo "=DONE="';
+      const cmdId = queueCommand(srv.host, cmd);
+      let out = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        if (agentResults[cmdId]) { out = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
+      }
+      if (!out) return json(res, { ok: false, error: 'agent ตอบไม่ทัน' });
+      if (out.includes('RELOADED')) {
+        empLog('engineer', 'Reload nginx', serverName + ' (config ผ่าน)');
+        logEvent('fix', 'Reload nginx ' + serverName + ' สำเร็จ');
+        smartAlert('warning', '🔧 Reload nginx: ' + serverName + ' สำเร็จ');
+        json(res, { ok: true, detail: 'nginx reload สำเร็จ — config โหลดใหม่แล้ว' });
+      } else if (out.includes('TEST_FAIL_SKIP_RELOAD')) {
+        json(res, { ok: false, error: 'config มี error — ไม่ reload (กันโฮสดับ) ต้องแก้ config ก่อน' });
+      } else {
+        json(res, { ok: false, error: 'reload ไม่สำเร็จ: ' + out.slice(0,150) });
+      }
+    })().catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
+
+  // ดึง nginx error เต็ม (raw)
+  if (req.method === 'GET' && url.startsWith('/api/nginx-error/')) {
+    const serverName = decodeURIComponent(url.split('/api/nginx-error/')[1]);
+    getNginxError(serverName).then(r => json(res, r)).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+
+
+  // ผู้ช่วย AI วิเคราะห์ error
+  if (req.method === 'POST' && url === '/api/ai-analyze') {
+    let body = '';
+    req.on('data', ch => body += ch);
+    req.on('end', async () => {
+      try {
+        const { errorText, context } = JSON.parse(body || '{}');
+        if (!errorText || !errorText.trim()) return json(res, { ok: false, error: 'ใส่ข้อความ error ก่อน' });
+        empLog('diagnostician', 'AI วิเคราะห์ error', errorText.slice(0, 50));
+        const result = await aiAnalyzeError(errorText, context);
+        json(res, result);
+      } catch(e) { json(res, { ok: false, error: e.message }); }
+    });
+    return;
+  }
+
+  // ===== COMMAND CENTER API =====
+  if (req.method === 'GET' && url === '/api/command-center') {
+    try { json(res, { success: true, data: buildCommandCenter() }); }
+    catch(e) { json(res, { success: false, error: e.message }); }
+    return;
+  }
+
+  // ===== EMPLOYEE BRAIN API =====
+  // สั่งให้พนักงานวิเคราะห์ (manual trigger)
+  if (req.method === 'POST' && url.startsWith('/api/employees/think/')) {
+    const empId = url.split('/api/employees/think/')[1];
+    runEmployeeBrain(empId).then(result => {
+      json(res, result);
+    }).catch(e => json(res, { ok: false, error: e.message }));
+    return;
+  }
+  // ดูรายงานล่าสุดของพนักงาน
+  if (req.method === 'GET' && url.startsWith('/api/employees/report/')) {
+    const empId = url.split('/api/employees/report/')[1];
+    const report = employeeReports[empId];
+    json(res, { success: true, report: report || null, hasAI: !!process.env.ANTHROPIC_API_KEY });
+    return;
+  }
+  // ดูรายงานทั้งหมด (สำหรับ CEO dashboard)
+  if (req.method === 'GET' && url === '/api/reports') {
+    json(res, { success: true, reports: employeeReports, hasAI: !!process.env.ANTHROPIC_API_KEY });
+    return;
+  }
+
+  // ===== APPROVAL QUEUE API =====
+  if (req.method === 'GET' && url === '/api/approvals') {
+    json(res, { success: true,
+      approvals: approvalQueue.slice(0, 100),
+      pending: approvalQueue.filter(a => a.status === 'pending').length
+    });
+    return;
+  }
+  if (req.method === 'POST' && url.startsWith('/api/approvals/')) {
+    const parts = url.split('/');
+    const id = parts[3];
+    const decision = parts[4]; // approve | reject
+    const idx = approvalQueue.findIndex(a => a.id === id);
+    if (idx === -1) return json(res, { error: 'ไม่พบคำขอ' });
+    const apr = approvalQueue[idx];
+    if (decision === 'approve') {
+      apr.status = 'approved'; apr.decidedAt = new Date().toISOString();
+      empLog(apr.empId, 'ได้รับอนุมัติ', apr.title, { approvalId: id });
+      logEvent('approval', 'เจ้าของอนุมัติ: ' + apr.title, { empId: apr.empId });
+      saveApprovals();
+      // เฟส 3: รัน action จริงหลังอนุมัติ (async ไม่ block response)
+      if (apr.action && typeof executeApprovedAction === 'function') {
+        executeApprovedAction(apr).then(result => {
+          apr.executed = true; apr.executeResult = result; saveApprovals();
+        }).catch(e => { apr.executeResult = { ok: false, detail: e.message }; saveApprovals(); });
+      }
+    } else if (decision === 'reject') {
+      apr.status = 'rejected'; apr.decidedAt = new Date().toISOString();
+      empLog(apr.empId, 'ถูกปฏิเสธ', apr.title, { approvalId: id });
+    }
+    saveApprovals();
+    json(res, { success: true, approval: apr });
+    return;
+  }
+
+  // ===== TASKS API =====
+  if (req.method === 'GET' && url === '/api/tasks') {
+    json(res, { success: true, tasks: memoryTasks });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/tasks') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const t = JSON.parse(body);
+        const task = {
+          id: 'task_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+          title: t.title || 'งานใหม่',
+          description: t.description || '',
+          status: t.status || 'todo',
+          priority: t.priority || 'normal',
+          domain: t.domain || '',
+          server: t.server || '',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        memoryTasks.unshift(task);
+        saveTasks();
+        json(res, { success: true, task });
+      } catch(e) { json(res, { error: e.message }); }
+    });
+    return;
+  }
+  if (req.method === 'PUT' && url.startsWith('/api/tasks/')) {
+    const id = url.split('/api/tasks/')[1];
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const updates = JSON.parse(body);
+        const idx = memoryTasks.findIndex(t => t.id === id);
+        if (idx === -1) return json(res, { error: 'not found' });
+        Object.assign(memoryTasks[idx], updates, { updatedAt: new Date().toISOString() });
+        saveTasks();
+        json(res, { success: true, task: memoryTasks[idx] });
+      } catch(e) { json(res, { error: e.message }); }
+    });
+    return;
+  }
+  if (req.method === 'DELETE' && url.startsWith('/api/tasks/')) {
+    const id = url.split('/api/tasks/')[1];
+    memoryTasks = memoryTasks.filter(t => t.id !== id);
+    saveTasks();
+    json(res, { success: true });
+    return;
+  }
+
+  // Health Scores API
+  if (req.method === 'GET' && url === '/api/health-scores') {
+    json(res, { success: true, scores: getAllHealthScores(), overallAvg: (() => {
+      const s = getAllHealthScores();
+      return s.length ? Math.round(s.reduce((a,b) => a+b.score, 0) / s.length) : 0;
+    })() });
+    return;
+  }
+
+  // Auto-heal toggle API (added feature)
+  if (req.method === 'GET' && url === '/api/autoheal-config') {
+    json(res, {
+      success: true,
+      disabled: autoHealDisabledList,
+      servers: PLESK_SERVERS.map(s => ({ name: s.name, host: s.host, autoHealDisabled: autoHealDisabledFor(s) }))
+    });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/autoheal-toggle') {
+    const body = await parseBody(req);
+    const name = String((body && body.server) || '').trim();
+    if (!name) { json(res, { success: false, error: 'ต้องระบุ server' }); return; }
+    const want = !!(body && body.disabled);
+    const cur = isAutoHealDisabled(name);
+    if (want && !cur) autoHealDisabledList.push(name);
+    if (!want && cur) autoHealDisabledList = autoHealDisabledList.filter(
+      x => String(x).trim().toLowerCase() !== name.toLowerCase()
+    );
+    saveAutoHealList();
+    try { logEvent('info', 'Auto-heal ' + (want ? 'ปิด' : 'เปิด') + ' สำหรับ ' + name); } catch (e) {}
+    json(res, { success: true, server: name, disabled: want, list: autoHealDisabledList });
+    return;
+  }
+
+  // สถานะ CF ต่อโดเมน (จาก cache) + รายชื่อโดเมนพร้อมเครื่อง
+  if (req.method === 'GET' && url === '/api/cloudflare/domains-status') {
+    const list = [...new Set(memoryDomains.map(d => d.domain).filter(Boolean))];
+    const rows = list.map(dom => {
+      const d = memoryDomains.find(x => x.domain === dom) || {};
+      const s = cfStatusCache[dom] || null;
+      return { domain: dom, server: d.pleskServer || null,
+        hasZone: s ? s.hasZone : null, hasRule: s ? s.hasRule : null, checkedAt: s ? s.at : null };
+    });
+    json(res, { success: true, domains: rows, scan: cfScan, lastScanCount: Object.keys(cfStatusCache).length });
+    return;
+  }
+  // สแกนสถานะ CF ทุกโดเมน (background) — ต้องมี key
+  if (req.method === 'POST' && url === '/api/cloudflare/scan') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (cfScan.running) { json(res, { success: false, error: 'กำลังสแกนอยู่แล้ว' }); return; }
+    const list = [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
+    cfScanAll(list).catch(() => { cfScan.running = false; });
+    json(res, { success: true, started: true, total: list.length });
+    return;
+  }
+
+  // Cloudflare Managed Challenge API (added feature)
+  if (req.method === 'GET' && url === '/api/cloudflare/config') {
+    json(res, { success: true, tokenSet: !!CF_TOKEN });
+    return;
+  }
+  // ตั้ง/ถอด CF ทีละโดเมน (ต้องมี key)
+  if (req.method === 'POST' && url === '/api/cloudflare/domain') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
+    const domain = String(body.domain || '').trim().toLowerCase();
+    const enable = !!body.enable;
+    if (!validDomainName(domain)) { json(res, { success: false, error: 'ชื่อโดเมนไม่ถูกต้อง' }); return; }
+    const r = await cfApplyDomain(domain, enable);
+    try { logEvent('info', 'Cloudflare ' + (enable ? 'ตั้ง' : 'ถอด') + ' wp-login challenge: ' + domain + (r.ok ? ' สำเร็จ' : ' ล้มเหลว')); } catch (e) {}
+    json(res, { success: r.ok, ...r });
+    return;
+  }
+  // ตั้ง/ถอด CF ทั้งหมดรวดเดียว (ต้องมี key) — ทำเป็น background, ดูความคืบหน้าที่ /api/cloudflare/bulk-status
+  if (req.method === 'POST' && url === '/api/cloudflare/bulk') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
+    if (cfBulk.running) { json(res, { success: false, error: 'กำลังทำงานอยู่แล้ว — ดูความคืบหน้าที่หน้าจอ' }); return; }
+    const enable = !!body.enable;
+    // รายชื่อโดเมน: จาก body.domains ถ้าส่งมา ไม่งั้นทุกโดเมนใน memory
+    let domains = Array.isArray(body.domains) && body.domains.length
+      ? body.domains.map(x => String(x).trim().toLowerCase()).filter(validDomainName)
+      : [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
+    cfBulk = { running: true, enable, total: domains.length, done: 0, ok: 0, failed: 0, failures: [], startedAt: Date.now(), finishedAt: null };
+    (async () => {
+      for (const dom of domains) {
+        try {
+          const r = await cfApplyDomain(dom, enable);
+          cfBulk.done++;
+          if (r.ok) cfBulk.ok++; else { cfBulk.failed++; if (cfBulk.failures.length < 100) cfBulk.failures.push({ domain: dom, error: r.error }); }
+        } catch (e) {
+          cfBulk.done++; cfBulk.failed++;
+          if (cfBulk.failures.length < 100) cfBulk.failures.push({ domain: dom, error: e.message });
+        }
+        await new Promise(r => setTimeout(r, 250)); // กัน CF rate limit
+      }
+      cfBulk.running = false; cfBulk.finishedAt = Date.now();
+    })().catch(() => { cfBulk.running = false; cfBulk.finishedAt = Date.now(); });
+    json(res, { success: true, started: true, total: domains.length });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/cloudflare/bulk-status') {
+    json(res, { success: true, ...cfBulk });
+    return;
+  }
+
+  // WP-Admin toggle API (added feature)
+  if (req.method === 'GET' && url === '/api/wpadmin/status') {
+    const q = rawUrl.split('?')[1] || '';
+    const want = decodeURIComponent((q.split('server=')[1] || '').split('&')[0] || '');
+    if (!want) { json(res, { success: false, error: 'ต้องระบุ server' }); return; }
+    try {
+      const r = await runOnServer(want, buildWpadminStatusCmd());
+      const st = parseWpadminStatus(r.output || '');
+      json(res, { success: true, server: want, ...st });
+    } catch (e) {
+      json(res, { success: false, server: want, error: e.message });
+    }
+    return;
+  }
+  // รายชื่อโดเมนทั้งหมด + เครื่องที่อยู่ (ให้ frontend ค้นหา)
+  if (req.method === 'GET' && url === '/api/wpadmin/domains') {
+    const list = memoryDomains
+      .filter(d => d.pleskServer)
+      .map(d => ({ domain: d.domain, server: d.pleskServer }));
+    json(res, { success: true, domains: list, servers: PLESK_SERVERS.map(s => s.name) });
+    return;
+  }
+  // เปิด/หยุด "บล็อกทั้งเครื่อง" (ต้องมี key)
+  if (req.method === 'POST' && url === '/api/wpadmin/block') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) {
+      json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง (ISP_AGENT_KEY)' }, 403);
       return;
     }
-    updateActionModal('⏳', 'กำลังดำเนินการ...', 'รอผลจาก Server สูงสุด 90 วินาที');
-    for (let i = 0; i < 90; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      const res = await fetch(`${API}/api/agent/result/${cmdId}`);
-      const data = await res.json();
-      if (data.success) {
-        const output = (data.output || '').replace(/~/g, '\n').trim();
-        const ok = data.exitCode === 0;
-        updateActionModal(ok ? '✅' : '⚠️', ok ? actionNames[action]+' สำเร็จ!' : 'มีข้อผิดพลาด', output || 'เสร็จสิ้น', true);
-        addActionLog(serverName, actionNames[action], ok ? 'success' : 'failed', output);
-        setTimeout(() => updateServerCardStats(serverName), 5000);
-        return;
-      }
+    const serverName = String(body.server || '').trim();
+    const enable = !!body.enable;
+    if (!serverName) { json(res, { success: false, error: 'ต้องระบุ server' }); return; }
+    try {
+      const r = await runOnServer(serverName, buildWpadminBlockCmd(enable));
+      const outp = (r.output || '').trim();
+      if (/RESULT:NOT_APACHE/.test(outp)) { json(res, { success: false, server: serverName, error: 'เครื่องนี้ไม่ใช่ Apache' }); return; }
+      if (/RESULT:CONFIGTEST_FAILED/.test(outp)) { json(res, { success: false, server: serverName, error: 'config ไม่ผ่าน — rollback แล้ว เว็บไม่พัง' }); return; }
+      if (!/RESULT:OK/.test(outp)) { json(res, { success: false, server: serverName, error: 'agent ตอบไม่ชัด: ' + outp.slice(0,100) }); return; }
+      try { logEvent('info', (enable ? 'เปิดกันบอท (บล็อก wp-login) ทั้งเครื่อง ' : 'หยุดกันบอท ') + serverName); } catch (e) {}
+      json(res, { success: true, server: serverName, enable });
+    } catch (e) {
+      json(res, { success: false, server: serverName, error: e.message });
     }
-    updateActionModal('⏱️', 'Timeout', 'Agent ใช้เวลานานกว่าที่คาด', true);
-    addActionLog(serverName, actionNames[action], 'timeout');
-  } catch(e) {
-    updateActionModal('❌', 'Error', e.message, true);
-    addActionLog(serverName, actionNames[action], 'failed', e.message);
+    return;
   }
-}
 
-
-// Action Result Modal
-function closeActionModal() { var m = document.getElementById("action-result-modal"); if(m) m.remove(); }
-function showActionModal(serverName, action) {
-  let modal = document.getElementById('action-result-modal');
-  if (!modal) {
-    modal = document.createElement('div');
-    modal.id = 'action-result-modal';
-    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9000;display:flex;align-items:center;justify-content:center';
-    modal.innerHTML = '<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:32px;max-width:480px;width:90%;text-align:center">'
-      + '<div id="arm-icon" style="font-size:40px;margin-bottom:12px">⏳</div>'
-      + '<div id="arm-title" style="font-size:16px;font-weight:700;margin-bottom:8px"></div>'
-      + '<div id="arm-server" style="font-size:12px;color:var(--text3);margin-bottom:16px"></div>'
-      + '<pre id="arm-output" style="background:var(--bg3);border-radius:8px;padding:12px;font-size:11px;font-family:var(--mono);text-align:left;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin-bottom:16px;display:none"></pre>'
-      + '<button id="arm-close" onclick="closeActionModal()" style="display:none" class="btn btn-green"><i class="ti ti-check"></i> ปิด</button>'
-      + '</div>';
-    document.body.appendChild(modal);
-  }
-  document.getElementById('arm-icon').textContent = '⏳';
-  document.getElementById('arm-title').textContent = 'กำลัง ' + action + '...';
-  document.getElementById('arm-server').textContent = '🖥️ ' + serverName;
-  const out = document.getElementById('arm-output');
-  if (out) { out.textContent = ''; out.style.display = 'none'; }
-  const closeBtn = document.getElementById('arm-close');
-  if (closeBtn) closeBtn.style.display = 'none';
-  modal.style.display = 'flex';
-}
-
-function updateActionModal(icon, title, output, done = false) {
-  const modal = document.getElementById('action-result-modal');
-  if (!modal) return;
-  const iconEl = document.getElementById('arm-icon');
-  const titleEl = document.getElementById('arm-title');
-  const outEl = document.getElementById('arm-output');
-  const closeBtn = document.getElementById('arm-close');
-  if (iconEl) iconEl.textContent = icon;
-  if (titleEl) titleEl.textContent = title;
-  if (outEl && output) { outEl.textContent = output; outEl.style.display = 'block'; }
-  if (done && closeBtn) closeBtn.style.display = 'inline-flex';
-}
-
-async function updateServerCardStats(serverName) {
-  const srv = (window._pleskServers || []).find(s => s.name === serverName);
-  if (!srv) return;
-  const statCmd = 'L=$(cat /proc/loadavg | cut -d" " -f1); MU=$(free -m | grep Mem | tr -s " " | cut -d" " -f3); MT=$(free -m | grep Mem | tr -s " " | cut -d" " -f2); DP=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); DU=$(df -h / | tail -1 | tr -s " " | cut -d" " -f3); DT=$(df -h / | tail -1 | tr -s " " | cut -d" " -f2); A=$(ps aux | grep httpd | grep -v grep | wc -l); P=$(ps aux | grep php-fpm | grep -v grep | wc -l); echo "LOAD:$L RAMU:$MU RAMT:$MT DISKPCT:$DP DISKUSED:$DU DISKTOTAL:$DT APACHE:$A PHPFPM:$P"';
-  try {
-    const cmdId = await sendAgentCommand(serverName, statCmd);
-    if (!cmdId) return;
-    for (let i = 0; i < 90; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      const res = await fetch(`${API}/api/agent/result/${cmdId}`);
-      const data = await res.json();
-      if (data.success) {
-        const parsed = parseServerStats(srv, data.output);
-        updateServerCard(parsed);
-        return;
-      }
+  // เปิด/ปิด wp-admin ของ 1 โดเมน (ต้องมี key — เพราะสั่งเครื่อง reload apache)
+  if (req.method === 'POST' && url === '/api/wpadmin/set') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) {
+      json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง (ISP_AGENT_KEY)' }, 403);
+      return;
     }
-  } catch(e) { console.error('[ServerStats]', e.message); }
-}
-
-async function fixAllServers() {
-  if (!confirm('Fix Load บนทุก Server? จะ restart PHP-FPM และ kill heavy processes')) return;
-  for (const srv of (window._pleskServers || [])) {
-    toast(`⏳ Fix ${srv.name}...`, 'info');
-    await serverAction(srv.name, 'fix-load');
-    await new Promise(r => setTimeout(r, 2000));
-  }
-}
-
-function addActionLog(server, action, status, output='') {
-  const el = document.getElementById('server-action-log');
-  if (!el) return;
-  const now = new Date().toLocaleTimeString('th-TH');
-  const icon = status === 'success' ? '✅' : status === 'pending' ? '⏳' : status === 'timeout' ? '⚠️' : '❌';
-  const entry = document.createElement('div');
-  entry.style.cssText = 'padding:4px 8px;background:var(--bg3);border-radius:4px;display:flex;gap:8px;align-items:center';
-  entry.innerHTML = `<span style="color:var(--text3)">${now}</span><span>${icon} ${server}</span><span style="color:var(--text2)">${action}</span>${output ? '<span style="color:var(--text3);font-size:11px">'+output.replace(/~/g,' ').slice(0,50)+'</span>' : ''}`;
-  el.insertBefore(entry, el.firstChild);
-  // keep max 20 logs
-  while (el.children.length > 20) el.removeChild(el.lastChild);
-  // remove empty state
-  const empty = el.querySelector('[style*="text-align:center"]');
-  if (empty) empty.remove();
-}
-
-async function unsuspendServer(serverName) {
-  const targets = allDomains.filter(d => d.pleskServer === serverName && d.pleskId && !d.pleskActive);
-  if (!targets.length) { toast('ไม่มีโดเมน Suspended', 'info'); return; }
-  if (!confirm(`Unsuspend ${targets.length} โดเมนใน ${serverName}?`)) return;
-  showProgressModal('Unsuspend '+serverName, targets.length);
-  let fixed = 0, failed = 0;
-  for (let i = 0; i < targets.length; i++) {
-    updateProgress(i+1, targets.length, targets[i].domain, 'loading', 'กำลัง Unsuspend...');
+    const domain = String(body.domain || '').trim().toLowerCase();
+    const open = !!body.open;
+    if (!validDomainName(domain)) { json(res, { success: false, error: 'ชื่อโดเมนไม่ถูกต้อง' }); return; }
+    // หาว่าโดเมนอยู่เครื่องไหน (จาก body.server ถ้าส่งมา ไม่งั้นหาจาก memoryDomains)
+    let serverName = String(body.server || '').trim();
+    if (!serverName) {
+      const d = memoryDomains.find(x => x.domain === domain);
+      serverName = d && d.pleskServer ? d.pleskServer : '';
+    }
+    if (!serverName) { json(res, { success: false, error: 'หาไม่เจอว่าโดเมนนี้อยู่เครื่องไหน — ระบุ server มาด้วย' }); return; }
     try {
-      const res = await fetch(`${API}/api/autofix/${encodeURIComponent(targets[i].domain)}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) { fixed++; updateProgress(i+1, targets.length, targets[i].domain, 'success', data.message); }
-      else { failed++; updateProgress(i+1, targets.length, targets[i].domain, 'failed', data.message); }
-    } catch { failed++; updateProgress(i+1, targets.length, targets[i].domain, 'failed', 'Error'); }
-    updateProgressStats(fixed, failed, 0);
-    await new Promise(r => setTimeout(r, 400));
+      const r = await runOnServer(serverName, buildWpadminToggleCmd(domain, open));
+      const outp = (r.output || '').trim();
+      const okMatch = /RESULT:OK/.test(outp);
+      const failCfg = /RESULT:CONFIGTEST_FAILED/.test(outp);
+      const notApache = /RESULT:NOT_APACHE/.test(outp);
+      if (notApache) { json(res, { success: false, server: serverName, error: 'เครื่องนี้ไม่ใช่ Apache — ฟีเจอร์นี้ใช้กับ Apache เท่านั้น' }); return; }
+      if (failCfg) { json(res, { success: false, server: serverName, error: 'config ตรวจแล้วไม่ผ่าน — ระบบ rollback กลับอันเดิมให้แล้ว เว็บไม่พัง' }); return; }
+      if (!okMatch) { json(res, { success: false, server: serverName, error: 'agent ตอบกลับไม่ชัดเจน: ' + outp.slice(0, 100) }); return; }
+      try { logEvent('info', (open ? 'เปิด' : 'ปิด') + ' wp-admin: ' + domain + ' (' + serverName + ')'); } catch (e) {}
+      json(res, { success: true, domain, server: serverName, open });
+    } catch (e) {
+      json(res, { success: false, server: serverName, error: e.message });
+    }
+    return;
   }
-  finishProgressModal(fixed, failed, 0);
-  setTimeout(refreshServerHealth, 3000);
-}
 
-async function unsuspendAllServers() {
-  const targets = allDomains.filter(d => d.pleskId && !d.pleskActive);
-  if (!targets.length) { toast('ไม่มีโดเมน Suspended', 'info'); return; }
-  if (!confirm(`Unsuspend ${targets.length} โดเมนจากทุก Server?`)) return;
-  showProgressModal('Unsuspend ทั้งหมด', targets.length);
-  let fixed = 0, failed = 0;
-  for (let i = 0; i < targets.length; i++) {
-    updateProgress(i+1, targets.length, targets[i].domain, 'loading', 'กำลัง Unsuspend...');
-    try {
-      const res = await fetch(`${API}/api/autofix/${encodeURIComponent(targets[i].domain)}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) { fixed++; updateProgress(i+1, targets.length, targets[i].domain, 'success', data.message); }
-      else { failed++; updateProgress(i+1, targets.length, targets[i].domain, 'failed', data.message); }
-    } catch { failed++; updateProgress(i+1, targets.length, targets[i].domain, 'failed', 'Error'); }
-    updateProgressStats(fixed, failed, 0);
-    await new Promise(r => setTimeout(r, 400));
+  // Resource measurement (ระดับ B1) — อ่านผลวัดล่าสุด
+  if (req.method === 'GET' && url === '/api/server-resources') {
+    const q = rawUrl.split('?')[1] || '';
+    const want = decodeURIComponent((q.split('server=')[1] || '').split('&')[0] || '');
+    if (want) {
+      json(res, { success: true, server: want, data: resourceStats[want] || null });
+    } else {
+      json(res, { success: true, all: resourceStats });
+    }
+    return;
   }
-  finishProgressModal(fixed, failed, 0);
-}
+  // สั่งวัดเดี๋ยวนี้ (ต้องมีคีย์ — เพราะทำให้เครื่องรันคำสั่ง)
+  if (req.method === 'POST' && url === '/api/server-resources/measure') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) {
+      json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง (ISP_AGENT_KEY) — กันการสั่งรันคำสั่งมั่ว' }, 403);
+      return;
+    }
+    const serverName = String(body.server || '').trim();
+    if (!serverName) { json(res, { success: false, error: 'ต้องระบุ server' }); return; }
+    const focus = Array.isArray(body.domains) && body.domains.length ? body.domains : focusDomainsFor(serverName);
+    const r = await measureServer(serverName, focus);
+    json(res, r);
+    return;
+  }
 
-// ===== DIAGNOSIS PAGE =====
-const diagnosisResults = {};
+  // Resource-hog analysis (ระดับ A) — หาโดเมนที่น่าจะทำโฮสแย่ จาก incident ที่เก็บไว้
+  if (req.method === 'GET' && url.startsWith('/api/server-hogs')) {
+    const q = rawUrl.split('?')[1] || '';
+    const wantServer = decodeURIComponent((q.split('server=')[1] || '').split('&')[0] || '');
+    let hours = parseInt((q.split('hours=')[1] || '').split('&')[0], 10);
+    if (!hours || hours < 1) hours = 168; // default 7 วัน
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000).toISOString();
+    const recent = incidents.filter(i => (i.startAt || '') >= since && i.server);
 
-const causeLabels = {
-  'plesk_suspended': { label: 'Plesk Suspended', icon: '🚫', color: 'var(--amber)', canFix: true },
-  'cloudflare_error': { label: 'Cloudflare Error', icon: '☁️', color: 'var(--amber)', canFix: true },
-  'service_error_502_503': { label: '502/503 Service Error', icon: '🔧', color: 'var(--amber)', canFix: true },
-  'timeout': { label: 'Connection Timeout', icon: '⏱️', color: 'var(--red)', canFix: false },
-  'ssl_expired': { label: 'SSL หมดอายุ', icon: '🔒', color: 'var(--red)', canFix: false },
-  'dns_error': { label: 'DNS Error', icon: '🌐', color: 'var(--red)', canFix: false },
-  'unknown': { label: 'ไม่ทราบสาเหตุ', icon: '❓', color: 'var(--text3)', canFix: false }
-};
+    // จัดกลุ่มเป็น "เหตุการณ์โฮสแย่" = incident ที่ cause=host เกิดใกล้กัน (ภายใน 6 นาที) บนเครื่องเดียว
+    const hostEvents = {}; // server -> [ {at, domains:Set} ]
+    recent.filter(i => i.cause === 'host').forEach(i => {
+      const t = new Date(i.startAt).getTime();
+      const arr = hostEvents[i.server] = hostEvents[i.server] || [];
+      let ev = arr.find(e => Math.abs(e.at - t) <= 6 * 60 * 1000);
+      if (!ev) { ev = { at: t, order: [] }; arr.push(ev); }
+      if (ev.order.indexOf(i.domain) === -1) ev.order.push(i.domain); // ลำดับที่ดับ (ดับก่อน = น่าสงสัยกว่า)
+    });
 
-function diagnoseDomainLocal(domain) {
-  // Local diagnosis based on available data
-  if (domain.pleskId && !domain.pleskActive) return 'plesk_suspended';
-  if ([521, 522, 523, 524].includes(domain.statusCode)) return 'cloudflare_error';
-  if ([502, 503].includes(domain.statusCode)) return 'service_error_502_503';
-  if (domain.sslDaysLeft !== null && domain.sslDaysLeft <= 0) return 'ssl_expired';
-  if (domain.statusCode === 0 || (domain.error && domain.error.includes('timeout'))) return 'timeout';
-  if (domain.error && domain.error.includes('dns')) return 'dns_error';
-  return 'unknown';
-}
+    // ให้คะแนนต่อโดเมน: ยิ่งดับ "ก่อน" ในเหตุการณ์โฮสแย่ + ดับบ่อย = คะแนนสูง (น่าสงสัยเป็นตัวการ)
+    const score = {}; // domain -> { domain, server, hostEventCount, firstToFail, totalDown, totalWarn, lastAt }
+    function get(dom, srv) {
+      return score[dom] = score[dom] || { domain: dom, server: srv, hostEventCount: 0, firstToFail: 0, totalDown: 0, totalWarn: 0, lastAt: null, points: 0 };
+    }
+    Object.keys(hostEvents).forEach(srv => {
+      if (wantServer && srv !== wantServer) return;
+      hostEvents[srv].forEach(ev => {
+        ev.order.forEach((dom, idx) => {
+          const s = get(dom, srv);
+          s.hostEventCount++;
+          // ดับเป็นตัวแรกๆ ในเหตุการณ์ = น่าสงสัยว่าเป็นตัวจุดชนวน
+          if (idx === 0) { s.firstToFail++; s.points += 5; }
+          else if (idx === 1) s.points += 2;
+          else s.points += 1;
+        });
+      });
+    });
+    // รวมความถี่ดับทั้งหมด (นอกเหตุการณ์โฮสด้วย)
+    recent.forEach(i => {
+      if (wantServer && i.server !== wantServer) return;
+      const s = score[i.domain]; if (!s) return;
+      if (i.kind === 'warn') s.totalWarn++; else s.totalDown++;
+      if (!s.lastAt || i.startAt > s.lastAt) s.lastAt = i.startAt;
+    });
 
-async function runDiagnosisAll() {
-  if (allDomains.length === 0) { showSyncPrompt(); return; }
-  const downDomains = allDomains.filter(d => d.status === 'down');
-  if (!downDomains.length) { toast('✅ ไม่มีโดเมนที่ Down ตอนนี้', 'info'); return; }
-  
-  showLoading('🔍 กำลังวิเคราะห์โดเมน...', `วิเคราะห์ ${downDomains.length} โดเมนที่ Down`);
-  toast(`⏳ กำลังวิเคราะห์ ${downDomains.length} โดเมน...`, 'info');
-  
-  downDomains.forEach(d => {
-    const cause = diagnoseDomainLocal(d);
-    diagnosisResults[d.domain] = {
-      domain: d.domain,
-      cause,
-      statusCode: d.statusCode,
-      error: d.error,
-      pleskServer: d.pleskServer,
-      pleskHost: d.pleskHost,
-      sslDaysLeft: d.sslDaysLeft,
-      pleskActive: d.pleskActive,
-      diagnosedAt: new Date().toLocaleString('th-TH')
-    };
-  });
-  
-  renderDiagnosisList();
-  updateDiagnosisNav();
-  hideLoading();
-  toast(`✅ วิเคราะห์ครบ ${downDomains.length} โดเมน`, 'success');
-}
+    const suspects = Object.keys(score).map(k => score[k])
+      .filter(s => s.hostEventCount > 0)
+      .sort((a, b) => b.points - a.points || b.firstToFail - a.firstToFail)
+      .slice(0, 20);
 
-async function autoFixDiagnosed() {
-  const fixable = Object.values(diagnosisResults).filter(d => causeLabels[d.cause]?.canFix);
-  if (!fixable.length) { toast('ไม่มีโดเมนที่แก้ได้อัตโนมัติ', 'info'); return; }
-  if (!confirm(`Auto-fix ${fixable.length} โดเมนที่แก้ได้?`)) return;
-  
-  showProgressModal('Auto-fix จากการวิเคราะห์', fixable.length);
-  let fixed = 0, failed = 0;
-  
-  for (let i = 0; i < fixable.length; i++) {
-    const d = fixable[i];
-    updateProgress(i+1, fixable.length, d.domain, 'loading', causeLabels[d.cause]?.label);
-    try {
-      const res = await fetch(`${API}/api/autofix/${encodeURIComponent(d.domain)}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success) {
-        fixed++;
-        diagnosisResults[d.domain].fixed = true;
-        updateProgress(i+1, fixable.length, d.domain, 'success', data.message);
+    // สรุปรายเครื่อง: มีกี่เหตุการณ์โฮสแย่ ใน 7 วัน
+    const serverSummary = Object.keys(hostEvents)
+      .filter(srv => !wantServer || srv === wantServer)
+      .map(srv => ({ server: srv, hostEvents: hostEvents[srv].length }))
+      .sort((a, b) => b.hostEvents - a.hostEvents);
+
+    // โดเมนที่ดับ "ทั้งหมด" ในช่วงเวลานี้ (ไม่ต้องรอเหตุการณ์โฮสแย่) — เรียงตามจำนวนครั้ง
+    const allMap = {};
+    recent.forEach(i => {
+      if (wantServer && i.server !== wantServer) return;
+      let a = allMap[i.domain];
+      if (!a) a = allMap[i.domain] = { domain: i.domain, server: i.server, downCount: 0, warnCount: 0, totalMin: 0, hostCause: 0, lastAt: null, lastError: null, stillDown: false };
+      if (i.kind === 'warn') a.warnCount++; else a.downCount++;
+      a.totalMin += (i.durationMin || 0);
+      if (i.cause === 'host') a.hostCause++;
+      if (!a.lastAt || i.startAt > a.lastAt) { a.lastAt = i.startAt; a.lastError = i.error; }
+      if (!i.endAt) a.stillDown = true;
+    });
+    const allDomains = Object.keys(allMap).map(k => allMap[k])
+      .sort((a, b) => (b.downCount + b.warnCount) - (a.downCount + a.warnCount) || b.totalMin - a.totalMin);
+
+    // จัดกลุ่มตามเครื่อง แล้วเอา Top N ที่ดับบ่อยสุดต่อเครื่อง (default 5) — กันตารางล้น
+    let topN = parseInt((q.split('top=')[1] || '').split('&')[0], 10);
+    if (!topN || topN < 1) topN = 5;
+    const perServerMap = {};
+    allDomains.forEach(d => {
+      const k = d.server || '(ไม่ทราบเครื่อง)';
+      (perServerMap[k] = perServerMap[k] || []).push(d);
+    });
+    const topPerServer = Object.keys(perServerMap).sort().map(srv => ({
+      server: srv,
+      total: perServerMap[srv].length,               // มีทั้งหมดกี่โดเมนบนเครื่องนี้
+      shown: Math.min(topN, perServerMap[srv].length),
+      domains: perServerMap[srv].slice(0, topN)       // เอาแค่ Top N (เรียงดับบ่อยสุดมาก่อนแล้ว)
+    }));
+
+    // แนบผลวัดจริง (B1) ให้ suspect + all ที่มีข้อมูล
+    function attachMeasured(rows) {
+      rows.forEach(r => {
+        const rs = resourceStats[r.server];
+        if (!rs) return;
+        const fp = (rs.phpfpm || []).find(p => p.domain === r.domain);
+        const hot = (rs.hotDomains || []).find(h => h.domain === r.domain);
+        if (fp) r.measuredPhpfpm = fp;      // {active,max,pct}
+        if (hot) r.measuredHot = hot;        // {requests,topIp,topIpHits}
+        r.measuredAt = rs.at;
+      });
+    }
+    attachMeasured(suspects);
+    topPerServer.forEach(g => attachMeasured(g.domains));
+
+    json(res, {
+      success: true, since, hours, topN, server: wantServer || null,
+      totalIncidents: recent.length,
+      servers: serverSummary,
+      resourceStats,
+      suspects,
+      topPerServer,
+      allDomains,
+      note: 'ระดับ A: อนุมานจากประวัติดับ — "ดับเป็นตัวแรกตอนโฮสเริ่มแย่ซ้ำๆ" = น่าสงสัยว่าเป็นตัวแย่งทรัพยากร ไม่ใช่หลักฐานยืนยัน ต้องวัดจากในเครื่อง (ระดับ B) เพื่อฟันธง'
+    });
+    return;
+  }
+
+  // Watchlist API (added feature) — โดเมนที่เช็กถี่ทุก 1 นาที
+  if (req.method === 'GET' && url === '/api/watchlist') {
+    json(res, { success: true, domains: watchList, max: WATCHLIST_MAX, intervalSec: 60, lastCheckAt: lastWatchAt });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/watchlist') {
+    const body = await parseBody(req);
+    if (!body || !Array.isArray(body.domains)) { json(res, { success: false, error: 'ต้องมี domains เป็น array' }); return; }
+    watchList = body.domains.map(x => String(x).trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '')).filter(Boolean).slice(0, WATCHLIST_MAX);
+    saveWatchList();
+    checkWatchList().catch(() => {});
+    json(res, { success: true, domains: watchList });
+    return;
+  }
+
+  // Domain incident history API (added feature)
+  if (req.method === 'GET' && url === '/api/incidents') {
+    const days = 1;
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const recent = incidents.filter(i => (i.startAt || '') >= since);
+    const byDomain = {};
+    recent.forEach(i => {
+      let b = byDomain[i.domain];
+      if (!b) {
+        const dm = memoryDomains.find(x => x.domain === i.domain) || {};
+        const ag = dm.thAgents || {};
+        b = byDomain[i.domain] = {
+          domain: i.domain, server: i.server, count: 0, downCount: 0, warnCount: 0, totalMin: 0,
+          hostCause: 0, domainCause: 0, lastError: null, lastAt: null, lastCode: 0, stillDown: false,
+          onWatchlist: watchList.indexOf(i.domain) !== -1,
+          thBlockedCarriers: Object.keys(ag).filter(k => ag[k].status === 'blocked')
+        };
+      }
+      b.count++;
+      if (i.kind === 'warn') b.warnCount++; else b.downCount++;
+      b.totalMin += (i.durationMin || 0);
+      if (i.cause === 'host') b.hostCause++; else if (i.cause === 'domain') b.domainCause++;
+      if (!b.lastAt || i.startAt > b.lastAt) { b.lastAt = i.startAt; b.lastError = i.error; b.lastCode = i.statusCode; }
+      if (!i.endAt) b.stillDown = true;
+    });
+    const rows = Object.keys(byDomain).map(k => byDomain[k]).sort((a, b) => b.count - a.count);
+    const byServer = {};
+    recent.forEach(i => {
+      const k = i.server || '(ไม่ทราบ)';
+      if (!byServer[k]) byServer[k] = { server: k, incidents: 0, domains: {}, hostEvents: 0 };
+      byServer[k].incidents++;
+      byServer[k].domains[i.domain] = 1;
+      if (i.cause === 'host') byServer[k].hostEvents++;
+    });
+    const serverRows = Object.keys(byServer).map(k => ({
+      server: k, incidents: byServer[k].incidents,
+      domains: Object.keys(byServer[k].domains).length,
+      hostEvents: byServer[k].hostEvents
+    })).sort((a, b) => b.incidents - a.incidents);
+    json(res, {
+      success: true, since, totalIncidents: recent.length,
+      stillDown: rows.filter(r => r.stillDown).length,
+      domains: rows, servers: serverRows,
+      note: 'สาเหตุ "โฮส" = มีโดเมน >= ' + HOST_ISSUE_THRESHOLD + ' ตัวบนเครื่องเดียวกันดับพร้อมกันในรอบเช็กเดียว (เป็นการอนุมาน ไม่ใช่คำยืนยัน)'
+    });
+    return;
+  }
+  if (req.method === 'GET' && url.startsWith('/api/incidents/')) {
+    const dom = decodeURIComponent(url.split('/api/incidents/')[1] || '');
+    const list = incidents.filter(i => i.domain === dom).slice(-100).reverse();
+    const d = memoryDomains.find(x => x.domain === dom) || {};
+    const srv = d.pleskServer || (list.find(i => i.server) || {}).server || null;
+    json(res, { success: true, domain: dom, server: srv, currentStatus: d.status || 'unknown', incidents: list });
+    return;
+  }
+
+  // ISP block API (added feature)
+  if (req.method === 'GET' && url.startsWith('/api/isp-check/')) {
+    const dom = decodeURIComponent(url.split('/api/isp-check/')[1] || '');
+    try { const r = await checkISPBlock(dom); json(res, { success: true, result: r }); }
+    catch (e) { json(res, { success: false, error: e.message }); }
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/isp-status') {
+    const rows = memoryDomains.filter(d => d.ispBlock || d.thAgents || d.thAgent).map(d => {
+      const agents = d.thAgents || (d.thAgent ? { th: d.thAgent } : {});
+      const blockedCarriers = Object.keys(agents).filter(k => agents[k].status === 'blocked');
+      const times = Object.keys(agents).map(k => agents[k].checkedAt).filter(Boolean).sort();
+      return {
+        domain: d.domain,
+        anyBlocked: d.ispBlock ? d.ispBlock.anyBlocked : false,
+        blockedIsps: d.ispBlock ? d.ispBlock.blockedIsps : [],
+        isps: d.ispBlock ? d.ispBlock.isps : {},
+        thAgents: agents,
+        blockedCarriers,
+        thBlocked: blockedCarriers.length > 0,
+        checkedAt: times[times.length - 1] || (d.ispBlock && d.ispBlock.checkedAt)
+      };
+    });
+    const thBlocked = rows.filter(r => r.thBlocked);
+    const carriers = Array.from(new Set(rows.reduce((acc, r) => acc.concat(Object.keys(r.thAgents)), [])));
+    const blocked = rows.filter(r => r.anyBlocked);
+    json(res, { success: true, lastCheckAt: lastISPCheckAt, lastAgentReportAt, checking: ispChecking,
+      carriers, total: rows.length, blockedCount: blocked.length, thBlockedCount: thBlocked.length,
+      hasAgent: !!lastAgentReportAt, thBlocked, blocked, all: rows });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/isp-check-all') {
+    checkAllISPBlocks().catch(() => {});
+    json(res, { success: true, started: true, note: 'กำลังเช็กเบื้องหลัง เรียก /api/isp-status ดูผลได้' });
+    return;
+  }
+
+  // ISP agent (จุดตรวจในไทย) — ต้องมี key
+  if (req.method === 'GET' && url === '/api/isp-agent/domains') {
+    const key = (rawUrl.split('key=')[1] || '').split('&')[0];
+    if (decodeURIComponent(key) !== ISP_AGENT_KEY) { cors(res); res.writeHead(403); res.end('forbidden'); return; }
+    json(res, { success: true, domains: memoryDomains.filter(d => d.domain).map(d => d.domain) });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/isp-agent/report') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { cors(res); res.writeHead(403); res.end('forbidden'); return; }
+    const isp = body.isp || 'th';
+    let n = 0;
+    (body.results || []).forEach(r => {
+      const idx = memoryDomains.findIndex(d => d.domain === r.domain);
+      if (idx !== -1) { memoryDomains[idx].thAgents = memoryDomains[idx].thAgents || {}; memoryDomains[idx].thAgents[isp] = { status: r.status, detail: r.detail || '', checkedAt: new Date().toISOString() }; n++; }
+    });
+    lastAgentReportAt = new Date().toISOString();
+    json(res, { success: true, updated: n });
+    return;
+  }
+
+  // History API (added feature)
+  if (req.method === 'GET' && url === '/api/history') {
+    json(res, { success: true, history: statusHistory });
+    return;
+  }
+  // Backup domain groups API (added feature)
+  if (req.method === 'GET' && url === '/api/domain-groups') {
+    json(res, { success: true, groups: groupsWithStatus() });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/domain-groups') {
+    const body = await parseBody(req);
+    if (body && Array.isArray(body.groups)) {
+      domainGroups = body.groups.map((g, i) => ({
+        id: g.id || ('g' + Date.now() + i),
+        name: String(g.name || ('กลุ่ม ' + (i + 1))),
+        domains: (g.domains || []).map(String)
+      }));
+      saveGroups();
+      json(res, { success: true, groups: groupsWithStatus() });
+    } else json(res, { success: false, error: 'ต้องมี groups เป็น array' });
+    return;
+  }
+
+  // Diagnostic Report API (added feature) — /api/report (JSON) และ /api/report.txt (plain text)
+  if (req.method === 'GET' && (url === '/api/report' || url === '/api/report.txt')) {
+    let report;
+    try { report = buildDiagnosticReport(); }
+    catch (e) { report = { generatedAt: new Date().toISOString(), error: 'สร้าง report ไม่สำเร็จ: ' + e.message }; }
+    // ปิดบังค่าลับทั้งก้อนก่อนส่งออก
+    let safe;
+    try { safe = JSON.parse(redactString(JSON.stringify(report))); }
+    catch (e) { safe = report; }
+    if (url === '/api/report.txt') {
+      cors(res);
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.writeHead(200);
+      res.end(renderReportText(safe));
+    } else {
+      json(res, { success: true, report: safe });
+    }
+    return;
+  }
+
+  // Event Log API
+  if (req.method === 'GET' && url.startsWith('/api/events')) {
+    const u = new URL('http://x' + url);
+    const type = u.searchParams.get('type');
+    const limit = parseInt(u.searchParams.get('limit') || '100');
+    let events = eventLog;
+    if (type && type !== 'all') events = events.filter(e => e.type === type);
+    json(res, { success: true, events: events.slice(0, limit), total: eventLog.length });
+    return;
+  }
+
+  // Response Time History API
+  if (req.method === 'GET' && url.startsWith('/api/perf/')) {
+    const domain = decodeURIComponent(url.split('/api/perf/')[1]);
+    const hourly = perfHourly[domain] || {};
+    const data = Object.entries(hourly).sort().map(([hour, v]) => ({
+      hour, avg: Math.round(v.sum / v.count)
+    }));
+    json(res, { success: true, domain, data });
+    return;
+  }
+
+  // Slow domains API (read-only)
+  if (req.method === 'GET' && url === '/api/perf-slow') {
+    const slow = memoryDomains
+      .filter(d => d.responseTime > 2000 && d.status === 'up')
+      .sort((a,b) => b.responseTime - a.responseTime)
+      .slice(0, 30)
+      .map(d => ({ domain: d.domain, responseTime: d.responseTime, server: d.pleskServer, status: d.status }));
+    json(res, { success: true, slow });
+    return;
+  }
+
+  // SLA Stats API
+  if (req.method === 'GET' && url === '/api/sla/stats') {
+    json(res, { success: true, stats: getAllSLAStats(), history: uptimeHistory });
+    return;
+  }
+
+  // Resource Usage API
+  // Resource usage ทีละ server (ป้องกัน Railway timeout)
+  if (req.method === 'POST' && url.startsWith('/api/resource-usage')) {
+    const srvName = url.includes('/api/resource-usage/') 
+      ? decodeURIComponent(url.split('/api/resource-usage/')[1]) 
+      : null;
+    (async () => {
+      if (srvName) {
+        // ดึงทีละ server
+        const srv = PLESK_SERVERS.find(s => s.name === srvName || s.host === srvName);
+        if (!srv) return json(res, { error: 'ไม่พบ server: ' + srvName });
+        const r = await getDomainResourceUsage(srv);
+        json(res, { success: true, results: [r] });
       } else {
-        failed++;
-        updateProgress(i+1, fixable.length, d.domain, 'failed', data.message);
+        // ดึงแค่ server แรก (backward compat)
+        const r = await getDomainResourceUsage(PLESK_SERVERS[0]);
+        json(res, { success: true, results: [r] });
       }
-    } catch { failed++; }
-    updateProgressStats(fixed, failed, 0);
+    })().catch(e => json(res, { error: e.message }));
+    return;
+  }
+
+  // GSC Traffic Drop Check API
+  if (req.method === 'POST' && url === '/api/gsc/check-drop') {
+    (async () => {
+      await checkGSCTrafficDrop();
+      json(res, { success: true, message: 'ตรวจสอบ traffic drop เสร็จแล้ว' });
+    })().catch(e => json(res, { error: e.message }));
+    return;
+  }
+
+  // Blacklist Check API
+  if (req.method === 'POST' && url === '/api/blacklist/check') {
+    (async () => {
+      const results = await checkBlacklists();
+      json(res, { success: true, results });
+    })().catch(e => json(res, { error: e.message }));
+    return;
+  }
+
+  // Send Weekly Report API (manual trigger)
+  if (req.method === 'POST' && url === '/api/report/weekly') {
+    await sendWeeklyReport();
+    json(res, { success: true, message: 'ส่ง Weekly Report แล้ว' });
+    return;
+  }
+
+
+  if (req.method === 'POST' && url === '/api/phpfpm-ondemand') {
+    json(res, { success: true, message: 'กำลังเปลี่ยน PHP-FPM เป็น ondemand...' });
+    applyAllPhpFpmOndemand().catch(console.error);
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/disk-cleanup') {
+    json(res, { success: true, message: 'กำลัง cleanup disk...' });
+    runManualDiskCleanup().catch(console.error);
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/limit-phpfpm') {
+    json(res, { success: true, message: 'กำลังจำกัด PHP-FPM...' });
+    limitAllPhpFpm().catch(console.error);
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/install-apache-watchdog') {
+    json(res, { success: true, message: 'กำลังติดตั้ง Apache Watchdog...' });
+    installAllApacheWatchdogs().catch(console.error);
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/setup-cloudflare-whitelist') {
+    json(res, { success: true, message: 'กำลังตั้งค่า Cloudflare Whitelist...' });
+    setupAllCloudflareWhitelists().catch(console.error);
+    return;
+  }
+
+  // Telegram Webhook
+  if (req.method === 'POST' && url === '/api/telegram/webhook') {
+    const body = await parseBody(req);
+    const msg = body.message || body.edited_message;
+    if (msg) await handleTelegramMessage(msg);
+    json(res, { ok: true });
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/fix-ssl') {
+    autoInstallSSL().catch(console.error);
+    json(res, { success: true, message: 'กำลังติดตั้ง SSL ทุก server...' });
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/fix-php-upload') {
+    fixPHPUploadLimits().catch(console.error);
+    json(res, { success: true, message: 'กำลังปรับค่า PHP Upload Limits ทุก server...' });
+    return;
+  }
+
+  if (req.method === 'POST' && url === '/api/test-alert') {
+    const body = await parseBody(req);
+    const msg = body.message || 'DomainIntel Test Alert';
+    // ใช้ token จาก request body ถ้ามี (สำหรับทดสอบ) หรือจาก env
+    const testToken = body.telegramToken || TG_TOKEN;
+    const testChat = body.telegramChatId || TG_CHAT;
+    if (testToken && testChat) {
+      await sendTelegramDirect(msg, testToken, testChat);
+      json(res, { success: true });
+    } else {
+      json(res, { error: 'ไม่มี Telegram Token หรือ Chat ID' }, 400);
+    }
+    return;
+  }
+
+  // Server Health
+  // Agent endpoints
+  if (req.method === 'GET' && url.startsWith('/api/agent/commands')) {
+    // parse host from raw URL (before query strip)
+    const qmark = rawUrl.indexOf('?');
+    const qs = qmark >= 0 ? rawUrl.slice(qmark + 1) : '';
+    let host = '';
+    qs.split('&').forEach(p => {
+      const eq = p.indexOf('=');
+      if (eq > 0) {
+        const k = p.slice(0, eq);
+        const v = p.slice(eq + 1);
+        if (k === 'host') host = decodeURIComponent(v);
+      }
+    });
+    const hostKey = host.replace(/\./g, '_');
+    // search all keys in agentCommands
+    const allKeys = Object.keys(agentCommands);
+    const matchKey = allKeys.find(k => k === hostKey) || hostKey;
+    const cmds = agentCommands[matchKey] || [];
+    const pending = cmds.filter(c => c.status === 'pending');
+    pending.forEach(c => c.status = 'sent');
+    console.log('[Agent] host='+host+' key='+hostKey+' matchKey='+matchKey+' found='+pending.length+' allKeys='+allKeys.join(','));
+    json(res, { commands: pending.map(c => ({ id: c.id, cmd: c.cmd })) });
+    return;
+  }
+
+  if (req.method === 'POST' && url.startsWith('/api/agent/result')) {
+    const body = await parseBody(req);
+    const { commandId, output, exitCode, host } = body;
+    if (commandId) {
+      agentResults[commandId] = { output, exitCode, host };
+      // mark command as done
+      Object.values(agentCommands).forEach(cmds => {
+        const cmd = cmds.find(c => c.id === commandId);
+        if (cmd) { cmd.status = 'done'; cmd.result = output; }
+      });
+    }
+    json(res, { ok: true });
+    return;
+  }
+
+  // Run command on server via agent
+  if (req.method === 'POST' && url.startsWith('/api/agent/run/')) {
+    const serverName = decodeURIComponent(url.split('/api/agent/run/')[1]);
+    const body = await parseBody(req);
+    const { command, wait } = body;
+    if (!command) { json(res, { error: 'ไม่มี command' }, 400); return; }
+    const srv = PLESK_SERVERS.find(s => 
+      s.name === serverName || s.host === serverName ||
+      s.name.toLowerCase() === serverName.toLowerCase() ||
+      s.name.toLowerCase().replace(/\s+/g,'') === serverName.toLowerCase().replace(/\s+/g,'')
+    );
+    if (!srv) { json(res, { error: 'ไม่พบ server: '+serverName }, 404); return; }
+    const cmdId = queueCommand(srv.host, command);
+    if (!wait) {
+      // ตอบทันทีไม่รอผล
+      json(res, { success: true, cmdId, message: 'คำสั่งถูก queue แล้ว' });
+      return;
+    }
+    // wait=true: รอผล 30 วินาที
+    try {
+      const result = await runOnServer(serverName, command);
+      json(res, { success: true, ...result });
+    } catch(e) {
+      json(res, { success: false, error: e.message });
+    }
+    return;
+  }
+
+  // Debug agent queue
+  if (req.method === 'GET' && url === '/api/agent/debug') {
+    json(res, { 
+      commands: agentCommands, 
+      results: Object.keys(agentResults),
+      servers: PLESK_SERVERS.map(s => ({ name: s.name, host: s.host, key: s.host.replace(/\./g,'_') }))
+    });
+    return;
+  }
+
+  // Get result by cmdId
+  if (req.method === 'GET' && url.startsWith('/api/agent/result/')) {
+    const cmdId = url.split('/api/agent/result/')[1];
+    if (agentResults[cmdId]) {
+      const result = agentResults[cmdId];
+      delete agentResults[cmdId];
+      json(res, { success: true, ...result });
+    } else {
+      json(res, { success: false, pending: true });
+    }
+    return;
+  }
+
+  // Fix all servers PHP-FPM via agent
+  if (req.method === 'POST' && url === '/api/agent/fix-phpfpm') {
+    const body = await parseBody(req);
+    const serverName = body.server || 'all';
+    const servers = serverName === 'all' ? PLESK_SERVERS : PLESK_SERVERS.filter(s => s.name === serverName);
+    const results = [];
+    for (const srv of servers) {
+      try {
+        const result = await runOnServer(srv.name, 
+          "sed -i 's/pm = ondemand/pm = static/' /etc/sw-engine/pool.d/plesk.conf 2>/dev/null; " +
+          "sed -i 's/pm.max_children = [0-9]*/pm.max_children = 40/' /etc/sw-engine/pool.d/plesk.conf 2>/dev/null; " +
+          "systemctl restart sw-engine 2>&1; echo 'Done'"
+        );
+        results.push({ server: srv.name, success: true, output: result.output });
+        smartAlert('info', '✅ Fix PHP-FPM ' + srv.name + ' สำเร็จ');
+      } catch(e) {
+        results.push({ server: srv.name, success: false, error: e.message });
+        smartAlert('warning', `❌ Fix PHP-FPM ${srv.name} ล้มเหลว: ${e.message}`);
+      }
+    }
+    json(res, { results });
+    return;
+  }
+
+  // Get server stats via agent
+  if (req.method === 'GET' && url.startsWith('/api/agent/stats/')) {
+    const serverName = decodeURIComponent(url.split('/api/agent/stats/')[1]);
+    try {
+      const result = await runOnServer(serverName,
+        "echo CPU:$(top -bn1 | grep 'Cpu(s)' | awk '{print $2}'); " +
+        "free -m | awk 'NR==2{printf \"RAM:%s/%s\", $3,$2}'; " +
+        "df -h / | awk 'NR==2{printf \" DISK:%s/%s\", $3,$2}'; " +
+        "echo ' LOAD:'$(uptime | awk -F'load average:' '{print $2}')"
+      );
+      json(res, { success: true, stats: result.output, server: serverName });
+    } catch(e) {
+      json(res, { success: false, error: e.message });
+    }
+    return;
+  }
+
+  if (req.method === 'GET' && url === '/api/server/health') {
+    const results = await Promise.all(PLESK_SERVERS.map(srv => getServerStats(srv)));
+    json(res, { servers: results });
+    return;
+  }
+
+  if (req.method === 'GET' && url.startsWith('/api/server/stats/')) {
+    const serverName = decodeURIComponent(url.split('/api/server/stats/')[1]);
+    const srv = PLESK_SERVERS.find(s => s.name === serverName || s.host === serverName);
+    if (!srv) { json(res, { error: 'ไม่พบ server' }, 404); return; }
+    const result = await getServerStats(srv);
+    json(res, result);
+    return;
+  }
+
+  if (req.method === 'POST' && url.startsWith('/api/server/restart/')) {
+    const parts = url.split('/api/server/restart/')[1].split('/');
+    const serverName = decodeURIComponent(parts[0]);
+    const serviceName = decodeURIComponent(parts[1] || 'httpd');
+    const srv = PLESK_SERVERS.find(s => s.name === serverName || s.host === serverName);
+    if (!srv) { json(res, { error: 'ไม่พบ server' }, 404); return; }
+    const result = await restartService(srv, serviceName);
+    json(res, result);
+    return;
+  }
+
+  if (req.method === 'GET' && url.startsWith('/api/server/logs/')) {
+    const serverName = decodeURIComponent(url.split('/api/server/logs/')[1]);
+    const srv = PLESK_SERVERS.find(s => s.name === serverName || s.host === serverName);
+    if (!srv) { json(res, { error: 'ไม่พบ server' }, 404); return; }
+    try {
+      // ดึง event log จาก Plesk
+      const logs = await pleskRequest('GET', '/eventlog?count=50', null, srv);
+      json(res, { logs: logs?.data || [] });
+    } catch(e) { json(res, { error: e.message }, 500); }
+    return;
+  }
+
+  if (req.method === 'GET') {
+    const filePath = url === '/' ? '/public/index.html' : `/public${url}`;
+    const fullPath = path.join(__dirname, filePath);
+    if (fs.existsSync(fullPath) && fs.statSync(fullPath).isFile()) {
+      const ext = path.extname(fullPath);
+      const types = { '.html': 'text/html', '.css': 'text/css', '.js': 'application/javascript' };
+      cors(res);
+      res.writeHead(200, { 'Content-Type': types[ext] || 'text/plain' });
+      res.end(fs.readFileSync(fullPath));
+      return;
+    }
+  }
+
+  json(res, { error: 'Not found' }, 404);
+}
+
+// ===== START =====
+const server = http.createServer(handleRequest);
+
+// ===== DOMAIN INCIDENT HISTORY (added feature) =====
+// บันทึกทุกครั้งที่โดเมน "ดับ" (up->down) และตอนกลับมา (down->up)
+// แยกสาเหตุ: ถ้าหลายโดเมนบนเครื่องเดียวกันดับพร้อมกันในรอบเดียว => น่าจะเป็นที่โฮส
+const INCIDENTS_FILE = path.join('/tmp', 'domainintel-incidents.json');
+const HOST_ISSUE_THRESHOLD = 3; // ดับพร้อมกันกี่โดเมนบนเครื่องเดียว ถึงนับว่าเป็นที่โฮส
+let incidents = [];
+try { incidents = JSON.parse(fs.readFileSync(INCIDENTS_FILE, 'utf8')) || []; } catch (e) {}
+function saveIncidents() {
+  try {
+    if (incidents.length > 3000) incidents = incidents.slice(-3000);
+    fs.writeFileSync(INCIDENTS_FILE, JSON.stringify(incidents));
+  } catch (e) {}
+}
+function findOpenIncident(domain) {
+  for (let i = incidents.length - 1; i >= 0; i--) {
+    if (incidents[i].domain === domain && !incidents[i].endAt) return incidents[i];
+  }
+  return null;
+}
+function openIncident(d, r) {
+  if (findOpenIncident(d.domain)) return null; // ยังดับค้างอยู่ ไม่นับซ้ำ
+  const inc = {
+    id: 'inc' + Date.now() + Math.random().toString(36).slice(2, 6),
+    domain: d.domain,
+    server: d.pleskServer || null,
+    kind: r.status === 'warn' ? 'warn' : 'down', // down = เข้าไม่ได้เลย · warn = เข้าได้แต่ผิดปกติ
+    startAt: new Date().toISOString(),
+    endAt: null,
+    durationMin: null,
+    statusCode: r.statusCode || 0,
+    error: r.error || 'ไม่ทราบสาเหตุ',
+    cause: 'unknown'
+  };
+  incidents.push(inc);
+  return inc;
+}
+function closeIncident(domain) {
+  const inc = findOpenIncident(domain);
+  if (!inc) return;
+  inc.endAt = new Date().toISOString();
+  inc.durationMin = Math.max(1, Math.round((new Date(inc.endAt) - new Date(inc.startAt)) / 60000));
+}
+function classifyIncidents(newIncs) {
+  const byServer = {};
+  newIncs.forEach(inc => {
+    // แยกตามเครื่อง + ชนิดอาการ (ไม่เอา down กับ warn มาปนกันนับ)
+    const k = (inc.server || '(ไม่ทราบเครื่อง)') + '||' + (inc.kind || 'down');
+    (byServer[k] = byServer[k] || []).push(inc);
+  });
+  Object.keys(byServer).forEach(key => {
+    const srv = key.split('||')[0];
+    const list = byServer[key];
+    const isHost = list.length >= HOST_ISSUE_THRESHOLD && srv !== '(ไม่ทราบเครื่อง)';
+    list.forEach(inc => { inc.cause = isHost ? 'host' : 'domain'; inc.batchSize = list.length; });
+    if (isHost) {
+      try { logEvent('warning', 'โดเมน ' + list.length + ' ตัวบน ' + srv + ' ดับพร้อมกัน — น่าจะเป็นปัญหาที่โฮส'); } catch (e) {}
+      try { smartAlert('warning', '⚠️ โดเมน <b>' + list.length + '</b> ตัวบน <b>' + srv + '</b> ดับพร้อมกัน\nน่าจะเป็นปัญหาที่โฮส ไม่ใช่ที่เว็บ'); } catch (e) {}
+    }
+  });
+}
+
+// ตัวกลางบันทึก incident — ใช้ทั้งรอบเช็กปกติ (5 นาที) และ watchlist (1 นาที)
+function trackIncident(d, prev, r, arr) {
+  try {
+    const badPrev = (prev === 'down' || prev === 'warn');
+    const badNow = (r.status === 'down' || r.status === 'warn');
+    if (!badPrev && badNow) {
+      const inc = openIncident(d, r);
+      if (inc && arr) arr.push(inc);
+      return inc;
+    }
+    if (badPrev && r.status === 'up') { closeIncident(d.domain); return null; }
+    if (badPrev && badNow) {
+      // ยังมีปัญหาอยู่ — อัปเดตอาการล่าสุด (เช่น warn ลามเป็น down)
+      const open = findOpenIncident(d.domain);
+      if (open) {
+        open.kind = (r.status === 'warn') ? 'warn' : 'down';
+        if (r.statusCode) open.statusCode = r.statusCode;
+        if (r.error) open.error = r.error;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+// ===== WATCHLIST — เช็กถี่ทุก 1 นาที เฉพาะโดเมนสำคัญ (จับการดับสั้นๆ) =====
+const WATCHLIST_FILE = path.join('/tmp', 'domainintel-watchlist.json');
+const WATCHLIST_MAX = 50;
+let watchList = [];
+try { watchList = JSON.parse(fs.readFileSync(WATCHLIST_FILE, 'utf8')) || []; } catch (e) {}
+function saveWatchList() { try { fs.writeFileSync(WATCHLIST_FILE, JSON.stringify(watchList)); } catch (e) {} }
+let watchChecking = false, lastWatchAt = null;
+async function checkWatchList() {
+  if (watchChecking || !watchList.length) return;
+  watchChecking = true;
+  try {
+    const arr = [];
+    const list = watchList.slice(0, WATCHLIST_MAX);
+    for (let i = 0; i < list.length; i += 5) {
+      const batch = list.slice(i, i + 5);
+      await Promise.all(batch.map(async dom => {
+        const idx = memoryDomains.findIndex(d => d.domain === dom);
+        if (idx === -1) return;
+        const prev = memoryDomains[idx].status;
+        const r = await checkDomain(dom);
+        Object.assign(memoryDomains[idx], r);
+        trackIncident(memoryDomains[idx], prev, r, arr);
+      }));
+    }
+    if (arr.length) classifyIncidents(arr);
+    saveIncidents();
+    lastWatchAt = new Date().toISOString();
+  } catch (e) {} finally { watchChecking = false; }
+}
+
+// ===== AUTO-HEAL DISABLE LIST (added feature) =====
+// ปิด auto-heal รายเครื่อง ตั้งผ่าน env: AUTOHEAL_DISABLED="Server 5"
+// ใส่ได้ทั้งชื่อ (Server 5) หรือ IP/host คั่นด้วยคอมมา เช่น "Server 5,167.71.x.x"
+const AUTOHEAL_FILE = path.join('/tmp', 'domainintel-autoheal.json');
+// ค่าเริ่มต้นจาก env (ถ้าตั้งไว้) — แล้วทับด้วยค่าที่กดในแดชบอร์ด (ถ้ามี)
+let autoHealDisabledList = (process.env.AUTOHEAL_DISABLED || '')
+  .split(',').map(s => s.trim()).filter(Boolean);
+try {
+  const saved = JSON.parse(fs.readFileSync(AUTOHEAL_FILE, 'utf8'));
+  if (Array.isArray(saved)) autoHealDisabledList = saved;
+} catch (e) {}
+function saveAutoHealList() {
+  try { fs.writeFileSync(AUTOHEAL_FILE, JSON.stringify(autoHealDisabledList)); } catch (e) {}
+}
+function isAutoHealDisabled(nameOrHost) {
+  if (!autoHealDisabledList.length || !nameOrHost) return false;
+  const v = String(nameOrHost).trim().toLowerCase();
+  return autoHealDisabledList.some(x => String(x).trim().toLowerCase() === v);
+}
+function autoHealDisabledFor(srv) {
+  if (!srv) return false;
+  return isAutoHealDisabled(srv.name) || isAutoHealDisabled(srv.host);
+}
+
+// ===== PROACTIVE MONITOR =====
+async function proactiveMonitor() {
+  try { empLog('diagnostician', 'ตรวจสุขภาพระบบ', 'proactive scan'); } catch(e){}
+  for (const srv of PLESK_SERVERS) {
+    try {
+      const statCmd2 = 'L=$(cat /proc/loadavg | cut -d" " -f1); D=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo LOAD:$L DISK:$D';
+      const cmdId = queueCommand(srv.host, statCmd2);
+      setTimeout(async () => {
+        const result = agentResults[cmdId];
+        if (!result) return;
+        delete agentResults[cmdId];
+        const output = result.output || '';
+        const load = parseFloat((output.match(/LOAD:([\d.]+)/) || [])[1] || 0);
+        const disk = parseInt((output.match(/DISK:(\d+)/) || [])[1] || 0);
+        
+        if (load > 15 && autoHealDisabledFor(srv)) {
+          // auto-heal ถูกปิดไว้สำหรับเครื่องนี้ → แจ้งเตือนอย่างเดียว ไม่แตะเซิร์ฟเวอร์
+          smartAlert('warning', `⚠️ Proactive Alert
+🖥️ ${srv.name}: Load Average สูง <b>${load}</b>
+🚫 Auto-heal ปิดไว้สำหรับเครื่องนี้ — ไม่ได้ Fix ให้ (ตรวจเอง)`);
+        } else if (load > 15) {
+          smartAlert('warning', `⚠️ Proactive Alert
+🖥️ ${srv.name}: Load Average สูง <b>${load}</b>
+กำลัง Fix อัตโนมัติ...`);
+          queueCommand(srv.host, 
+            (function(){
+              // graceful recycle php-fpm จริงของ Plesk (คลาย worker ที่ RAM บวม) — ไม่ restart กระชากทั้ง Plesk
+              var healScript = [
+                'for s in $(systemctl list-units --type=service --state=running 2>/dev/null | grep -oE "plesk-php[0-9]+-fpm" | sort -u); do systemctl reload "$s" 2>/dev/null; done',
+                'systemctl reload sw-engine 2>/dev/null || true',
+                'echo fpm-reloaded'
+              ].join('\n');
+              return 'echo ' + Buffer.from(healScript).toString('base64') + ' | base64 -d | sh';
+            })()
+          );
+        }
+        if (disk > 80) {
+          smartAlert('warning', `⚠️ Disk Warning
+🖥️ ${srv.name}: Disk ใช้ไป <b>${disk}%</b>
+กรุณาตรวจสอบ!`);
+        }
+      }, 35000);
+    } catch(e) {
+      console.error('[Proactive]', srv.name, e.message);
+    }
+  }
+}
+
+// ===== SMART STATUS CHECKER =====
+const domainDownHistory = {}; // track consecutive down counts
+
+async function smartStatusCheck() {
+  const downDomains = memoryDomains.filter(d => d.status === 'down');
+  const upDomains = memoryDomains.filter(d => d.status === 'up');
+  
+  // Re-check down domains
+  for (const domain of downDomains.slice(0, 20)) {
+    try {
+      const result = await checkDomain(domain.domain);
+      const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+      if (idx === -1) continue;
+      
+      if (result.status === 'up') {
+        // Domain recovered!
+        memoryDomains[idx].status = 'up';
+        memoryDomains[idx].statusCode = result.statusCode;
+        memoryDomains[idx].error = null;
+        memoryDomains[idx].recoveredAt = new Date().toISOString();
+        delete domainDownHistory[domain.domain];
+        sendTelegram(`✅ <b>โดเมนกลับมาแล้ว!</b>
+🌐 <code>${domain.domain}</code>
+⏱️ Response: ${result.responseTime}ms`);
+        console.log(`[Smart] ${domain.domain} recovered!`);
+      } else {
+        // Still down - increment counter
+        domainDownHistory[domain.domain] = (domainDownHistory[domain.domain] || 0) + 1;
+        // diagnose after 3 consecutive checks
+        if (domainDownHistory[domain.domain] === 3) {
+          await diagnoseDomain(memoryDomains[idx]);
+        }
+      }
+    } catch(e) {}
     await new Promise(r => setTimeout(r, 500));
   }
   
-  finishProgressModal(fixed, failed, 0);
-  renderDiagnosisList();
+  await saveToSheets(memoryDomains);
 }
 
-function renderDiagnosisList() {
-  const list = document.getElementById('diagnosis-list');
-  const summary = document.getElementById('diagnosis-summary');
-  if (!list) return;
-  
-  const results = Object.values(diagnosisResults);
-  if (!results.length) return;
-  
-  // Summary cards
-  const counts = {};
-  results.forEach(d => { counts[d.cause] = (counts[d.cause] || 0) + 1; });
-  
-  if (summary) {
-    summary.innerHTML = Object.entries(counts).map(([cause, count]) => {
-      const info = causeLabels[cause] || causeLabels['unknown'];
-      return '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;text-align:center">'
-        + '<div style="font-size:24px;margin-bottom:4px">'+info.icon+'</div>'
-        + '<div style="font-size:20px;font-weight:700;color:'+info.color+'">'+count+'</div>'
-        + '<div style="font-size:11px;color:var(--text3);margin-top:2px">'+info.label+'</div>'
-        + '</div>';
-    }).join('');
-  }
-  
-  // Domain list
-  list.innerHTML = results.map(d => {
-    const info = causeLabels[d.cause] || causeLabels['unknown'];
-    return '<div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:8px;flex-wrap:wrap">'
-      + '<div style="font-size:18px">'+info.icon+'</div>'
-      + '<div style="flex:1;min-width:150px">'
-      + '<div style="font-family:var(--mono);font-size:13px;font-weight:600">'+d.domain+'</div>'
-      + '<div style="font-size:11px;color:var(--text3)">'+d.pleskServer+' • '+d.diagnosedAt+'</div>'
-      + '</div>'
-      + '<div style="display:flex;flex-direction:column;gap:2px;min-width:160px">'
-      + '<span style="font-size:12px;color:'+info.color+';font-weight:600">'+info.label+'</span>'
-      + '<span style="font-size:11px;color:var(--text3)">HTTP: '+(d.statusCode||'Timeout')+(d.error?' | '+d.error.slice(0,30):'')+'</span>'
-      + '</div>'
-      + (info.canFix && !d.fixed ? '<button onclick="fixSingleDomain(this.dataset.d)" data-d="'+d.domain+'" class="btn btn-sm" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(245,158,11,0.3)"><i class="ti ti-wand"></i> Fix</button>' : '')
-      + (d.fixed ? '<span style="color:var(--green);font-size:12px">✅ Fixed</span>' : '')
-      + '</div>';
-  }).join('');
-  
-  updateDiagnosisNav();
-}
+// [แก้บั๊ก] checkDomain ตัว HEAD เดิมถูกลบออก — มันประกาศทีหลังเลยไปทับตัวที่ฉลาดกว่า
+// (ตัวจริงอยู่ด้านบน: GET + อ่าน body + จับ Cloudflare/WordPress error)
 
-async function fixSingleDomain(domain) {
-  toast('⏳ กำลัง fix '+domain+'...', 'info');
-  try {
-    const res = await fetch(`${API}/api/autofix/${encodeURIComponent(domain)}`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      if (diagnosisResults[domain]) diagnosisResults[domain].fixed = true;
-      toast('✅ Fix สำเร็จ: '+data.message, 'success');
-      renderDiagnosisList();
-    } else {
-      toast('❌ '+data.message, 'error');
+// ===== DOMAIN DIAGNOSIS =====
+const diagnosisCache = {};
+
+async function diagnoseDomain(domain) {
+  if (diagnosisCache[domain.domain] && Date.now() - diagnosisCache[domain.domain] < 30 * 60 * 1000) return;
+  diagnosisCache[domain.domain] = Date.now();
+  
+  let cause = 'unknown';
+  let fix = 'manual';
+  let autoFixed = false;
+  
+  // Check 1: Plesk Suspended
+  if (domain.pleskId && !domain.pleskActive) {
+    cause = 'plesk_suspended';
+    fix = 'auto_unsuspend';
+    const ok = await pleskUnsuspend(domain.pleskId, domain.pleskHost);
+    if (ok) {
+      autoFixed = true;
+      const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+      if (idx !== -1) memoryDomains[idx].pleskActive = true;
     }
-  } catch { toast('เชื่อมต่อไม่ได้', 'error'); }
-}
-
-function isCannotFix(d) {
-  if (d.status !== 'down') return false;
-  const isSuspended = d.pleskId && !d.pleskActive;
-  const isCF = [521,522,523,524].includes(d.statusCode);
-  return !isSuspended && !isCF;
-}
-
-function updateDiagnosisNav() {
-  const count = Object.values(diagnosisResults).filter(d => !d.fixed).length;
-  const el = document.getElementById('nav-diagnosis');
-  if (el) {
-    el.textContent = count > 0 ? count : '';
-    el.style.display = count > 0 ? '' : 'none';
   }
-}
-
-// ===== SSH TERMINAL =====
-const sshHistory = {}; // { serverName: [commands] }
-const sshHistoryIdx = {};
-
-function openSSHTerminal(serverName, host) {
-  const termId = 'ssh-terminal-' + serverName.replace(/\s+/g, '-');
-  const term = document.getElementById(termId);
-  if (!term) return;
-  
-  const isOpen = term.style.display !== 'none';
-  term.style.display = isOpen ? 'none' : 'block';
-  
-  if (!isOpen) {
-    const input = document.getElementById('ssh-input-' + serverName.replace(/\s+/g, '-'));
-    if (input) setTimeout(() => input.focus(), 100);
-  }
-}
-
-function closeSSHTerminal(serverName) {
-  const termId = 'ssh-terminal-' + serverName.replace(/\s+/g, '-');
-  const term = document.getElementById(termId);
-  if (term) term.style.display = 'none';
-}
-
-async function runSSHCommand(serverName, host, inputEl) {
-  const cmd = inputEl.value.trim();
-  if (!cmd) return;
-  
-  const outputId = 'ssh-output-' + serverName.replace(/\s+/g, '-');
-  const output = document.getElementById(outputId);
-  if (!output) return;
-  
-  // Add to history
-  if (!sshHistory[serverName]) sshHistory[serverName] = [];
-  sshHistory[serverName].push(cmd);
-  sshHistoryIdx[serverName] = sshHistory[serverName].length;
-  
-  // Show command in terminal
-  output.innerHTML += '\n<span style="color:#7d8590">root@' + host + ':~# </span><span style="color:#e6edf3">' + escapeHtml(cmd) + '</span>\n';
-  output.innerHTML += '<span style="color:#7d8590;font-style:italic">⏳ กำลังรัน...</span>';
-  output.scrollTop = output.scrollHeight;
-  inputEl.value = '';
-  inputEl.disabled = true;
-  
-  try {
-    // Send command via agent
-    const res = await fetch(`${API}/api/agent/run/${encodeURIComponent(serverName)}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command: cmd })
-    });
-    const data = await res.json();
-    
-    if (!data.cmdId) throw new Error('Agent ไม่ตอบสนอง');
-    
-    // Poll for result
-    let result = null;
-    for (let i = 0; i < 60; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      const r2 = await fetch(`${API}/api/agent/result/${data.cmdId}`);
-      const d2 = await r2.json();
-      if (d2.success) { result = d2; break; }
+  // Check 2: Cloudflare error
+  else if ([521, 522, 523, 524].includes(domain.statusCode)) {
+    cause = 'cloudflare_error';
+    fix = 'auto_pause_cf';
+    if (CF_API_TOKEN) {
+      const zoneId = await pauseCloudflareZone(domain.domain);
+      if (zoneId) autoFixed = true;
     }
-    
-    // Remove loading indicator
-    output.innerHTML = output.innerHTML.replace('<span style="color:#7d8590;font-style:italic">⏳ กำลังรัน...</span>', '');
-    
-    if (result) {
-      const lines = (result.output || '').split('~').filter(Boolean);
-      const color = result.exitCode === 0 ? '#e6edf3' : '#f85149';
-      output.innerHTML += '<span style="color:' + color + '">' + lines.map(l => escapeHtml(l)).join('\n') + '</span>';
-      if (result.exitCode !== 0) {
-        output.innerHTML += '\n<span style="color:#f85149">Exit code: ' + result.exitCode + '</span>';
-      }
-    } else {
-      output.innerHTML += '<span style="color:#f85149">Timeout — Agent ไม่ตอบสนองใน 60 วินาที</span>';
+  }
+  // Check 3: 502/503 - restart services via agent
+  else if ([502, 503].includes(domain.statusCode) && domain.pleskHost) {
+    cause = 'service_error_502_503';
+    fix = 'auto_restart_service';
+    const srv = PLESK_SERVERS.find(s => s.host === domain.pleskHost);
+    if (srv) {
+      queueCommand(srv.host, 'systemctl restart sw-engine; systemctl restart httpd 2>/dev/null; echo "Restarted"');
+      autoFixed = true;
     }
-  } catch(e) {
-    output.innerHTML = output.innerHTML.replace('<span style="color:#7d8590;font-style:italic">⏳ กำลังรัน...</span>', '');
-    output.innerHTML += '<span style="color:#f85149">Error: ' + escapeHtml(e.message) + '</span>';
+  }
+  // Check 4: Timeout
+  else if (domain.error && domain.error.includes('timeout')) {
+    cause = 'timeout';
+    fix = 'check_server_load';
+    const srv = PLESK_SERVERS.find(s => s.host === domain.pleskHost);
+    if (srv) queueCommand(srv.host, 'uptime');
+  }
+  // Check 5: SSL expired
+  else if (domain.sslDaysLeft !== null && domain.sslDaysLeft <= 0) {
+    cause = 'ssl_expired';
+    fix = 'renew_ssl';
   }
   
-  output.innerHTML += '\n<span style="color:#7d8590">root@' + host + ':~# </span>';
-  output.scrollTop = output.scrollHeight;
-  inputEl.disabled = false;
-  inputEl.focus();
-}
-
-function quickSSH(serverName, host, cmd) {
-  const inputEl = document.getElementById('ssh-input-' + serverName.replace(/\s+/g, '-'));
-  if (!inputEl) return;
-  inputEl.value = cmd;
-  runSSHCommand(serverName, host, inputEl);
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-function renderSSLExpiry() {
-  const list = document.getElementById('ssl-expiry-list');
-  const count = document.getElementById('ssl-expiry-count');
-  if (!list) return;
-  const expiring = allDomains
-    .filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30 && d.sslDaysLeft >= 0)
-    .sort((a,b) => a.sslDaysLeft - b.sslDaysLeft);
-  if (count) count.textContent = expiring.length + ' โดเมน';
-  if (!expiring.length) {
-    list.innerHTML = '<div style="color:var(--green);font-size:13px;text-align:center;padding:12px"><i class="ti ti-circle-check"></i> ไม่มี SSL ที่ใกล้หมดอายุ</div>';
-    return;
+  // Save diagnosis
+  const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+  if (idx !== -1) {
+    memoryDomains[idx].diagnosis = { cause, fix, autoFixed, diagnosedAt: new Date().toISOString() };
   }
-  list.innerHTML = expiring.map(d => {
-    const color = d.sslDaysLeft <= 7 ? 'var(--red)' : d.sslDaysLeft <= 14 ? 'var(--amber)' : 'var(--text2)';
-    const urgency = d.sslDaysLeft <= 7 ? '🔴' : d.sslDaysLeft <= 14 ? '⚠️' : '🔒';
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px">'
-      + '<div><span style="font-family:var(--mono);font-size:12px">'+d.domain+'</span>'
-      + '<span style="font-size:11px;color:var(--text3);margin-left:8px">'+(d.pleskServer||'—')+'</span></div>'
-      + '<div style="color:'+color+';font-size:12px;font-weight:600">'+urgency+' '+d.sslDaysLeft+' วัน ('+(d.sslExpiry||'—')+')</div>'
-      + '</div>';
-  }).join('');
-}
-
-function renderDomainHealthSummary() {
-  const el = document.getElementById('domain-health-summary');
-  if (!el) return;
-  const servers = [...new Set(allDomains.map(d => d.pleskServer).filter(Boolean))];
-  el.innerHTML = servers.map(srv => {
-    const domains = allDomains.filter(d => d.pleskServer === srv);
-    const upPct = domains.length ? Math.round(domains.filter(d=>d.status==='up').length / domains.length * 100) : 0;
-    const barColor = upPct >= 90 ? 'var(--green)' : upPct >= 70 ? 'var(--amber)' : 'var(--red)';
-    return '<div style="background:var(--bg3);border-radius:var(--radius-sm);padding:14px">'
-      + '<div style="font-size:12px;font-weight:600;margin-bottom:8px">'+srv+'</div>'
-      + '<div style="display:flex;align-items:center;gap:8px">'
-      + '<div style="flex:1;background:var(--bg4);border-radius:4px;overflow:hidden;height:8px">'
-      + '<div style="width:'+upPct+'%;background:'+barColor+';height:100%;border-radius:4px;transition:width 0.5s"></div>'
-      + '</div><span style="font-size:12px;color:'+barColor+';font-weight:600;min-width:36px">'+upPct+'%</span></div>'
-      + '<div style="font-size:11px;color:var(--text3);margin-top:6px">'+domains.filter(d=>d.status==='up').length+'/'+domains.length+' โดเมน Up</div>'
-      + '</div>';
-  }).join('');
-}
-
-function toggleSidebar() {
-  const sidebar = document.getElementById('sidebar');
-  const overlay = document.getElementById('sidebar-overlay');
-  sidebar.classList.toggle('open');
-  overlay.classList.toggle('open');
-}
-function closeSidebar() {
-  document.getElementById('sidebar').classList.remove('open');
-  document.getElementById('sidebar-overlay').classList.remove('open');
-}
-// ปิด sidebar เมื่อกดเมนู
-document.querySelectorAll('.nav-item').forEach(item => {
-  item.addEventListener('click', () => {
-    if (window.innerWidth <= 768) closeSidebar();
-  });
-});
-</script>
-
-<script id="matrix-rain-init">
-// Matrix rain background
-(function() {
-  const bg = document.getElementById('matrix-rain');
-  if (!bg) return;
-  const chars = '01アイウエオカキクケコ{}[]<>=>;:#$%&*!?/\\';
-  const style = document.createElement('style');
-  style.textContent = '@keyframes mfall{0%{transform:translateY(-100%);opacity:0}5%{opacity:1}90%{opacity:0.15}100%{transform:translateY(110vh);opacity:0}}';
-  document.head.appendChild(style);
-  for (let i = 0; i < 22; i++) {
-    const c = document.createElement('div');
-    c.style.cssText = 'position:absolute;font-size:9px;color:#22d07a;line-height:14px;letter-spacing:3px;white-space:pre;animation:mfall linear infinite;font-family:monospace';
-    c.style.left = (i * 4.8) + '%';
-    c.style.animationDuration = (4 + Math.random() * 5) + 's';
-    c.style.animationDelay = (-Math.random() * 7) + 's';
-    let s = '';
-    for (let j = 0; j < 50; j++) s += chars[Math.floor(Math.random() * chars.length)] + '\n';
-    c.textContent = s;
-    bg.appendChild(c);
-  }
-})();
-</script>
-<script>
-// ===== DARK/LIGHT MODE TOGGLE =====
-function toggleTheme() {
-  const html = document.documentElement;
-  const toggle = document.getElementById('theme-toggle');
-  const isLight = html.classList.toggle('light');
-  if (toggle) toggle.classList.toggle('on', !isLight); // on = dark mode
-  localStorage.setItem('di_theme', isLight ? 'light' : 'dark');
-}
-
-function initTheme() {
-  const saved = localStorage.getItem('di_theme') || 'dark';
-  const html = document.documentElement;
-  const toggle = document.getElementById('theme-toggle');
-  if (saved === 'light') {
-    html.classList.add('light');
-    if (toggle) toggle.classList.remove('on');
-  } else {
-    html.classList.remove('light');
-    if (toggle) toggle.classList.add('on');
-  }
-}
-
-// รัน initTheme ทันที
-document.addEventListener('DOMContentLoaded', () => {
-  initTheme();
-});
-// รัน early เพื่อป้องกัน flash
-(function() {
-  const saved = localStorage.getItem('di_theme') || 'dark';
-  if (saved === 'light') document.documentElement.classList.add('light');
-})();
-</script>
-<script>
-// ===== APACHE WATCHDOG =====
-async function installApacheWatchdog() {
-  if (!confirm(
-    '🛡️ ติดตั้ง Apache Watchdog บนทุก 4 Server?\n\n' +
-    '✅ ปลอดภัย 100%: แค่ auto-restart Apache ถ้าล่ม\n' +
-    '✅ ไม่แตะไฟล์, database หรือ config ของโดเมน\n' +
-    '✅ ข้อมูลโดเมนทุกตัวปลอดภัยแน่นอน\n\n' +
-    'ดำเนินการต่อไหม?'
-  )) return;
   
-  toast('⏳ กำลังติดตั้ง Apache Watchdog บนทุก server...', 'info');
-  
-  try {
-    const res = await fetch(`${API}/api/install-apache-watchdog`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      toast('✅ เริ่มติดตั้ง Watchdog แล้ว — ดูผลใน Telegram', 'success');
-    } else {
-      toast('❌ ติดตั้งไม่สำเร็จ', 'error');
-    }
-  } catch(e) {
-    toast('เชื่อมต่อ Server ไม่ได้', 'error');
-  }
-}
-</script>
-<script>
-// ===== CLOUDFLARE WHITELIST =====
-async function setupCFWhitelist() {
-  if (!confirm(
-    '🛡️ Allow Cloudflare IPs บนทุก 4 Server?\n\n' +
-    '✅ ป้องกัน Error 521 จากทุกโดเมน\n' +
-    '✅ ปลอดภัย: เพิ่มแค่ ACCEPT rules ไม่ลบ rules เดิม\n' +
-    '✅ ข้อมูลโดเมนทุกตัวปลอดภัย ไม่มีผลกระทบ\n' +
-    '🔄 รัน daily อัตโนมัติเพื่อกัน rules หายหลัง reboot\n\n' +
-    'ดำเนินการต่อไหม?'
-  )) return;
-
-  toast('⏳ กำลัง Allow Cloudflare IPs บนทุก server...', 'info');
-
-  try {
-    const res = await fetch(`${API}/api/setup-cloudflare-whitelist`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      toast('✅ เริ่มตั้งค่าแล้ว — ดูผลใน Telegram ประมาณ 2-3 นาที', 'success');
-    } else {
-      toast('❌ ตั้งค่าไม่สำเร็จ', 'error');
-    }
-  } catch(e) {
-    toast('เชื่อมต่อ Server ไม่ได้', 'error');
-  }
-}
-</script>
-<script>
-// ===== DISK CLEANUP =====
-async function runDiskCleanup() {
-  if (!confirm(
-    '🧹 Disk Auto-Cleanup บนทุก 4 Server?\n\n' +
-    '✅ ลบ: log เก่า (>3 วัน), tmp, PHP sessions, WP cache\n' +
-    '✅ ปลอดภัย: ไม่แตะไฟล์โดเมน, database, หรือ config\n' +
-    '✅ ข้อมูลโดเมนทุกตัวปลอดภัย 100%\n\n' +
-    'ดำเนินการต่อไหม?'
-  )) return;
-  toast('⏳ กำลัง Disk Cleanup บนทุก server...', 'info');
-  try {
-    const res = await fetch(`${API}/api/disk-cleanup`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) toast('✅ เริ่ม Cleanup แล้ว — ดูผลใน Telegram 2-3 นาที', 'success');
-    else toast('❌ Cleanup ไม่สำเร็จ', 'error');
-  } catch(e) { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
-}
-
-// ===== PHP-FPM LIMITER =====
-async function runPhpFpmLimit() {
-  if (!confirm(
-    '⚙️ จำกัด PHP-FPM max_children = 3 ต่อโดเมน ทุก 4 Server?\n\n' +
-    '✅ ป้องกัน 1 โดเมนกิน resource จนโดเมนอื่นพัง\n' +
-    '✅ ปลอดภัย: แค่แก้ config ไม่แตะไฟล์โดเมน\n' +
-    '✅ PHP-FPM จะ restart หลังแก้ (เว็บอาจหน่วง 3-5 วินาที)\n' +
-    '✅ ข้อมูลโดเมนทุกตัวปลอดภัย 100%\n\n' +
-    'ดำเนินการต่อไหม?'
-  )) return;
-  toast('⏳ กำลังจำกัด PHP-FPM บนทุก server...', 'info');
-  try {
-    const res = await fetch(`${API}/api/limit-phpfpm`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) toast('✅ เริ่มจำกัด PHP-FPM แล้ว — ดูผลใน Telegram 3-5 นาที', 'success');
-    else toast('❌ ล้มเหลว', 'error');
-  } catch(e) { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
-}
-</script>
-<script>
-async function runPhpFpmOndemand() {
-  if (!confirm(
-    '🔥 Fix Load สูง — เปลี่ยน PHP-FPM เป็น Ondemand ทุก 4 Server?\n\n' +
-    '✅ processes ตายอัตโนมัติหลัง idle 10 วินาที ไม่สะสมค้าง\n' +
-    '✅ ลด Load และ RAM ได้อย่างถาวร\n' +
-    '⚠️ PHP-FPM จะ restart (เว็บหน่วง 3-5 วินาที)\n' +
-    '✅ ข้อมูลโดเมนทุกตัวปลอดภัย 100%\n\n' +
-    'ดำเนินการต่อไหม?'
-  )) return;
-  toast('⏳ กำลังเปลี่ยน PHP-FPM เป็น ondemand ทุก server...', 'info');
-  try {
-    const res = await fetch(`${API}/api/phpfpm-ondemand`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) toast('✅ เริ่มแล้ว — Load จะลดลงใน 5-10 นาที ดูผลใน Telegram', 'success');
-    else toast('❌ ล้มเหลว', 'error');
-  } catch(e) { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
-}
-</script>
-<script>
-async function importGSCDomains() {
-  if (!confirm(
-    '📥 Import โดเมนจาก GSC เข้า DomainIntel?\n\n' +
-    'ระบบจะนำโดเมนทั้งหมดใน GSC (235 sites) \n' +
-    'ที่ยังไม่มีใน DomainIntel มาเพิ่มอัตโนมัติ\n\n' +
-    'ดำเนินการต่อไหม?'
-  )) return;
-  toast('⏳ กำลัง import โดเมนจาก GSC...', 'info');
-  try {
-    const res = await fetch(`${API}/api/gsc/import-domains`, { method: 'POST' });
-    const data = await res.json();
-    if (data.success) {
-      toast(`✅ Import สำเร็จ! เพิ่ม ${data.imported} โดเมน รวมทั้งหมด ${data.total} โดเมน`, 'success');
-      // รีโหลดข้อมูล
-      setTimeout(() => loadData(), 2000);
-    } else {
-      toast('❌ Import ล้มเหลว: ' + (data.error || 'unknown error'), 'error');
-    }
-  } catch(e) { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
-}
-</script>
-</body>
-</html>
-<script>
-// ===== BOT WATCH =====
-let bwData = [];
-
-function initBotWatch() {
-  const dateEl = document.getElementById('bw-date');
-  if (dateEl && !dateEl.value) {
-    dateEl.value = new Date().toISOString().split('T')[0];
-  }
-  loadBotWatch();
-}
-
-async function loadBotWatch() {
-  const date = document.getElementById('bw-date')?.value || new Date().toISOString().split('T')[0];
-  const domain = document.getElementById('bw-domain')?.value || '';
-  const tbody = document.getElementById('bw-table-body');
-  if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</td></tr>';
-  try {
-    const [dataRes, histRes] = await Promise.all([
-      fetch(`${API}/api/botwatch/data?date=${date}&domain=${domain}`),
-      fetch(`${API}/api/botwatch/history?days=7&domain=${domain}`)
-    ]);
-    const data = await dataRes.json();
-    const hist = await histRes.json();
-    bwData = data.logs || [];
-    const domSel = document.getElementById('bw-domain');
-    if (domSel && data.sites) {
-      const cur = domSel.value;
-      domSel.innerHTML = '<option value="">ทุกโดเมน</option>' +
-        data.sites.map(s => `<option value="${s}" ${s===cur?'selected':''}>${s}</option>`).join('');
-    }
-    const navBadge = document.getElementById('nav-botwatch');
-    if (navBadge) { navBadge.textContent = bwData.length || ''; navBadge.style.display = bwData.length > 0 ? '' : 'none'; }
-    const totalHits = bwData.reduce((s,l) => s + l.count, 0);
-    const uniqueDomains = new Set(bwData.map(l => l.domain)).size;
-    document.getElementById('bw-stat-ips').textContent = bwData.length;
-    document.getElementById('bw-stat-hits').textContent = totalHits.toLocaleString();
-    document.getElementById('bw-stat-domains').textContent = uniqueDomains;
-    const syncEl = document.getElementById('bw-stat-sync');
-    if (syncEl) syncEl.textContent = data.lastSync ? timeAgo(data.lastSync) : 'ยังไม่มีข้อมูล';
-    renderBotTable(bwData);
-    renderBotHistory(hist.summary || []);
-  } catch(e) {
-    const tbody = document.getElementById('bw-table-body');
-    if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:30px;color:var(--red)">เชื่อมต่อ Server ไม่ได้: ${e.message}</td></tr>`;
-  }
-}
-
-function renderBotTable(logs) {
-  const tbody = document.getElementById('bw-table-body');
-  if (!tbody) return;
-  if (!logs.length) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--green)"><i class="ti ti-shield-check" style="font-size:24px;display:block;margin-bottom:8px"></i> ไม่พบ Bot IP ในวันที่เลือก</td></tr>';
-    return;
-  }
-  tbody.innerHTML = logs.map(l => {
-    const countColor = l.count >= 20 ? 'var(--red)' : l.count >= 10 ? 'var(--amber)' : 'var(--text2)';
-    return `<tr>
-      <td><span style="font-family:var(--mono);font-size:13px;background:var(--red-dim);color:var(--red);padding:2px 8px;border-radius:4px">${l.ip}</span></td>
-      <td><a href="https://${l.domain}" target="_blank" style="color:var(--text);font-family:var(--mono);font-size:13px">${l.domain}</a></td>
-      <td><span style="font-size:12px;color:var(--text2)">${l.action}</span></td>
-      <td style="font-size:11px;color:var(--text3);font-family:var(--mono)">${l.firstSeen}<br>→ ${l.lastSeen}</td>
-      <td><span style="color:${countColor};font-weight:700;font-size:15px;font-family:var(--mono)">${l.count}</span></td>
-      <td>
-        <div style="display:flex;gap:6px">
-          <button onclick="copyBotIP('${l.ip}')" class="btn btn-sm"><i class="ti ti-copy"></i> Copy IP</button>
-          <button onclick="showBlockGuide('${l.ip}')" class="btn btn-sm btn-red"><i class="ti ti-ban"></i> Block Guide</button>
-        </div>
-      </td>
-    </tr>`;
-  }).join('');
-}
-
-function renderBotHistory(summary) {
-  const el = document.getElementById('bw-history');
-  if (!el) return;
-  if (!summary.length) { el.innerHTML = '<div style="color:var(--text3);text-align:center;padding:20px">ยังไม่มีข้อมูลย้อนหลัง</div>'; return; }
-  const maxIPs = Math.max(...summary.map(s => s.uniqueIPs), 1);
-  el.innerHTML = summary.map(s => {
-    const pct = Math.round(s.uniqueIPs / maxIPs * 100);
-    const color = pct >= 80 ? 'var(--red)' : pct >= 40 ? 'var(--amber)' : 'var(--green)';
-    return `<div style="display:flex;align-items:center;gap:12px">
-      <div style="font-size:12px;font-family:var(--mono);color:var(--text2);min-width:90px">${s.date}</div>
-      <div style="flex:1;background:var(--bg4);border-radius:4px;height:20px;overflow:hidden">
-        <div style="width:${pct}%;background:${color};height:100%;border-radius:4px;transition:width 0.5s"></div>
-      </div>
-      <div style="font-size:12px;color:${color};font-weight:600;min-width:100px">${s.uniqueIPs} IPs / ${s.total} hits</div>
-    </div>`;
-  }).join('');
-}
-
-function copyBotIP(ip) {
-  navigator.clipboard.writeText(ip);
-  toast(`Copy IP ${ip} แล้ว`, 'success');
-}
-
-function showBlockGuide(ip) {
-  const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;padding:20px';
-  modal.innerHTML = `<div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:28px;max-width:500px;width:100%">
-    <div style="font-size:16px;font-weight:600;margin-bottom:16px;display:flex;align-items:center;gap:8px">
-      <i class="ti ti-ban" style="color:var(--red)"></i> Block IP Guide: ${ip}
-    </div>
-    <div style="background:var(--bg3);border-radius:8px;padding:14px;font-family:var(--mono);font-size:12px;color:var(--text);line-height:1.8;margin-bottom:12px">
-      <div style="color:var(--text3);margin-bottom:6px"># วิธีที่ 1: .htaccess</div>
-      <div>Deny from ${ip}</div><br>
-      <div style="color:var(--text3);margin-bottom:6px"># วิธีที่ 2: iptables (SSH)</div>
-      <div>iptables -A INPUT -s ${ip} -j DROP</div><br>
-      <div style="color:var(--text3);margin-bottom:6px"># วิธีที่ 3: Cloudflare Firewall Rule</div>
-      <div>ip.src eq ${ip} → Block</div>
-    </div>
-    <div style="display:flex;gap:8px;justify-content:flex-end">
-      <button onclick="navigator.clipboard.writeText('iptables -A INPUT -s ${ip} -j DROP');toast('Copy คำสั่งแล้ว','success')" class="btn btn-sm"><i class="ti ti-copy"></i> Copy iptables</button>
-      <button onclick="this.closest('[style*=fixed]').remove()" class="btn btn-sm">ปิด</button>
-    </div>
-  </div>`;
-  document.body.appendChild(modal);
-  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-}
-
-async function syncBotWatch() {
-  toast('⏳ กำลัง Sync Bot Watch data...', 'info');
-  try {
-    await fetch(`${API}/api/botwatch/sync`, { method: 'POST' });
-    toast('✅ Sync เริ่มแล้ว รอประมาณ 1 นาที', 'success');
-    setTimeout(loadBotWatch, 65000);
-  } catch { toast('เชื่อมต่อ Server ไม่ได้', 'error'); }
-}
-</script>
-<script>
-// ===== SYSTEM OVERVIEW =====
-const AUTO_SYSTEMS = [
-  { icon:'ti-activity',       name:'Proactive Monitor',     interval:'ทุก 5 นาที',      cat:'heal' },
-  { icon:'ti-shield',         name:'Apache Watchdog',        interval:'ทุก 1 นาที',      cat:'heal' },
-  { icon:'ti-database',       name:'MySQL Watchdog',         interval:'ทุก 1 นาที',      cat:'heal' },
-  { icon:'ti-heartbeat',      name:'Smart Status Check',     interval:'ทุก 10 นาที',     cat:'heal' },
-  { icon:'ti-trash',          name:'Disk Auto-Cleanup',      interval:'ทุก 6 ชั่วโมง',   cat:'heal' },
-  { icon:'ti-adjustments',    name:'PHP-FPM Limiter',        interval:'startup+ทบทวน',   cat:'heal' },
-  { icon:'ti-certificate',    name:'SSL Renewal Check',      interval:'ทุก 6 ชั่วโมง',   cat:'sec'  },
-  { icon:'ti-lock',           name:'Auto SSL Install',       interval:'ทุก 12 ชั่วโมง',  cat:'sec'  },
-  { icon:'ti-cloud-lock',     name:'Cloudflare Whitelist',   interval:'ทุก 24 ชั่วโมง',  cat:'sec'  },
-  { icon:'ti-robot',          name:'Bot Watch',              interval:'ทุก 1 ชั่วโมง',   cat:'sec'  },
-  { icon:'ti-shield-x',       name:'DDoS Detection',         interval:'real-time',        cat:'sec'  },
-  { icon:'ti-list-check',     name:'Blacklist Monitor',      interval:'ทุกวัน',           cat:'sec'  },
-  { icon:'ti-mail',           name:'Email/Spam Monitor',     interval:'ทุก 6 ชั่วโมง',   cat:'report'},
-  { icon:'ti-calendar',       name:'Domain Expiry Monitor',  interval:'ทุก 12 ชั่วโมง',  cat:'report'},
-  { icon:'ti-database-export',name:'Backup Monitor',         interval:'ทุกวัน',           cat:'report'},
-  { icon:'ti-chart-bar',      name:'Performance Monitor',    interval:'real-time',        cat:'report'},
-  { icon:'ti-chart-line',     name:'Weekly Report',          interval:'ทุก 7 วัน',        cat:'report'},
-  { icon:'ti-refresh',        name:'Plesk Auto-Sync',        interval:'ทุก 1 ชั่วโมง',   cat:'sync' },
-];
-
-const INTEGRATIONS = [
-  { icon:'ti-table',          name:'Google Sheets',    desc:'Primary storage — domain data + Bot Watch logs', color:'var(--green)' },
-  { icon:'ti-brand-telegram', name:'Telegram Bot',     desc:'แจ้งเตือน + รับคำสั่ง /status /fix /down',       color:'var(--blue)'  },
-  { icon:'ti-brand-google',   name:'Google Search Console', desc:'Traffic, Clicks, Keywords ranking',          color:'var(--blue)'  },
-  { icon:'ti-cloud',          name:'Cloudflare API',   desc:'Auto-fix + IP Whitelist (15 IP ranges)',          color:'var(--amber)' },
-  { icon:'ti-server',         name:'Plesk API',        desc:'4 servers — domain management, PHP-FPM, SSL',     color:'var(--teal)'  },
-];
-
-const PENDING_TASKS = [
-  { status:'ค้าง',    color:'var(--red)',   bg:'var(--red-dim)',   text:'Restore okc-4.net จาก Server 4 → Server 1 (ติด encryption)' },
-  { status:'บางส่วน', color:'var(--amber)', bg:'var(--amber-dim)', text:'Server 4 hardening — MySQL /etc/my.cnf ยังไม่ได้ทำ' },
-  { status:'ใหม่',    color:'var(--teal)',  bg:'rgba(14,165,233,0.12)', text:'Bot Watch — มีแค่ romazeed.pro รอเพิ่มโดเมนอื่น' },
-];
-
-const SERVER_CONFIG = [
-  { name:'Server 1', host:'139.59.102.1', domains:258, status:'ok',    load:'~0.6'  },
-  { name:'Server 2', host:'139.59.119.43', domains:225, status:'ok',   load:'~0.2'  },
-  { name:'Server 3', host:'143.198.218.78', domains:255, status:'ok',  load:'~16'   },
-  { name:'Server 4', host:'178.128.104.227', domains:255, status:'warn',load:'สูงบ่อย'},
-];
-
-let ovLoaded = false;
-
-async function loadOverview() {
-  renderOvAutoSystems();
-  renderOvIntegrations();
-  renderOvPending();
-  renderOvServers(null);
-
-  // ดึง live data
-  try {
-    const [domRes, statsRes] = await Promise.all([
-      fetch(`${API}/api/domains`),
-      fetch(`${API}/api/stats`)
-    ]);
-    const domData = await domRes.json();
-    const stats = await statsRes.json();
-
-    const total = stats.total || domData.domains?.length || 0;
-    const down = stats.down || 0;
-    const up = stats.up || 0;
-    const suspended = stats.pleskSuspended ?? 0;
-
-    const set = (id, v) => { const el = document.getElementById(id); if(el) el.textContent = v; };
-    set('ov-total', total.toLocaleString());
-    set('ov-down', down.toLocaleString());
-    set('ov-ssl', total > 0 ? (total - down).toLocaleString() : '—');
-    set('ov-suspended', suspended.toLocaleString());
-    set('ov-up-pct', total > 0 ? `Up ${Math.round(up/total*100)}%` : '—');
-    set('ov-last-updated', 'อัพเดต ' + timeAgo(new Date().toISOString()));
-
-    // ใช้ live server data ถ้ามี
-    if (domData.pleskServerConfigs) {
-      const liveServers = SERVER_CONFIG.map(s => {
-        const live = domData.pleskServerConfigs.find(l => l.host === s.host);
-        const domCount = (domData.domains || []).filter(d => d.pleskHost === s.host || d.pleskServer === s.name).length;
-        return { ...s, domains: domCount || s.domains };
-      });
-      renderOvServers(liveServers);
-    }
-  } catch(e) {
-    // fallback เป็น static data
-    console.log('[Overview] fallback to static data');
-  }
-
-  ovLoaded = true;
-}
-
-function renderOvServers(servers) {
-  const el = document.getElementById('ov-servers');
-  if (!el) return;
-  const list = servers || SERVER_CONFIG;
-  el.innerHTML = list.map(s => {
-    const isOk = s.status === 'ok';
-    const dotColor = isOk ? 'var(--green)' : 'var(--amber)';
-    const borderAcc = isOk ? '' : 'border-color:rgba(245,158,11,0.35)';
-    return `<div class="ov-server-card" style="${borderAcc}">
-      <div style="display:flex;align-items:center;gap:7px;margin-bottom:8px">
-        <div style="width:8px;height:8px;border-radius:50%;background:${dotColor};box-shadow:0 0 6px ${dotColor}"></div>
-        <div style="font-size:12px;font-weight:600">${s.name}</div>
-        ${!isOk ? `<span class="ov-badge ov-badge-amber" style="margin-left:auto">⚠️ Load สูง</span>` : ''}
-      </div>
-      <div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-bottom:8px">${s.host}</div>
-      <div style="display:flex;align-items:center;justify-content:space-between">
-        <span class="ov-badge ${isOk ? 'ov-badge-green' : 'ov-badge-amber'}">${s.domains} โดเมน</span>
-        <span style="font-size:10px;color:var(--text2)">Load ${s.load}</span>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function renderOvAutoSystems() {
-  const el = document.getElementById('ov-auto-systems');
-  if (!el) return;
-  const catColors = {
-    heal:   'var(--teal)',
-    sec:    'var(--red)',
-    report: 'var(--blue)',
-    sync:   'var(--green)',
+  const causeLabels = {
+    'plesk_suspended': 'Plesk Suspended',
+    'cloudflare_error': 'Cloudflare Error',
+    'service_error_502_503': '502/503 Service Error',
+    'timeout': 'Connection Timeout',
+    'ssl_expired': 'SSL หมดอายุ',
+    'unknown': 'ไม่ทราบสาเหตุ'
   };
-  el.innerHTML = AUTO_SYSTEMS.map(s => `
-    <div class="ov-auto-row">
-      <span style="display:flex;align-items:center;gap:6px;color:var(--text)">
-        <i class="ti ${s.icon}" style="font-size:12px;color:${catColors[s.cat]};width:14px;text-align:center"></i>
-        ${s.name}
-      </span>
-      <span class="ov-pill">${s.interval}</span>
-    </div>
-  `).join('');
-}
-
-function renderOvIntegrations() {
-  const el = document.getElementById('ov-integrations');
-  if (!el) return;
-  el.innerHTML = INTEGRATIONS.map(i => `
-    <div class="ov-integ-row">
-      <i class="ti ${i.icon}" style="font-size:14px;color:${i.color};flex-shrink:0"></i>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:11px;font-weight:500">${i.name}</div>
-        <div style="font-size:10px;color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${i.desc}</div>
-      </div>
-    </div>
-  `).join('');
-}
-
-function renderOvPending() {
-  const el = document.getElementById('ov-pending');
-  if (!el) return;
-  el.innerHTML = PENDING_TASKS.map(t => `
-    <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);font-size:11px">
-      <span style="background:${t.bg};color:${t.color};font-size:10px;font-weight:600;padding:2px 7px;border-radius:10px;white-space:nowrap">${t.status}</span>
-      <span style="color:var(--text)">${t.text}</span>
-    </div>
-  `).join('').replace(/border-bottom[^}]+}$/, '');
-}
-</script>
-<script>
-// ===== UPTIME SLA PAGE =====
-let slaData = null;
-
-async function loadSLAPage() {
-  try {
-    const res = await fetch(`${API}/api/sla/stats`);
-    const data = await res.json();
-    slaData = data.stats || [];
-    renderSLASummaryNew();
-    renderSLATable();
-    const upd = document.getElementById('sla-updated-at');
-    if (upd) upd.textContent = 'อัพเดต ' + new Date().toLocaleTimeString('th-TH');
-  } catch(e) {
-    const el = document.getElementById('sla-table-wrap');
-    if (el) el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดข้อมูลไม่ได้: ' + e.message + '</div>';
-  }
-}
-
-function renderSLASummaryNew() {
-  if (!slaData) return;
-  const haData = slaData.filter(d => d.d30.checks > 0);
-  const avg7  = haData.length ? Math.round(haData.reduce((s,d)=>s+(d.d7.uptime??100),0)/haData.length*10)/10 : null;
-  const avg30 = haData.length ? Math.round(haData.reduce((s,d)=>s+(d.d30.uptime??100),0)/haData.length*10)/10 : null;
-  const under99 = haData.filter(d => (d.d30.uptime??100) < 99).length;
-  const under95 = haData.filter(d => (d.d30.uptime??100) < 95).length;
-
-  const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
-  const setColor = (id, val) => { const el = document.getElementById(id); if (!el) return; el.className = 'metric-val ' + (val>=99?'green':val>=95?'amber':'red'); };
-
-  setEl('sla-avg7',  avg7  !== null ? avg7  + '%' : '—');
-  setEl('sla-avg30', avg30 !== null ? avg30 + '%' : '—');
-  setEl('sla-under99', under99);
-  setEl('sla-under95', under95);
-  if (avg7 !== null) { setColor('sla-avg7', avg7); setColor('sla-avg30', avg30); }
-
-  // แสดง info box ถ้าข้อมูลน้อยมาก
-  const infoBox = document.getElementById('sla-info-box');
-  if (infoBox) infoBox.style.display = haData.length < 10 ? 'block' : 'none';
-}
-
-function slaBar(pct, showLabel=true) {
-  if (pct === null || pct === undefined) return '<span style="color:var(--text3)">กำลังเก็บข้อมูล...</span>';
-  const color = pct>=99?'var(--green)':pct>=95?'var(--amber)':'var(--red)';
-  const badge = pct>=99?'🟢':pct>=95?'🟡':'🔴';
-  return `<div style="display:flex;align-items:center;gap:8px">
-    <div style="flex:1;height:5px;background:var(--bg4);border-radius:3px;min-width:60px;overflow:hidden">
-      <div style="width:${Math.min(100,pct)}%;height:100%;background:${color};border-radius:3px;transition:width .5s"></div>
-    </div>
-    ${showLabel ? `<span style="font-size:11px;font-weight:600;color:${color};min-width:42px">${badge} ${pct}%</span>` : ''}
-  </div>`;
-}
-
-function renderSLATable() {
-  const el = document.getElementById('sla-table-wrap');
-  if (!el) return;
-  if (!slaData || slaData.length === 0) {
-    el.innerHTML = `<div style="padding:40px;text-align:center;color:var(--text3)">
-      <div style="font-size:36px;margin-bottom:12px">⏳</div>
-      <div style="font-size:13px;font-weight:600;margin-bottom:6px">กำลังสะสมข้อมูล</div>
-      <div style="font-size:11px">ระบบจะเก็บ uptime ทุกครั้งที่ตรวจสอบโดเมน<br>จะมีข้อมูลให้ดูใน <b>24-48 ชั่วโมง</b></div>
-    </div>`;
-    return;
-  }
-
-  const filter = window._slaFilter || 'good';
-  const search = (document.getElementById('sla-search')?.value||'').toLowerCase();
-
-  let display = [...slaData];
-  if (filter === 'good')    display = display.filter(d => d.status==='up' && (d.d30.uptime??100) >= 95);
-  if (filter === 'under99') display = display.filter(d => (d.d30.uptime??100) < 99);
-  if (filter === 'under95') display = display.filter(d => (d.d30.uptime??100) < 95);
-  if (filter === 'down')    display = display.filter(d => d.status === 'down');
-  if (filter === 'all')     display = [...slaData];
-  if (search) display = display.filter(d => d.domain.toLowerCase().includes(search));
-
-  // sort: Up ก่อน, เรียง SLA สูงสุด
-  display.sort((a,b) => {
-    if (a.status !== b.status) return a.status==='up' ? -1 : 1;
-    return (b.d30.uptime??100) - (a.d30.uptime??100);
-  });
-
-  // update filter buttons
-  ['good','all','under99','under95','down'].forEach(k => {
-    const btn = document.getElementById('sla-f-' + k);
-    if (!btn) return;
-    if (filter === k) {
-      btn.style.background = 'var(--teal)';
-      btn.style.color = '#fff';
-      btn.style.borderColor = 'var(--teal)';
-    } else {
-      btn.style.background = '';
-      btn.style.color = '';
-      btn.style.borderColor = '';
-    }
-  });
-
-  if (!display.length) {
-    el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">ไม่มีโดเมนในหมวดนี้</div>';
-    return;
-  }
-
-  const slaBadge = (pct) => {
-    if (pct === null || pct === undefined) return '<span style="color:var(--text3);font-size:11px">—</span>';
-    const color = pct>=99?'var(--green)':pct>=95?'var(--teal)':pct>=50?'var(--amber)':'var(--red)';
-    const icon = pct>=99?'🟢':pct>=95?'🔵':pct>=50?'🟡':'🔴';
-    return `<span style="font-weight:700;color:${color};font-size:13px">${icon} ${pct}%</span>`;
+  
+  const fixLabels = {
+    'auto_unsuspend': '✅ Auto-Unsuspend แล้ว',
+    'auto_pause_cf': '✅ Auto-Pause Cloudflare แล้ว',
+    'auto_restart_service': '✅ Auto-Restart Service แล้ว',
+    'check_server_load': '⚠️ ตรวจสอบ Server Load',
+    'renew_ssl': '⚠️ ต้อง Renew SSL',
+    'manual': '⚠️ ต้องแก้ไขเอง'
   };
-
-  el.innerHTML = `<div class="table-wrap"><table><thead><tr>
-    <th style="width:35%">โดเมน</th>
-    <th>Status</th>
-    <th>SLA 7 วัน</th>
-    <th>SLA 30 วัน</th>
-    <th>เช็คล่าสุด</th>
-  </tr></thead><tbody>
-    ${display.map(d => {
-      const s30 = d.d30.uptime;
-      const s7 = d.d7.uptime;
-      const rowBg = d.status==='down' ? 'background:rgba(239,68,68,0.04)' : '';
-      return `<tr style="${rowBg}">
-        <td class="domain-name" style="font-size:12px">${d.domain}</td>
-        <td>${d.status==='up'
-          ? '<span style="color:var(--green);font-weight:600">✅ Up</span>'
-          : '<span style="color:var(--red);font-weight:600">🔴 Down</span>'}</td>
-        <td>${slaBadge(s7)}</td>
-        <td>${slaBadge(s30)}</td>
-        <td style="font-size:11px;color:var(--text3)">${d.d30.checks||0} ครั้ง</td>
-      </tr>`;
-    }).join('')}
-  </tbody></table></div>`;
+  
+  sendTelegram(
+    `🔍 <b>วิเคราะห์โดเมน Down</b>
+` +
+    `🌐 <code>${domain.domain}</code>
+` +
+    `📊 Status: ${domain.statusCode || 'Timeout'}
+` +
+    `🔴 สาเหตุ: ${causeLabels[cause] || cause}
+` +
+    `🔧 การแก้ไข: ${fixLabels[fix] || fix}
+` +
+    `${autoFixed ? '✅ แก้ไขอัตโนมัติแล้ว' : '⚠️ ต้องการการแก้ไขเพิ่มเติม'}`
+  );
+  
+  console.log(`[Diagnosis] ${domain.domain}: ${cause} → ${fix} (autoFixed: ${autoFixed})`);
 }
 
-// ===== RESOURCE USAGE PAGE =====
-async function loadResourceUsage() {
-  const el = document.getElementById('resources-content');
-  const lbl = document.getElementById('res-last-updated');
-
-  // ดึงรายชื่อ servers — extract เป็น string เสมอ
-  const extractName = (s) => {
-    if (typeof s === 'string') return s;
-    if (s && typeof s === 'object') return s.name || s.host || JSON.stringify(s);
-    return String(s);
-  };
-
-  let servers = [];
-  if (window._pleskServerConfigs && window._pleskServerConfigs.length) {
-    servers = window._pleskServerConfigs.map(extractName).filter(Boolean);
+// ===== SSL AUTO RENEWAL =====
+async function checkSSLRenewal() {
+  const expiringSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0);
+  for (const domain of expiringSoon) {
+    if (domain.sslRenewNotified && Date.now() - new Date(domain.sslRenewNotified).getTime() < 24 * 60 * 60 * 1000) continue;
+    
+    const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+    if (idx !== -1) memoryDomains[idx].sslRenewNotified = new Date().toISOString();
+    
+    const urgency = domain.sslDaysLeft <= 3 ? '🚨' : domain.sslDaysLeft <= 7 ? '🔴' : '⚠️';
+    sendTelegram(
+      `${urgency} <b>SSL ใกล้หมดอายุ!</b>
+` +
+      `🌐 <code>${domain.domain}</code>
+` +
+      `📅 หมดอายุใน <b>${domain.sslDaysLeft} วัน</b> (${domain.sslExpiry || '—'})
+` +
+      `🖥️ Server: ${domain.pleskServer || '—'}
+` +
+      `💡 กรุณา Renew SSL ใน Plesk`
+    );
+    console.log(`[SSL] ${domain.domain} expires in ${domain.sslDaysLeft} days`);
   }
-  if (!servers.length) {
-    // ดึงจาก unique server names ใน allDomains
-    const fromDomains = [...new Set((allDomains||[]).map(d => d.pleskServer).filter(Boolean))];
-    if (fromDomains.length) servers = fromDomains;
-  }
-  if (!servers.length) {
-    servers = ['Server 1','Server 2','Server 3','Server 4','Server 5'];
-  }
-  console.log('[ResourceUsage] servers:', servers);
+}
 
-  // แสดง skeleton tabs ก่อน
-  const results = servers.map(s => ({ server: s, ok: false, output: '', loading: true }));
-  renderResourceData(results);
-
-  // ดึงทีละ server แบบ async (ไม่ block UI)
-  servers.forEach(async (srvName, i) => {
+// ===== AUTO SSL INSTALL =====
+async function autoInstallSSL() {
+  console.log('[SSL] ติดตั้ง SSL + redirect ทุกโดเมน...');
+  
+  for (const srv of PLESK_SERVERS) {
     try {
-      const encoded = encodeURIComponent(srvName);
-      const res = await fetch(`${API}/api/resource-usage/${encoded}`, { method: 'POST' });
-      const data = await res.json();
-      if (data.success && data.results && data.results[0]) {
-        results[i] = data.results[0];
-      } else {
-        results[i] = { server: srvName, ok: false, output: data.error || 'ไม่มีข้อมูล' };
-      }
-    } catch(e) {
-      results[i] = { server: srvName, ok: false, output: e.message };
-    }
-    // re-render เมื่อได้ข้อมูลแต่ละตัว
-    renderResourceData([...results]);
-    if (lbl) lbl.textContent = 'อัพเดต ' + new Date().toLocaleTimeString('th-TH');
-  });
-}
-
-function parseResourceOutput(output) {
-  const lines = (output||'').split('\n').map(l=>l.trim()).filter(Boolean);
-  const php = [], top = [];
-  let sys = { load: '—', ram: '—', disk: '—', domains: '—', conn: '—' };
-  let section = '';
-
-  for (const line of lines) {
-    if (line === '=SYS=')  { section='sys'; continue; }
-    if (line === '=PHP=')  { section='php'; continue; }
-    if (line === '=TOP=')  { section='top'; continue; }
-    if (line === '=CONN=') { section='conn'; continue; }
-    if (line === '=DISK=') { section='disk'; continue; }
-
-    if (section === 'sys') {
-      const lm = line.match(/^Load:(.+)/);
-      const rm = line.match(/^RAM:(\d+)\/(\d+)/);
-      const dm = line.match(/^Disk:(.+)/);
-      const domm = line.match(/^Domains:(\d+)/);
-      if (lm) sys.load = lm[1].trim();
-      if (rm) { sys.ramUsed=parseInt(rm[1]); sys.ramTotal=parseInt(rm[2]); sys.ram=rm[1]+'/'+rm[2]+'MB ('+Math.round(rm[1]/rm[2]*100)+'%)'; sys.ramPct=Math.round(rm[1]/rm[2]*100); }
-      if (dm) sys.disk = dm[1].trim();
-      if (domm) sys.domains = domm[1];
-    }
-    if (section === 'php') {
-      const m = line.match(/^\s*(\d+)\s+(.+)/);
-      if (m) { const name=m[2].split('/').pop().replace(/^php-fpm:/,'').trim()||m[2]; php.push({count:parseInt(m[1]),name}); }
-    }
-    if (section === 'top') {
-      const m = line.match(/^([\d.]+)%\s+(.+)/);
-      if (m) top.push({ cpu: parseFloat(m[1]), name: m[2].split('/').pop() });
-    }
-    if (section === 'conn') {
-      sys.conn = line.trim();
-    }
-  }
-  return { php, top, sys, disk: [] };
-}
-
-function renderResourceData(results) {
-  const el = document.getElementById('resources-content');
-  el.innerHTML = '';
-
-  // Server tabs
-  const tabsDiv = document.createElement('div');
-  tabsDiv.style.cssText = 'display:flex;gap:6px;margin-bottom:14px';
-  results.forEach((r,i) => {
-    const btn = document.createElement('button');
-    btn.className = 'btn' + (i===0?' btn-green':'');
-    btn.innerHTML = `<i class="ti ti-server"></i> ${r.server}`;
-    btn.onclick = () => {
-      document.querySelectorAll('#res-panels>div').forEach((p,j) => p.style.display=j===i?'block':'none');
-      tabsDiv.querySelectorAll('button').forEach((b,j) => { b.className='btn'+(j===i?' btn-green':''); });
-    };
-    tabsDiv.appendChild(btn);
-  });
-  el.appendChild(tabsDiv);
-
-  const panelsDiv = document.createElement('div');
-  panelsDiv.id = 'res-panels';
-  results.forEach((r,i) => {
-    const panel = document.createElement('div');
-    panel.style.display = i===0?'block':'none';
-    if (r.loading) {
-      panel.innerHTML = `<div style="text-align:center;padding:40px;color:var(--text3)">
-        <i class="ti ti-refresh ti-spin" style="font-size:24px;display:block;margin-bottom:8px"></i>
-        กำลังดึงข้อมูล ${r.server}...</div>`;
-    } else if (!r.ok) {
-      panel.innerHTML = `<div style="padding:20px;color:var(--red)">⚠️ ดึงข้อมูล ${r.server} ไม่ได้<br><small style="color:var(--text3)">${r.output||''}</small></div>`;
-    } else {
-      const { disk, php, sys } = parseResourceOutput(r.output);
-    panel.innerHTML = `
-        <!-- System Stats Cards -->
-        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:14px">
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-activity"></i> Load Average</div>
-            <div class="metric-val" style="font-size:18px;color:${parseFloat(sys.load)>30?'var(--red)':parseFloat(sys.load)>15?'var(--amber)':'var(--green)'}">${sys.load}</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-cpu"></i> RAM</div>
-            <div class="metric-val" style="font-size:14px;color:${(sys.ramPct||0)>90?'var(--red)':(sys.ramPct||0)>70?'var(--amber)':'var(--green)'}">${sys.ram}</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-database"></i> Disk</div>
-            <div class="metric-val" style="font-size:18px;color:${sys.disk&&sys.disk.includes('8')&&parseInt(sys.disk)>80?'var(--red)':'var(--green)'}">${sys.disk}</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-world"></i> โดเมน</div>
-            <div class="metric-val blue" style="font-size:18px">${sys.domains}</div>
-          </div>
-          <div class="metric-card">
-            <div class="metric-label"><i class="ti ti-network"></i> Connections</div>
-            <div class="metric-val" style="font-size:18px">${sys.conn}</div>
-          </div>
-        </div>
-
-        <!-- PHP-FPM + Top CPU -->
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-          <div class="table-container">
-            <div style="padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">
-              <i class="ti ti-adjustments" style="color:var(--purple)"></i> PHP-FPM Processes (${php.reduce((s,p)=>s+p.count,0)} total)
-            </div>
-            <div class="table-wrap"><table>
-              <thead><tr><th>Domain/Pool</th><th>Processes</th><th></th></tr></thead>
-              <tbody>
-                ${php.length ? php.slice(0,15).map(p => {
-                  const maxP = php[0]?.count||1;
-                  const bw = Math.round(p.count/maxP*100);
-                  const col = p.count>10?'var(--red)':p.count>5?'var(--amber)':'var(--green)';
-                  return `<tr><td style="font-size:11px;font-family:var(--mono)">${p.name}</td>
-                    <td><b style="color:${col}">${p.count}</b></td>
-                    <td style="min-width:70px"><div style="height:4px;background:var(--bg4);border-radius:2px;overflow:hidden"><div style="width:${bw}%;height:100%;background:${col};border-radius:2px"></div></div></td>
-                  </tr>`;
-                }).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text3);padding:16px">ไม่มี PHP-FPM processes</td></tr>'}
-              </tbody>
-            </table></div>
-          </div>
-          <div class="table-container">
-            <div style="padding:10px 14px;background:var(--bg3);border-bottom:1px solid var(--border);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">
-              <i class="ti ti-flame" style="color:var(--red)"></i> Top CPU Processes
-            </div>
-            <div class="table-wrap"><table>
-              <thead><tr><th>Process</th><th>CPU%</th><th></th></tr></thead>
-              <tbody>
-                ${top.length ? top.slice(0,10).map(p => {
-                  const col = p.cpu>50?'var(--red)':p.cpu>20?'var(--amber)':'var(--text2)';
-                  return `<tr><td style="font-size:11px;font-family:var(--mono)">${p.name}</td>
-                    <td><b style="color:${col}">${p.cpu}%</b></td>
-                    <td style="min-width:70px"><div style="height:4px;background:var(--bg4);border-radius:2px;overflow:hidden"><div style="width:${Math.min(100,p.cpu*2)}%;height:100%;background:${col};border-radius:2px"></div></div></td>
-                  </tr>`;
-                }).join('') : '<tr><td colspan="3" style="text-align:center;color:var(--text3);padding:16px">ไม่มีข้อมูล</td></tr>'}
-              </tbody>
-            </table></div>
-          </div>
-        </div>
-      `;
-    }
-    panelsDiv.appendChild(panel);
-  });
-  el.appendChild(panelsDiv);
-}
-
-// ===== TRAFFIC TREND COMPARISON =====
-function renderTrafficTrend() {
-  const domainsWithGSC = allDomains.filter(d => d.gsc && d.gsc.d7 && d.gsc.d30 && d.gsc.d90);
-  if (!domainsWithGSC.length) return '';
-
-  return domainsWithGSC
-    .filter(d => d.gsc.d30.clicks > 0)
-    .sort((a,b) => b.gsc.d30.clicks - a.gsc.d30.clicks)
-    .slice(0, 20)
-    .map(d => {
-      const d7 = d.gsc.d7.clicks || 0;
-      const d30 = d.gsc.d30.clicks || 0;
-      const d90 = d.gsc.d90.clicks || 0;
-      // เทียบ 7 วันนี้ vs 7 วันก่อน
-      const prev7 = Math.max(0, d30 - d7);
-      const trend = prev7 > 0 ? Math.round((d7 - prev7) / prev7 * 100) : 0;
-      const trendColor = trend > 10 ? 'var(--green)' : trend < -10 ? 'var(--red)' : 'var(--text2)';
-      const trendIcon = trend > 10 ? '↑' : trend < -10 ? '↓' : '→';
-      return { domain: d.domain, d7, d30, d90, trend, trendColor, trendIcon };
-    });
-}
-
-</script>
-<script>
-// ===== HEALTH SCORE PAGE =====
-async function loadHealthPage() {
-  const el = document.getElementById('health-content');
-  if (!el) return;
-  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>';
-  try {
-    const res = await fetch(`${API}/api/health-scores`);
-    const data = await res.json();
-    if (!data.success || !data.scores.length) {
-      el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มีข้อมูล — รอ system check ทำงานสักครู่</div>';
-      return;
-    }
-    const gradeColor = g => g==='A'?'var(--green)':g==='B'?'var(--teal)':g==='C'?'var(--amber)':'var(--red)';
-    const scoreColor = s => s>=90?'var(--green)':s>=80?'var(--teal)':s>=70?'var(--amber)':'var(--red)';
-
-    el.innerHTML = `
-      <div class="metric-card" style="margin-bottom:16px;text-align:center;padding:20px">
-        <div class="metric-label">คะแนนสุขภาพรวมทุก Server</div>
-        <div style="font-size:42px;font-weight:700;color:${scoreColor(data.overallAvg)}">${data.overallAvg}<span style="font-size:20px;color:var(--text3)">/100</span></div>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">
-        ${data.scores.map(s => `
-          <div class="table-container" style="padding:0">
-            <div style="padding:14px 16px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)">
-              <div style="display:flex;align-items:center;gap:10px">
-                <div style="width:48px;height:48px;border-radius:50%;background:${scoreColor(s.score)};display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;color:#fff">${s.grade}</div>
-                <div>
-                  <div style="font-weight:600;font-size:14px"><i class="ti ti-server" style="color:var(--teal)"></i> ${s.server}</div>
-                  <div style="font-size:11px;color:var(--text3)">${s.up} up / ${s.down} down · ${s.total} โดเมน</div>
-                </div>
-              </div>
-              <div style="text-align:right">
-                <div style="font-size:28px;font-weight:700;color:${scoreColor(s.score)}">${s.score}</div>
-                <div style="font-size:10px;color:var(--text3)">/ 100</div>
-              </div>
-            </div>
-            <div style="padding:12px 16px;display:flex;flex-direction:column;gap:8px">
-              ${[
-                ['Uptime', s.breakdown.uptime, 40],
-                ['SSL', s.breakdown.ssl, 20],
-                ['Response Time', s.breakdown.responseTime, 20],
-                ['Domain Expiry', s.breakdown.expiry, 20]
-              ].map(([label, val, max]) => `
-                <div style="display:flex;align-items:center;gap:10px">
-                  <span style="font-size:11px;color:var(--text2);width:100px">${label}</span>
-                  <div style="flex:1;height:5px;background:var(--bg4);border-radius:3px;overflow:hidden">
-                    <div style="width:${Math.round(val/max*100)}%;height:100%;background:${val/max>=0.9?'var(--green)':val/max>=0.7?'var(--amber)':'var(--red)'};border-radius:3px"></div>
-                  </div>
-                  <span style="font-size:11px;font-weight:600;color:var(--text2);width:42px;text-align:right">${val}/${max}</span>
-                </div>
-              `).join('')}
-              <div style="font-size:11px;color:var(--text3);margin-top:4px">⏱️ Avg response: ${s.avgResponseTime}ms</div>
-            </div>
-          </div>
-        `).join('')}
-      </div>`;
-  } catch(e) {
-    el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
-  }
-}
-
-// ===== EVENT TIMELINE PAGE =====
-let eventsData = [];
-async function loadEventsPage() {
-  const el = document.getElementById('events-content');
-  if (!el) return;
-  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>';
-  try {
-    const res = await fetch(`${API}/api/events?limit=200`);
-    const data = await res.json();
-    eventsData = data.events || [];
-    renderEvents();
-  } catch(e) {
-    el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
-  }
-}
-
-function renderEvents() {
-  const el = document.getElementById('events-content');
-  if (!el) return;
-  const filter = window._evFilter || 'all';
-
-  // update buttons
-  ['all','critical','warning','down','slow'].forEach(k => {
-    const btn = document.getElementById('ev-f-' + k);
-    if (!btn) return;
-    if (filter === k) { btn.style.background='var(--teal)'; btn.style.color='#fff'; btn.style.borderColor='var(--teal)'; }
-    else { btn.style.background=''; btn.style.color=''; btn.style.borderColor=''; }
-  });
-
-  let display = eventsData;
-  if (filter !== 'all') display = eventsData.filter(e => e.type === filter);
-
-  if (!display.length) {
-    el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)">ยังไม่มี event ในหมวดนี้</div>';
-    return;
-  }
-
-  const typeIcon = t => ({
-    critical:'🚨', warning:'⚠️', info:'ℹ️', down:'🔴', up:'✅',
-    fix:'🔧', ssl:'🔒', sync:'🔄', slow:'🐌', expiry:'📅', blacklist:'🚫'
-  }[t] || '•');
-  const typeColor = t => ({
-    critical:'var(--red)', warning:'var(--amber)', down:'var(--red)',
-    up:'var(--green)', fix:'var(--teal)', slow:'var(--amber)'
-  }[t] || 'var(--text3)');
-
-  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:2px">
-    ${display.map(e => {
-      const d = new Date(e.at);
-      const timeStr = d.toLocaleString('th-TH', {month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-      return `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 14px;border-left:3px solid ${typeColor(e.type)};background:var(--bg2);border-radius:0 var(--radius-sm) var(--radius-sm) 0">
-        <span style="font-size:16px">${typeIcon(e.type)}</span>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;color:var(--text);word-break:break-word">${e.message}</div>
-          <div style="font-size:11px;color:var(--text3);margin-top:2px">${timeStr}</div>
-        </div>
-      </div>`;
-    }).join('')}
-  </div>`;
-}
-</script>
-<script>
-// ===== TODO KANBAN BOARD =====
-let tasksData = [];
-const KANBAN_COLS = [
-  { key: 'todo',     label: 'To Do',     icon: '📋', color: 'var(--text2)' },
-  { key: 'doing',    label: 'กำลังทำ',    icon: '🔨', color: 'var(--blue)' },
-  { key: 'review',   label: 'ตรวจสอบ',    icon: '🔍', color: 'var(--gold)' },
-  { key: 'done',     label: 'เสร็จ',      icon: '✅', color: 'var(--green)' }
-];
-
-async function loadTasksPage() {
-  try {
-    const res = await fetch(`${API}/api/tasks`);
-    const data = await res.json();
-    tasksData = data.tasks || [];
-    renderKanban();
-  } catch(e) {
-    document.getElementById('kanban-board').innerHTML = '<div style="padding:20px;color:var(--red);grid-column:1/-1">โหลดไม่ได้: ' + e.message + '</div>';
-  }
-}
-
-function renderKanban() {
-  const board = document.getElementById('kanban-board');
-  if (!board) return;
-
-  const prioColor = p => p==='high'?'var(--red)':p==='low'?'var(--text3)':'var(--gold)';
-  const prioLabel = p => p==='high'?'🔴 สูง':p==='low'?'⚪ ต่ำ':'🟡 ปกติ';
-
-  board.innerHTML = KANBAN_COLS.map(col => {
-    const items = tasksData.filter(t => t.status === col.key);
-    return `<div class="kanban-col" data-status="${col.key}"
-      ondragover="event.preventDefault();this.style.background='var(--bg3)'"
-      ondragleave="this.style.background='var(--bg2)'"
-      ondrop="dropTask(event,'${col.key}')"
-      style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;min-height:200px;transition:background .15s">
-      <div style="padding:12px 14px;border-bottom:2px solid ${col.color};display:flex;align-items:center;justify-content:space-between;background:linear-gradient(145deg,var(--bg3),var(--bg2))">
-        <span style="font-size:13px;font-weight:600;color:var(--text)">${col.icon} ${col.label}</span>
-        <span style="font-size:11px;font-weight:600;color:${col.color};background:var(--bg);padding:2px 8px;border-radius:10px">${items.length}</span>
-      </div>
-      <div style="padding:10px;display:flex;flex-direction:column;gap:8px;min-height:100px">
-        ${items.length ? items.map(t => `
-          <div class="kanban-card" draggable="true" ondragstart="dragTask(event,'${t.id}')"
-            onclick="editTask('${t.id}')"
-            style="background:linear-gradient(145deg,var(--bg3),var(--bg2));border:1px solid var(--border);border-left:3px solid ${prioColor(t.priority)};border-radius:var(--radius-sm);padding:10px 12px;cursor:grab;transition:all .15s;box-shadow:var(--shadow)"
-            onmouseover="this.style.boxShadow='var(--shadow-md),var(--glow-green)';this.style.transform='translateY(-1px)'"
-            onmouseout="this.style.boxShadow='var(--shadow)';this.style.transform='none'">
-            <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px">${t.title}</div>
-            ${t.description ? `<div style="font-size:11px;color:var(--text2);margin-bottom:6px;line-height:1.4">${t.description}</div>` : ''}
-            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-              <span style="font-size:10px;color:${prioColor(t.priority)}">${prioLabel(t.priority)}</span>
-              ${t.domain ? `<span style="font-size:10px;color:var(--teal);font-family:var(--mono)">🌐 ${t.domain}</span>` : ''}
-              ${t.server ? `<span style="font-size:10px;color:var(--blue)">🖥️ ${t.server}</span>` : ''}
-            </div>
-          </div>
-        `).join('') : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:11px">— ว่าง —</div>'}
-      </div>
-    </div>`;
-  }).join('');
-}
-
-let draggedTaskId = null;
-function dragTask(e, id) { draggedTaskId = id; e.dataTransfer.effectAllowed = 'move'; }
-async function dropTask(e, newStatus) {
-  e.preventDefault();
-  e.currentTarget.style.background = 'var(--bg2)';
-  if (!draggedTaskId) return;
-  const task = tasksData.find(t => t.id === draggedTaskId);
-  if (!task || task.status === newStatus) { draggedTaskId = null; return; }
-  task.status = newStatus;
-  renderKanban();
-  try {
-    await fetch(`${API}/api/tasks/${draggedTaskId}`, {
-      method: 'PUT', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ status: newStatus })
-    });
-  } catch(e) { toast('บันทึกไม่ได้', 'error'); }
-  draggedTaskId = null;
-}
-
-function openTaskModal(taskId) {
-  const task = taskId ? tasksData.find(t => t.id === taskId) : null;
-  const modal = document.getElementById('task-modal');
-  if (!modal) return;
-  document.getElementById('task-modal-title').textContent = task ? 'แก้ไขงาน' : 'เพิ่มงานใหม่';
-  document.getElementById('task-id').value = task?.id || '';
-  document.getElementById('task-title').value = task?.title || '';
-  document.getElementById('task-desc').value = task?.description || '';
-  document.getElementById('task-priority').value = task?.priority || 'normal';
-  document.getElementById('task-status').value = task?.status || 'todo';
-  document.getElementById('task-domain').value = task?.domain || '';
-  document.getElementById('task-server').value = task?.server || '';
-  document.getElementById('task-delete-btn').style.display = task ? 'inline-flex' : 'none';
-  modal.style.display = 'flex';
-}
-function editTask(id) { openTaskModal(id); }
-function closeTaskModal() { document.getElementById('task-modal').style.display = 'none'; }
-
-async function saveTask() {
-  const id = document.getElementById('task-id').value;
-  const payload = {
-    title: document.getElementById('task-title').value.trim(),
-    description: document.getElementById('task-desc').value.trim(),
-    priority: document.getElementById('task-priority').value,
-    status: document.getElementById('task-status').value,
-    domain: document.getElementById('task-domain').value.trim(),
-    server: document.getElementById('task-server').value.trim()
-  };
-  if (!payload.title) { toast('กรุณาใส่ชื่องาน', 'error'); return; }
-  try {
-    if (id) {
-      await fetch(`${API}/api/tasks/${id}`, { method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-    } else {
-      await fetch(`${API}/api/tasks`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) });
-    }
-    closeTaskModal();
-    loadTasksPage();
-    toast('บันทึกแล้ว', 'success');
-  } catch(e) { toast('บันทึกไม่ได้', 'error'); }
-}
-
-async function deleteTask() {
-  const id = document.getElementById('task-id').value;
-  if (!id || !confirm('ลบงานนี้?')) return;
-  try {
-    await fetch(`${API}/api/tasks/${id}`, { method:'DELETE' });
-    closeTaskModal();
-    loadTasksPage();
-    toast('ลบแล้ว', 'success');
-  } catch(e) { toast('ลบไม่ได้', 'error'); }
-}
-</script>
-<script>
-// ===== BULK GSC ADD =====
-let bulkGSCSelected = new Set();
-let bulkGSCPolling = null;
-
-function openBulkGSCModal() {
-  const modal = document.getElementById('bulk-gsc-modal');
-  if (!modal) return;
-  bulkGSCSelected = new Set();
-  renderBulkGSCList();
-  document.getElementById('bulk-gsc-progress').style.display = 'none';
-  document.getElementById('bulk-gsc-list-wrap').style.display = 'block';
-  modal.style.display = 'flex';
-}
-function closeBulkGSCModal() {
-  document.getElementById('bulk-gsc-modal').style.display = 'none';
-  if (bulkGSCPolling) { clearInterval(bulkGSCPolling); bulkGSCPolling = null; }
-}
-
-function renderBulkGSCList() {
-  const wrap = document.getElementById('bulk-gsc-list');
-  const search = (document.getElementById('bulk-gsc-search')?.value||'').toLowerCase();
-  // เฉพาะโดเมนที่ยังไม่อยู่ใน GSC (gsc.inGSC คือ field ที่ถูกต้อง)
-  let domains = (allDomains||[]).filter(d => !(d.gsc && d.gsc.inGSC));
-  if (search) domains = domains.filter(d => d.domain.toLowerCase().includes(search));
-
-  document.getElementById('bulk-gsc-count').textContent = bulkGSCSelected.size;
-
-  // แสดงจำนวนทั้งหมดที่กรองได้
-  const totalEl = document.getElementById('bulk-gsc-total');
-  if (totalEl) totalEl.textContent = domains.length;
-
-  if (!domains.length) {
-    wrap.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">ทุกโดเมนอยู่ใน GSC แล้ว หรือไม่พบโดเมน</div>';
-    return;
-  }
-
-  wrap.innerHTML = domains.slice(0, 1500).map(d => `
-    <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s" 
-      onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
-      <input type="checkbox" ${bulkGSCSelected.has(d.domain)?'checked':''} onchange="toggleBulkGSC('${d.domain}')" style="cursor:pointer">
-      <span style="flex:1;font-size:13px;font-family:var(--mono)">${d.domain}</span>
-      <span style="font-size:11px;color:var(--text3)">${d.pleskServer||''}</span>
-    </label>
-  `).join('');
-}
-
-function toggleBulkGSC(domain) {
-  if (bulkGSCSelected.has(domain)) bulkGSCSelected.delete(domain);
-  else bulkGSCSelected.add(domain);
-  document.getElementById('bulk-gsc-count').textContent = bulkGSCSelected.size;
-}
-
-function selectAllBulkGSC() {
-  const search = (document.getElementById('bulk-gsc-search')?.value||'').toLowerCase();
-  let domains = (allDomains||[]).filter(d => !(d.gsc && d.gsc.inGSC));
-  if (search) domains = domains.filter(d => d.domain.toLowerCase().includes(search));
-  domains.slice(0,1500).forEach(d => bulkGSCSelected.add(d.domain));
-  renderBulkGSCList();
-}
-function clearAllBulkGSC() {
-  bulkGSCSelected.clear();
-  renderBulkGSCList();
-}
-
-async function startBulkGSC() {
-  if (!bulkGSCSelected.size) { toast('เลือกโดเมนก่อน', 'error'); return; }
-  if (!confirm(`เพิ่ม ${bulkGSCSelected.size} โดเมนเข้า GSC?\nระบบจะเขียน DNS TXT และ verify อัตโนมัติ`)) return;
-
-  const domains = [...bulkGSCSelected];
-  try {
-    const res = await fetch(`${API}/api/gsc/bulk-add`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ domains })
-    });
-    const data = await res.json();
-    if (data.error) { toast(data.error, 'error'); return; }
-
-    // สลับไปแสดง progress
-    document.getElementById('bulk-gsc-list-wrap').style.display = 'none';
-    document.getElementById('bulk-gsc-progress').style.display = 'block';
-    bulkGSCPolling = setInterval(pollBulkGSC, 1500);
-  } catch(e) { toast('เริ่มไม่ได้: ' + e.message, 'error'); }
-}
-
-async function pollBulkGSC() {
-  try {
-    const res = await fetch(`${API}/api/gsc/bulk-progress`);
-    const data = await res.json();
-    const p = data.progress;
-    if (!p) return;
-
-    const pct = p.total ? Math.round(p.done/p.total*100) : 0;
-    document.getElementById('bulk-progress-bar').style.width = pct + '%';
-    document.getElementById('bulk-progress-text').textContent = `${p.done}/${p.total} (${pct}%)`;
-    document.getElementById('bulk-progress-stats').innerHTML = 
-      `<span style="color:var(--green)">✅ สำเร็จ ${p.success}</span> · <span style="color:var(--red)">❌ ล้มเหลว ${p.failed}</span>`;
-    document.getElementById('bulk-progress-current').textContent = p.current ? '🔄 กำลังทำ: ' + p.current : '';
-
-    // แสดงผลรายตัว
-    const resultsEl = document.getElementById('bulk-progress-results');
-    resultsEl.innerHTML = (p.results||[]).slice().reverse().slice(0, 50).map(r => {
-      const icon = r.ok ? '✅' : (r.pendingVerify ? '⏳' : (r.manualTXT ? '⚠️' : '❌'));
-      const color = r.ok ? 'var(--green)' : (r.pendingVerify ? 'var(--amber)' : (r.manualTXT ? 'var(--amber)' : 'var(--red)'));
-      return `<div style="padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px">
-        <div style="display:flex;align-items:center;gap:8px">
-          <span>${icon}</span>
-          <span style="font-family:var(--mono);flex:1">${r.domain}</span>
-          <span style="font-size:10px;color:var(--text3)">${r.provider||''}</span>
-        </div>
-        ${r.error ? `<div style="font-size:10px;color:${color};margin-left:24px;margin-top:2px">${r.error}</div>` : ''}
-        ${r.manualTXT ? `<div style="font-size:10px;color:var(--amber);margin-left:24px;margin-top:2px;word-break:break-all">📋 เพิ่ม TXT เอง: <code>${r.manualTXT}</code></div>` : ''}
-      </div>`;
-    }).join('');
-
-    if (!p.running && p.done >= p.total && p.total > 0) {
-      clearInterval(bulkGSCPolling); bulkGSCPolling = null;
-      document.getElementById('bulk-progress-current').textContent = '✅ เสร็จสิ้น!';
-      // แสดงปุ่ม verify ที่ค้าง ถ้ามี
-      const pendingCount = (p.results||[]).filter(r => r.pendingVerify && !r.ok).length;
-      const pendingBtn = document.getElementById('bulk-verify-pending-btn');
-      if (pendingBtn) {
-        pendingBtn.style.display = pendingCount > 0 ? 'inline-flex' : 'none';
-        pendingBtn.innerHTML = `<i class="ti ti-refresh"></i> Verify ที่ค้าง (${pendingCount})`;
-      }
-      toast(`เสร็จ! สำเร็จ ${p.success} / ล้มเหลว ${p.failed}`, 'success');
-    }
-  } catch(e) {}
-}
-
-async function verifyPendingGSC() {
-  const btn = document.getElementById('bulk-verify-pending-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลัง verify...'; }
-  try {
-    const res = await fetch(`${API}/api/gsc/verify-pending`, { method: 'POST' });
-    const data = await res.json();
-    if (data.error) { toast(data.error, 'error'); }
-    else {
-      toast(`Verify สำเร็จ ${data.verified} / ยังค้าง ${data.stillPending}`, data.verified > 0 ? 'success' : 'error');
-      pollBulkGSC(); // refresh ผล
-    }
-  } catch(e) { toast('verify ไม่ได้: ' + e.message, 'error'); }
-  if (btn) btn.disabled = false;
-}
-</script>
-<script>
-// ===== COMPANY / TEAM PAGE =====
-async function loadCompanyPage() {
-  try {
-    const [empRes, actRes] = await Promise.all([
-      fetch(`${API}/api/employees`),
-      fetch(`${API}/api/employees/activity?limit=50`)
-    ]);
-    const empData = await empRes.json();
-    const actData = await actRes.json();
-    renderCompanySummary(empData);
-    renderEmployees(empData.employees);
-    renderCompanyActivity(actData.activity);
-    startLiveFeed();
-  } catch(e) {
-    document.getElementById('company-employees').innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
-  }
-}
-
-// Live feed — อัพเดทกิจกรรมสดๆ ทุก 5 วิ (เฉพาะตอนอยู่หน้า company)
-let liveFeedTimer = null;
-let lastLiveCheck = new Date().toISOString();
-function startLiveFeed() {
-  stopLiveFeed();
-  liveFeedTimer = setInterval(async () => {
-    if (currentPageName !== 'company') { stopLiveFeed(); return; }
-    try {
-      const res = await fetch(`${API}/api/employees/live?since=${encodeURIComponent(lastLiveCheck)}`);
-      const data = await res.json();
-      lastLiveCheck = data.now;
-      if (data.activity && data.activity.length) {
-        // มีกิจกรรมใหม่ — refresh feed + summary
-        const actRes = await fetch(`${API}/api/employees/activity?limit=50`);
-        const actData = await actRes.json();
-        renderCompanyActivity(actData.activity);
-        const empRes = await fetch(`${API}/api/employees`);
-        const empData = await empRes.json();
-        renderCompanySummary(empData);
-        renderEmployees(empData.employees);
-        // ไฮไลต์รายการใหม่
-        flashNewActivity(data.activity.length);
-      }
-    } catch(e) {}
-  }, 5000);
-}
-function stopLiveFeed() {
-  if (liveFeedTimer) { clearInterval(liveFeedTimer); liveFeedTimer = null; }
-}
-function flashNewActivity(count) {
-  const el = document.getElementById('company-activity');
-  if (el) {
-    el.style.transition = 'box-shadow 0.3s';
-    el.style.boxShadow = '0 0 20px rgba(52,211,153,0.3)';
-    setTimeout(() => { el.style.boxShadow = ''; }, 800);
-  }
-}
-
-function renderCompanySummary(data) {
-  const el = document.getElementById('company-summary');
-  if (!el) return;
-  const working = data.employees.filter(e => e.state.status === 'working').length;
-  el.innerHTML = `
-    <div class="metric-card"><div class="metric-label"><i class="ti ti-users"></i> พนักงานทั้งหมด</div><div class="metric-val" style="color:var(--teal)">${data.employees.length}</div></div>
-    <div class="metric-card"><div class="metric-label"><i class="ti ti-checklist"></i> งานวันนี้</div><div class="metric-val">${data.totalToday}</div></div>
-    <div class="metric-card"><div class="metric-label"><i class="ti ti-chart-bar"></i> งานสะสม</div><div class="metric-val">${data.totalAll}</div></div>
-    <div class="metric-card highlight-green"><div class="metric-label"><i class="ti ti-bolt"></i> กำลังทำงาน</div><div class="metric-val" style="color:var(--green)">${working}</div></div>
-  `;
-}
-
-function renderEmployees(employees) {
-  const el = document.getElementById('company-employees');
-  if (!el) return;
-  // จัดกลุ่มตาม dept
-  const depts = {};
-  employees.forEach(e => { (depts[e.dept] = depts[e.dept] || []).push(e); });
-
-  el.innerHTML = employees.map(e => {
-    const st = e.state || {};
-    const lastActive = st.lastActiveAt ? timeAgo(st.lastActiveAt) : 'ยังไม่เริ่มงาน';
-    const hostBadge = e.canActOnHost
-      ? '<span style="font-size:9px;background:var(--amber-dim);color:var(--amber);padding:1px 6px;border-radius:8px">แก้โฮสได้</span>'
-      : '<span style="font-size:9px;background:var(--bg4);color:var(--text3);padding:1px 6px;border-radius:8px">ดู/วิเคราะห์</span>';
-    return `<div class="metric-card" style="cursor:pointer" onclick="showEmployeeActivity('${e.id}','${e.name}')">
-      <div style="display:flex;align-items:flex-start;gap:10px">
-        <div style="font-size:26px;line-height:1">${e.emoji}</div>
-        <div style="flex:1;min-width:0">
-          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-            <span style="font-weight:600;font-size:13px">${e.name}</span>
-            ${hostBadge}
-          </div>
-          <div style="font-size:11px;color:var(--text3);margin-top:1px">${e.dept}</div>
-          <div style="font-size:11px;color:var(--text2);margin-top:6px;line-height:1.4">${e.role}</div>
-          <div style="display:flex;align-items:center;gap:10px;margin-top:8px;font-size:11px">
-            <span style="color:var(--teal)"><i class="ti ti-checklist" style="font-size:11px"></i> ${st.tasksToday||0} วันนี้</span>
-            <span style="color:var(--text3)">${lastActive}</span>
-          </div>
-        </div>
-      </div>
-    </div>`;
-  }).join('');
-}
-
-function renderCompanyActivity(activity) {
-  const el = document.getElementById('company-activity');
-  if (!el) return;
-  if (!activity || !activity.length) {
-    el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">ยังไม่มีกิจกรรม — รอพนักงานเริ่มทำงาน</div>';
-    return;
-  }
-  el.innerHTML = activity.map(a => `
-    <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px">
-      <span style="font-size:16px">${a.emoji}</span>
-      <span style="font-weight:600;min-width:110px;color:var(--text)">${a.empName}</span>
-      <span style="flex:1;color:var(--text2)">${a.action}${a.detail?' — <span style="color:var(--text3)">'+a.detail+'</span>':''}</span>
-      <span style="font-size:11px;color:var(--text3)">${timeAgo(a.at)}</span>
-    </div>
-  `).join('');
-}
-
-let currentEmployee = null;
-async function showEmployeeActivity(empId, empName) {
-  // เปิดหน้า detail เต็มของพนักงานคนนี้
-  currentEmployee = empId;
-  showPage('employee-detail');
-  const titleEl = document.getElementById('emp-detail-title');
-  const el = document.getElementById('employee-detail-content');
-  if (el) el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>';
-  try {
-    const [empRes, actRes] = await Promise.all([
-      fetch(`${API}/api/employees`),
-      fetch(`${API}/api/employees/activity?emp=${empId}&limit=100`)
-    ]);
-    const empData = await empRes.json();
-    const actData = await actRes.json();
-    const emp = empData.employees.find(e => e.id === empId);
-    if (!emp) { el.innerHTML = '<div style="padding:20px;color:var(--red)">ไม่พบพนักงาน</div>'; return; }
-    renderEmployeeDetail(emp, actData.activity || []);
-  } catch(e) {
-    if (el) el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
-  }
-}
-
-function renderEmployeeDetail(emp, activity) {
-  const titleEl = document.getElementById('emp-detail-title');
-  if (titleEl) titleEl.innerHTML = `${emp.emoji} ${emp.name}`;
-  const st = emp.state || {};
-  const el = document.getElementById('employee-detail-content');
-  if (!el) return;
-
-  // พนักงานที่มีสมอง AI
-  const hasBrain = ['ceo','analyst','seo','security'].includes(emp.id);
-
-  const hostBadge = emp.canActOnHost
-    ? '<span style="font-size:11px;background:var(--amber-dim);color:var(--amber);padding:3px 10px;border-radius:10px">🔧 แก้ไขบนโฮสได้ (ต้องขออนุมัติ)</span>'
-    : '<span style="font-size:11px;background:var(--green-dim);color:var(--green);padding:3px 10px;border-radius:10px">👁️ ดู/วิเคราะห์เท่านั้น (ปลอดภัย)</span>';
-
-  // สถิติรายวัน 7 วันจาก activity
-  const byDay = {};
-  activity.forEach(a => {
-    const day = new Date(a.at).toLocaleDateString('th-TH', {month:'short',day:'numeric'});
-    byDay[day] = (byDay[day]||0) + 1;
-  });
-  const days = Object.entries(byDay).slice(0, 7).reverse();
-  const maxDay = Math.max(...days.map(d=>d[1]), 1);
-
-  el.innerHTML = `
-    <!-- โปรไฟล์ -->
-    <div class="metric-card" style="margin-bottom:16px;padding:20px">
-      <div style="display:flex;align-items:flex-start;gap:16px">
-        <div style="font-size:48px;line-height:1">${emp.emoji}</div>
-        <div style="flex:1">
-          <div style="font-size:20px;font-weight:700;margin-bottom:4px">${emp.name}</div>
-          <div style="font-size:13px;color:var(--text2);margin-bottom:8px">แผนก${emp.dept}</div>
-          <div style="font-size:13px;color:var(--text);margin-bottom:12px;line-height:1.5">${emp.role}</div>
-          ${hostBadge}
-        </div>
-        ${hasBrain ? `<button class="btn btn-green" onclick="employeeThink('${emp.id}')" id="think-btn"><i class="ti ti-brain"></i> ให้คิด/วิเคราะห์</button>` : ''}
-      </div>
-    </div>
-
-    ${hasBrain ? `<div id="ai-report-section" style="margin-bottom:16px"></div>` : ''}
-
-    <!-- งานที่กดรันได้ -->
-    <div id="emp-tasks-section" style="margin-bottom:16px"></div>
-
-    <!-- สถิติ -->
-    <div class="metrics-grid" style="margin-bottom:16px">
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-checklist"></i> งานวันนี้</div><div class="metric-val" style="color:var(--teal)">${st.tasksToday||0}</div></div>
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-chart-bar"></i> งานสะสม</div><div class="metric-val">${st.tasksTotal||0}</div></div>
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-clock"></i> ทำงานล่าสุด</div><div class="metric-val" style="font-size:16px">${st.lastActiveAt?timeAgo(st.lastActiveAt):'—'}</div></div>
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-activity"></i> งานล่าสุด</div><div class="metric-val" style="font-size:14px">${st.lastTask||'—'}</div></div>
-    </div>
-
-    <!-- กราฟ 7 วัน -->
-    ${days.length ? `<div class="metric-card" style="margin-bottom:16px;padding:16px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:14px">งานย้อนหลัง</div>
-      <div style="display:flex;align-items:flex-end;gap:10px;height:100px">
-        ${days.map(([day,count]) => `
-          <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:6px">
-            <div style="font-size:11px;color:var(--teal);font-weight:600">${count}</div>
-            <div style="width:100%;background:linear-gradient(180deg,var(--teal),var(--green));border-radius:4px 4px 0 0;height:${Math.round(count/maxDay*70)}px;min-height:4px"></div>
-            <div style="font-size:10px;color:var(--text3)">${day}</div>
-          </div>
-        `).join('')}
-      </div>
-    </div>` : ''}
-
-    <!-- กิจกรรมทั้งหมด -->
-    <div>
-      <div style="font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px">ประวัติการทำงาน (${activity.length})</div>
-      <div class="table-container" style="max-height:400px;overflow-y:auto">
-        ${activity.length ? activity.map(a => `
-          <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px">
-            <span style="color:var(--text);font-weight:500;min-width:130px">${a.action}</span>
-            <span style="flex:1;color:var(--text2)">${a.detail||''}</span>
-            <span style="font-size:11px;color:var(--text3)">${timeAgo(a.at)}</span>
-          </div>
-        `).join('') : '<div style="padding:30px;text-align:center;color:var(--text3)">ยังไม่มีกิจกรรม</div>'}
-      </div>
-    </div>
-  `;
-
-  // โหลดรายงาน AI ที่มีอยู่
-  if (hasBrain) loadEmployeeReport(emp.id);
-  // โหลดงานที่กดรันได้
-  loadEmployeeTasks(emp.id);
-}
-
-async function loadEmployeeTasks(empId) {
-  const sec = document.getElementById('emp-tasks-section');
-  if (!sec) return;
-  try {
-    const res = await fetch(`${API}/api/employees/tasks/${empId}`);
-    const data = await res.json();
-    const tasks = data.tasks || [];
-    if (!tasks.length) { sec.innerHTML = ''; return; }
-
-    const typeBadge = t => {
-      if (t === 'view') return '<span style="font-size:9px;background:var(--green-dim);color:var(--green);padding:1px 6px;border-radius:8px">ดูข้อมูล</span>';
-      if (t === 'ai') return '<span style="font-size:9px;background:var(--purple-dim);color:var(--purple);padding:1px 6px;border-radius:8px">AI</span>';
-      return '<span style="font-size:9px;background:var(--amber-dim);color:var(--amber);padding:1px 6px;border-radius:8px">ขออนุมัติ</span>';
-    };
-
-    sec.innerHTML = `<div class="metric-card" style="padding:16px">
-      <div style="font-size:13px;font-weight:600;margin-bottom:12px"><i class="ti ti-player-play" style="color:var(--teal)"></i> งานที่สั่งได้เดี๋ยวนี้</div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        ${tasks.map(t => `
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius-sm)">
-            <div style="display:flex;align-items:center;gap:8px">
-              <span style="font-size:13px">${t.label}</span>
-              ${typeBadge(t.type)}
-            </div>
-            <button class="btn btn-sm ${t.type==='host'?'':'btn-green'}" onclick="runEmpTask('${empId}','${t.id}','${t.label.replace(/'/g,'')}')" id="task-btn-${t.id}">
-              <i class="ti ti-player-play"></i> สั่งงาน
-            </button>
-          </div>
-          <div id="task-result-${t.id}" style="display:none;padding:8px 12px;background:var(--bg2);border-radius:var(--radius-sm);font-size:12px;color:var(--text2);margin-top:-4px"></div>
-        `).join('')}
-      </div>
-    </div>`;
-  } catch(e) { sec.innerHTML = ''; }
-}
-
-async function runEmpTask(empId, taskId, label) {
-  const btn = document.getElementById('task-btn-' + taskId);
-  const resultEl = document.getElementById('task-result-' + taskId);
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังทำ...'; }
-  try {
-    const res = await fetch(`${API}/api/employees/run/${empId}/${taskId}`, { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) {
-      if (resultEl) {
-        resultEl.style.display = 'block';
-        // แสดงผลตามประเภทงาน
-        if (data.type === 'ai' && data.result && data.result.text) {
-          resultEl.innerHTML = '<div style="color:var(--purple);font-weight:600;margin-bottom:4px"><i class="ti ti-brain"></i> ผลวิเคราะห์ AI:</div><div style="white-space:pre-wrap;line-height:1.6">' + data.result.text + '</div>';
-          if (typeof loadEmployeeReport === 'function') loadEmployeeReport(empId);
-        } else if (data.result && data.result.summary) {
-          resultEl.innerHTML = '<i class="ti ti-circle-check" style="color:var(--green)"></i> ' + data.result.summary;
-        } else {
-          resultEl.innerHTML = '<i class="ti ti-circle-check" style="color:var(--green)"></i> ทำงานเสร็จแล้ว';
-        }
-      }
-      toast(label + ' — เสร็จแล้ว', 'success');
-      if (data.type === 'host') { toast('ส่งขออนุมัติแล้ว ดูที่หน้า "รออนุมัติ"', 'info'); refreshApprovalBadge(); }
-    } else {
-      if (resultEl) { resultEl.style.display = 'block'; resultEl.innerHTML = '<span style="color:var(--red)">❌ ' + (data.error||'ทำงานไม่ได้') + '</span>'; }
-      toast(data.error || 'ทำงานไม่ได้', 'error');
-    }
-  } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-player-play"></i> สั่งงาน'; }
-}
-
-async function loadEmployeeReport(empId) {
-  const sec = document.getElementById('ai-report-section');
-  if (!sec) return;
-  try {
-    const res = await fetch(`${API}/api/employees/report/${empId}`);
-    const data = await res.json();
-    if (!data.hasAI) {
-      sec.innerHTML = `<div class="metric-card" style="padding:16px;border-color:rgba(251,191,36,0.25)">
-        <div style="font-size:12px;color:var(--amber)"><i class="ti ti-alert-triangle"></i> ยังไม่ได้เปิดใช้สมอง AI</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:4px">ตั้งค่า ANTHROPIC_API_KEY ใน Railway เพื่อให้พนักงานวิเคราะห์ได้จริง</div>
-      </div>`;
-      return;
-    }
-    if (data.report) renderAIReport(data.report);
-  } catch(e) {}
-}
-
-function renderAIReport(report) {
-  const sec = document.getElementById('ai-report-section');
-  if (!sec) return;
-  sec.innerHTML = `<div class="metric-card" style="padding:18px;border-color:rgba(52,211,153,0.25);box-shadow:var(--shadow),var(--glow-green)">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:600;color:var(--teal)"><i class="ti ti-brain"></i> รายงานจาก AI</div>
-      <span style="font-size:11px;color:var(--text3)">${timeAgo(report.at)}</span>
-    </div>
-    <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${report.text}</div>
-  </div>`;
-}
-
-async function employeeThink(empId) {
-  const btn = document.getElementById('think-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังคิด...'; }
-  const sec = document.getElementById('ai-report-section');
-  if (sec) sec.innerHTML = '<div class="metric-card" style="padding:18px"><div style="font-size:12px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> พนักงานกำลังวิเคราะห์ข้อมูล...</div></div>';
-  try {
-    const res = await fetch(`${API}/api/employees/think/${empId}`, { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) {
-      renderAIReport({ text: data.text, at: new Date().toISOString() });
-      toast('วิเคราะห์เสร็จแล้ว', 'success');
-    } else {
-      if (sec) sec.innerHTML = `<div class="metric-card" style="padding:16px;border-color:rgba(248,113,113,0.25)"><div style="font-size:12px;color:var(--red)">❌ ${data.error||'คิดไม่ได้'}</div></div>`;
-      toast(data.error || 'วิเคราะห์ไม่ได้', 'error');
-    }
-  } catch(e) { toast('เกิดข้อผิดพลาด: ' + e.message, 'error'); }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-brain"></i> ให้คิด/วิเคราะห์'; }
-}
-
-function timeAgo(iso) {
-  if (!iso) return '—';
-  const diff = Date.now() - new Date(iso).getTime();
-  const m = Math.floor(diff/60000), h = Math.floor(m/60), d = Math.floor(h/24);
-  if (d > 0) return d + ' วันก่อน';
-  if (h > 0) return h + ' ชม.ก่อน';
-  if (m > 0) return m + ' นาทีก่อน';
-  return 'เมื่อสักครู่';
-}
-
-// ===== APPROVALS PAGE =====
-async function loadApprovalsPage() {
-  const el = document.getElementById('approvals-content');
-  if (!el) return;
-  el.innerHTML = '<div style="text-align:center;padding:40px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังโหลด...</div>';
-  try {
-    const res = await fetch(`${API}/api/approvals`);
-    const data = await res.json();
-    renderApprovals(data.approvals);
-    updateApprovalBadge(data.pending);
-  } catch(e) {
-    el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
-  }
-}
-
-function renderApprovals(approvals) {
-  const el = document.getElementById('approvals-content');
-  if (!el) return;
-  const pending = (approvals||[]).filter(a => a.status === 'pending');
-  const decided = (approvals||[]).filter(a => a.status !== 'pending');
-
-  if (!approvals || !approvals.length) {
-    el.innerHTML = `<div style="text-align:center;padding:50px;color:var(--text3)">
-      <div style="font-size:40px;margin-bottom:12px">✅</div>
-      <div style="font-size:14px;font-weight:600;margin-bottom:4px">ไม่มีงานรออนุมัติ</div>
-      <div style="font-size:12px">พนักงานทำงานในขอบเขตที่ปลอดภัยอยู่</div>
-    </div>`;
-    return;
-  }
-
-  el.innerHTML = `
-    ${pending.length ? `<div style="margin-bottom:20px">
-      <div style="font-size:13px;font-weight:600;color:var(--gold);margin-bottom:10px">⏳ รออนุมัติ (${pending.length})</div>
-      <div style="display:flex;flex-direction:column;gap:10px">
-        ${pending.map(a => `
-          <div class="metric-card highlight-amber" style="padding:14px 16px">
-            <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-              <div style="flex:1">
-                <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-                  <span style="font-size:18px">${a.emoji}</span>
-                  <span style="font-weight:600;font-size:14px">${a.title}</span>
-                </div>
-                <div style="font-size:12px;color:var(--text2);margin-left:26px">${a.description||''}</div>
-                <div style="font-size:11px;color:var(--text3);margin-left:26px;margin-top:4px">โดย ${a.empName} · ${timeAgo(a.createdAt)}</div>
-              </div>
-              <div style="display:flex;gap:6px;flex-shrink:0">
-                <button class="btn btn-sm btn-green" onclick="decideApproval('${a.id}','approve')"><i class="ti ti-check"></i> อนุมัติ</button>
-                <button class="btn btn-sm" onclick="decideApproval('${a.id}','reject')" style="color:var(--red);border-color:rgba(248,113,113,0.3)"><i class="ti ti-x"></i> ปฏิเสธ</button>
-              </div>
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div>` : ''}
-    ${decided.length ? `<div>
-      <div style="font-size:13px;font-weight:600;color:var(--text3);margin-bottom:10px">ประวัติการตัดสินใจ</div>
-      <div class="table-container">
-        ${decided.slice(0,20).map(a => `
-          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px">
-            <span style="font-size:15px">${a.emoji}</span>
-            <span style="flex:1">${a.title}${a.executeResult?` <span style="color:${a.executeResult.ok?'var(--green)':'var(--red)'};font-size:11px">· ${a.executeResult.detail||''}</span>`:''}</span>
-            <span style="font-size:11px;font-weight:600;color:${a.status==='approved'?'var(--green)':'var(--red)'}">${a.status==='approved'?'✅ อนุมัติ':'❌ ปฏิเสธ'}</span>
-            <span style="font-size:11px;color:var(--text3)">${timeAgo(a.decidedAt)}</span>
-          </div>
-        `).join('')}
-      </div>
-    </div>` : ''}
-  `;
-}
-
-async function decideApproval(id, decision) {
-  if (decision === 'reject' && !confirm('ปฏิเสธงานนี้?')) return;
-  if (decision === 'approve' && !confirm('อนุมัติให้พนักงานทำงานนี้จริงบนโฮส?')) return;
-  try {
-    await fetch(`${API}/api/approvals/${id}/${decision}`, { method: 'POST' });
-    toast(decision === 'approve' ? 'อนุมัติแล้ว — พนักงานกำลังทำงาน' : 'ปฏิเสธแล้ว', 'success');
-    setTimeout(loadApprovalsPage, 1000);
-  } catch(e) { toast('ทำรายการไม่ได้', 'error'); }
-}
-
-async function proposeActions() {
-  const btn = document.getElementById('propose-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> AI กำลังวิเคราะห์...'; }
-  try {
-    const res = await fetch(`${API}/api/employees/propose`, { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) {
-      toast(data.created > 0 ? `AI เสนองาน ${data.created} รายการ` : 'ไม่พบปัญหาที่ต้องแก้ตอนนี้', 'success');
-      loadApprovalsPage();
-    } else {
-      toast(data.error || 'เสนองานไม่ได้', 'error');
-    }
-  } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-bulb"></i> ให้ AI เสนองาน'; }
-}
-
-function updateApprovalBadge(count) {
-  const badge = document.getElementById('nav-approval-badge');
-  if (!badge) return;
-  if (count > 0) { badge.style.display = 'inline-block'; badge.textContent = count; }
-  else badge.style.display = 'none';
-}
-</script>
-<script>
-// ===== CEO Report card บน Dashboard =====
-async function loadCEOReport() {
-  const wrap = document.getElementById('ceo-report-wrap');
-  if (!wrap) return;
-  try {
-    const res = await fetch(`${API}/api/employees/report/ceo`);
-    const data = await res.json();
-    if (!data.hasAI || !data.report) { wrap.innerHTML = ''; return; }
-    wrap.innerHTML = `
-      <div class="metric-card" style="margin-bottom:20px;padding:18px;border-color:rgba(192,132,252,0.25);box-shadow:var(--shadow),0 0 20px rgba(192,132,252,0.08)">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
-          <div style="font-size:14px;font-weight:600;color:var(--purple)"><i class="ti ti-user-star"></i> 👔 รายงานจาก CEO</div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span style="font-size:11px;color:var(--text3)">${timeAgo(data.report.at)}</span>
-            <button class="btn btn-sm" onclick="refreshCEOReport()" id="ceo-refresh-btn"><i class="ti ti-refresh"></i></button>
-          </div>
-        </div>
-        <div style="font-size:13px;color:var(--text);line-height:1.7;white-space:pre-wrap">${data.report.text}</div>
-      </div>`;
-  } catch(e) { wrap.innerHTML = ''; }
-}
-
-async function refreshCEOReport() {
-  const btn = document.getElementById('ceo-refresh-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i>'; }
-  try {
-    await fetch(`${API}/api/employees/think/ceo`, { method: 'POST' });
-    await loadCEOReport();
-    toast('CEO อัพเดทรายงานแล้ว', 'success');
-  } catch(e) { toast('อัพเดทไม่ได้', 'error'); }
-}
-</script>
-<script>
-// ===== PROBLEMS CENTER =====
-async function loadProblemsPage() {
-  try {
-    const [probRes, histRes] = await Promise.all([
-      fetch(`${API}/api/problems`),
-      fetch(`${API}/api/autofix/history`)
-    ]);
-    const probData = await probRes.json();
-    const histData = await histRes.json();
-    renderProblemsSummary(probData);
-    renderProblemsList(probData.problems);
-    renderAutoFixHistory(histData.history);
-    const toggle = document.getElementById('autofix-toggle');
-    if (toggle) toggle.checked = histData.enabled;
-    updateProblemBadge(probData.problems.filter(p => p.severity === 'high').length);
-  } catch(e) {
-    document.getElementById('problems-list').innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
-  }
-}
-
-function renderProblemsSummary(data) {
-  const el = document.getElementById('problems-summary');
-  if (!el) return;
-  const high = data.problems.filter(p => p.severity === 'high').length;
-  const medium = data.problems.filter(p => p.severity === 'medium').length;
-  el.innerHTML = `
-    <div class="metric-card highlight-red"><div class="metric-label"><i class="ti ti-alert-circle"></i> เร่งด่วน</div><div class="metric-val red">${high}</div></div>
-    <div class="metric-card highlight-amber"><div class="metric-label"><i class="ti ti-alert-triangle"></i> ปานกลาง</div><div class="metric-val amber">${medium}</div></div>
-    <div class="metric-card"><div class="metric-label"><i class="ti ti-list"></i> ทั้งหมด</div><div class="metric-val">${data.total}</div></div>
-    <div class="metric-card highlight-green"><div class="metric-label"><i class="ti ti-robot"></i> แก้อัตโนมัติได้</div><div class="metric-val green">${data.autoFixable}</div></div>
-  `;
-}
-
-let currentProblems = [];
-function renderProblemsList(problems) {
-  const el = document.getElementById('problems-list');
-  if (!el) return;
-  currentProblems = problems || [];
-  if (!problems || !problems.length) {
-    el.innerHTML = `<div class="metric-card" style="text-align:center;padding:50px">
-      <div style="font-size:40px;margin-bottom:12px">✅</div>
-      <div style="font-size:15px;font-weight:600;color:var(--green)">ไม่มีปัญหาในระบบ</div>
-      <div style="font-size:12px;color:var(--text3);margin-top:4px">ทุกอย่างทำงานปกติ</div>
-    </div>`;
-    return;
-  }
-  const sevColor = s => s==='high'?'var(--red)':s==='medium'?'var(--amber)':'var(--text3)';
-  const sevLabel = s => s==='high'?'เร่งด่วน':s==='medium'?'ปานกลาง':'ต่ำ';
-
-  el.innerHTML = `<div style="display:flex;flex-direction:column;gap:8px">
-    ${problems.map(p => `
-      <div class="metric-card" style="padding:14px 16px;border-left:3px solid ${sevColor(p.severity)}">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
-          <div style="flex:1">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:3px">
-              <span style="font-size:16px">${p.emoji}</span>
-              <span style="font-weight:600;font-size:13px">${p.title}</span>
-              <span style="font-size:10px;background:${sevColor(p.severity)}22;color:${sevColor(p.severity)};padding:1px 7px;border-radius:8px">${sevLabel(p.severity)}</span>
-            </div>
-            <div style="font-size:12px;color:var(--text2);margin-left:24px">${p.detail}</div>
-            ${p.note ? `<div style="font-size:11px;color:var(--text3);margin-left:24px;margin-top:3px"><i class="ti ti-info-circle"></i> ${p.note}</div>` : ''}
-          </div>
-          ${p.canAutoFix ? `<div style="display:flex;gap:6px;flex-shrink:0">
-            <button class="btn btn-sm btn-green" onclick="fixProblemById('${p.id}',true,this)"><i class="ti ti-bolt"></i> แก้เลย</button>
-            <button class="btn btn-sm" onclick="fixProblemById('${p.id}',false,this)" style="color:var(--gold);border-color:rgba(251,191,36,0.3)">ขออนุมัติ</button>
-          </div>` : '<span style="font-size:11px;color:var(--text3);flex-shrink:0">แก้เองไม่ได้</span>'}
-        </div>
-      </div>
-    `).join('')}
-  </div>`;
-}
-
-async function fixProblemById(problemId, immediate, btn) {
-  const p = currentProblems.find(x => x.id === problemId);
-  if (!p) { toast('ไม่พบปัญหานี้', 'error'); return; }
-  if (!p.action) { toast('ปัญหานี้แก้อัตโนมัติไม่ได้', 'error'); return; }
-  if (immediate && !confirm('แก้ปัญหานี้ทันทีบนโฮส?')) return;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i>'; }
-  try {
-    const res = await fetch(`${API}/api/problems/fix`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ action: p.action, meta: p.meta || {}, immediate })
-    });
-    const data = await res.json();
-    if (data.ok) {
-      if (data.immediate) {
-        toast('แก้แล้ว: ' + (data.result?.detail || data.result?.summary || 'สำเร็จ'), 'success');
-      } else {
-        toast('ส่งขออนุมัติแล้ว — ดูที่หน้ารออนุมัติ', 'info');
-        refreshApprovalBadge();
-      }
-      setTimeout(loadProblemsPage, 1500);
-    } else {
-      toast(data.error || 'แก้ไม่ได้', 'error');
-      if (btn) { btn.disabled = false; btn.innerHTML = immediate ? '<i class="ti ti-bolt"></i> แก้เลย' : 'ขออนุมัติ'; }
-    }
-  } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); if (btn) btn.disabled = false; }
-}
-
-function renderAutoFixHistory(history) {
-  const el = document.getElementById('autofix-history');
-  if (!el) return;
-  if (!history || !history.length) {
-    el.innerHTML = '<div style="padding:30px;text-align:center;color:var(--text3)">ยังไม่มีการแก้อัตโนมัติ</div>';
-    return;
-  }
-  el.innerHTML = history.map(h => `
-    <div style="display:flex;align-items:center;gap:12px;padding:9px 14px;border-bottom:1px solid var(--border);font-size:12px">
-      <span style="font-size:15px">${h.emoji}</span>
-      <span style="font-weight:600;min-width:100px">${h.empName}</span>
-      <span style="flex:1;color:var(--text2)">${h.problem} → ${h.action}</span>
-      <span style="font-size:11px;font-weight:600;color:${h.result==='สำเร็จ'?'var(--green)':'var(--red)'}">${h.result}</span>
-      <span style="font-size:11px;color:var(--text3)">${timeAgo(h.at)}</span>
-    </div>
-  `).join('');
-}
-
-async function toggleAutoFix() {
-  try {
-    const res = await fetch(`${API}/api/autofix/toggle`, { method: 'POST' });
-    const data = await res.json();
-    toast(data.enabled ? 'เปิด Auto-fix แล้ว' : 'ปิด Auto-fix แล้ว', 'success');
-  } catch(e) {}
-}
-
-async function runAutoFixNow() {
-  const btn = document.getElementById('autofix-run-btn');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังแก้...'; }
-  try {
-    const res = await fetch(`${API}/api/autofix/run`, { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) toast(data.fixed > 0 ? `แก้ไป ${data.fixed} รายการ` : 'ไม่พบปัญหาที่ต้องแก้ตอนนี้', 'success');
-    else toast(data.reason || data.error || 'ทำงานไม่ได้', 'error');
-    setTimeout(loadProblemsPage, 1000);
-  } catch(e) { toast('เกิดข้อผิดพลาด', 'error'); }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-bolt"></i> แก้อัตโนมัติเดี๋ยวนี้'; }
-}
-
-function updateProblemBadge(count) {
-  const badge = document.getElementById('nav-problem-badge');
-  if (!badge) return;
-  if (count > 0) { badge.style.display = 'inline-block'; badge.textContent = count; }
-  else badge.style.display = 'none';
-}
-</script>
-<script>
-// ===== ศูนย์บัญชาการ (COMMAND CENTER) =====
-let commandData = null;
-async function loadCommandCenter() {
-  const el = document.getElementById('command-content');
-  if (!el) return;
-  try {
-    const res = await fetch(`${API}/api/command-center`);
-    const data = await res.json();
-    if (!data.success) { el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + (data.error||'') + '</div>'; return; }
-    commandData = data.data;
-    renderCommandCenter(data.data);
-    loadRemediateStatus();
-    startServerMetricsPolling();
-    // อัพเดท badge
-    const badge = document.getElementById('nav-command-badge');
-    if (badge) {
-      if (data.data.summary.highPriority > 0) { badge.style.display='inline-block'; badge.textContent = data.data.summary.highPriority; }
-      else badge.style.display = 'none';
-    }
-  } catch(e) {
-    el.innerHTML = '<div style="padding:20px;color:var(--red)">โหลดไม่ได้: ' + e.message + '</div>';
-  }
-}
-
-function renderCommandCenter(d) {
-  const el = document.getElementById('command-content');
-  const s = d.summary;
-  const sevColor = x => x==='high'?'var(--red)':x==='medium'?'var(--amber)':'var(--text3)';
-
-  // จัดกลุ่มปัญหาตามหมวด
-  const byCat = {};
-  (d.problems||[]).forEach(p => { (byCat[p.cat] = byCat[p.cat]||[]).push(p); });
-
-  el.innerHTML = `
-    <!-- สรุปด่วน -->
-    <div class="metrics-grid" style="margin-bottom:20px">
-      <div class="metric-card ${s.highPriority>0?'highlight-red':''}" style="cursor:pointer" onclick="document.getElementById('cc-urgent').scrollIntoView({behavior:'smooth'})">
-        <div class="metric-label"><i class="ti ti-alert-circle"></i> ต้องทำเลย</div>
-        <div class="metric-val" style="color:${s.highPriority>0?'var(--red)':'var(--green)'}">${s.highPriority}</div>
-      </div>
-      <div class="metric-card"><div class="metric-label"><i class="ti ti-world"></i> โดเมนทั้งหมด</div><div class="metric-val">${s.totalDomains}</div></div>
-      <div class="metric-card ${s.down>0?'highlight-amber':''}"><div class="metric-label"><i class="ti ti-arrow-down"></i> ล่มจริง</div><div class="metric-val" style="color:${s.down>0?'var(--amber)':'var(--green)'}">${s.down}</div></div>
-      <div class="metric-card ${s.pendingApprovals>0?'highlight-amber':''}" style="cursor:pointer" onclick="showPage('approvals')"><div class="metric-label"><i class="ti ti-checkbox"></i> รออนุมัติ</div><div class="metric-val" style="color:${s.pendingApprovals>0?'var(--gold)':'var(--text)'}">${s.pendingApprovals}</div></div>
-    </div>
-
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start">
-
-      <!-- ซ้าย: ปัญหาเร่งด่วน -->
-      <div id="cc-urgent">
-        <div style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--text)"><i class="ti ti-flame" style="color:var(--red)"></i> สิ่งที่ต้องทำ (เรียงด่วนสุดก่อน)</div>
-        ${Object.keys(byCat).length ? Object.entries(byCat).map(([cat, items]) => `
-          <div style="margin-bottom:14px">
-            <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:6px">${items[0].emoji} ${cat} <span style="color:var(--text3)">(${items.length})</span></div>
-            <div style="display:flex;flex-direction:column;gap:6px">
-              ${items.slice(0,8).map(p => `
-                <div class="metric-card" style="padding:10px 12px;border-left:3px solid ${sevColor(p.severity)}">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-                    <div style="flex:1;min-width:0">
-                      <div style="font-size:12px;font-weight:600;font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${p.title}</div>
-                      <div style="font-size:11px;color:var(--text3)">${p.detail}</div>
-                    </div>
-                    ${p.canFix ? `<button class="btn btn-sm btn-green" onclick="ccFix('${p.action}','${(p.meta&&p.meta.domain)||''}',this)"><i class="ti ti-bolt"></i> แก้</button>` : '<span style="font-size:10px;color:var(--text3)">แก้เองไม่ได้</span>'}
-                  </div>
-                </div>
-              `).join('')}
-              ${items.length > 8 ? `<div style="font-size:11px;color:var(--text3);padding-left:4px">+ อีก ${items.length-8} รายการ</div>` : ''}
-            </div>
-          </div>
-        `).join('') : '<div class="metric-card" style="text-align:center;padding:30px"><div style="font-size:32px">✅</div><div style="font-size:13px;color:var(--green);font-weight:600;margin-top:8px">ไม่มีปัญหาเร่งด่วน</div></div>'}
-      </div>
-
-      <!-- ขวา: สถานะระบบ -->
-      <div>
-        <!-- CEO Report -->
-        ${d.ceoReport ? `<div class="metric-card" style="padding:16px;margin-bottom:14px;border-color:rgba(192,132,252,0.25)">
-          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-            <span style="font-size:13px;font-weight:600;color:var(--purple)">👔 สรุปจาก CEO</span>
-            <span style="font-size:11px;color:var(--text3)">${timeAgo(d.ceoReport.at)}</span>
-          </div>
-          <div style="font-size:12px;line-height:1.6;color:var(--text);white-space:pre-wrap">${d.ceoReport.text}</div>
-        </div>` : ''}
-
-        <!-- สุขภาพ Server -->
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
-          <span style="font-size:14px;font-weight:700"><i class="ti ti-server" style="color:var(--teal)"></i> สุขภาพ Server</span>
-          <span style="display:inline-flex;align-items:center;gap:4px;font-size:10px;color:var(--green);background:var(--green-dim);padding:2px 8px;border-radius:10px">
-            <span style="width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 1.5s infinite"></span> LIVE
-          </span>
-          <span id="cc-metrics-updated" style="font-size:10px;color:var(--text3)"></span>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px;margin-bottom:16px">
-          ${(d.serverHealth||[]).map(h => {
-            const gColor = h.grade==='A'?'var(--green)':h.grade==='B'?'var(--teal)':h.grade==='C'?'var(--amber)':'var(--red)';
-            const sid = h.server.replace(/\s/g,'');
-            return `<div class="metric-card" style="padding:10px 12px">
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-                <div style="display:flex;align-items:center;gap:8px">
-                  <span style="font-size:18px;font-weight:700;color:${gColor};min-width:24px">${h.grade}</span>
-                  <div>
-                    <div style="font-size:12px;font-weight:600">${h.server}</div>
-                    <div style="font-size:11px;color:var(--text3)">${h.score}/100 · ตอบสนอง ${h.avgResponseTime}ms · down ${h.down}</div>
-                  </div>
-                </div>
-                <button class="btn btn-sm" onclick="ccDiagnose('${h.server}',this)"><i class="ti ti-stethoscope"></i> วินิจฉัย</button>
-              </div>
-              <div id="cc-live-${sid}" style="margin-top:8px"></div>
-              <div id="cc-diag-${sid}" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid var(--border)"></div>
-            </div>`;
-          }).join('')}
-        </div>
-
-        <!-- กำลังทำงาน + auto-fix -->
-        ${d.working && d.working.length ? `<div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-bolt" style="color:var(--green)"></i> กำลังทำงานตอนนี้</div>
-        <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:14px">
-          ${d.working.map(w => `<div style="display:flex;align-items:center;gap:8px;font-size:12px;padding:6px 10px;background:var(--bg3);border-radius:8px"><span>${w.emoji}</span><b>${w.name}</b><span style="color:var(--text3)">${w.task||''}</span></div>`).join('')}
-        </div>` : ''}
-
-        ${d.recentFixes && d.recentFixes.length ? `<div style="font-size:13px;font-weight:600;margin-bottom:8px"><i class="ti ti-robot" style="color:var(--teal)"></i> แก้อัตโนมัติล่าสุด</div>
-        <div class="table-container">
-          ${d.recentFixes.map(f => `<div style="display:flex;align-items:center;gap:8px;padding:7px 12px;border-bottom:1px solid var(--border);font-size:11px">
-            <span>${f.emoji}</span><span style="flex:1;color:var(--text2)">${f.action}</span>
-            <span style="color:${f.result==='สำเร็จ'?'var(--green)':'var(--red)'}">${f.result}</span>
-            <span style="color:var(--text3)">${timeAgo(f.at)}</span>
-          </div>`).join('')}
-        </div>` : ''}
-      </div>
-    </div>
-  `;
-}
-
-async function ccFix(action, domain, btn) {
-  if (!confirm('แก้ปัญหานี้ทันที?')) return;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i>'; }
-  try {
-    const res = await fetch(`${API}/api/problems/fix`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ action, meta: domain ? { domain } : {}, immediate: true })
-    });
-    const data = await res.json();
-    if (data.ok) { toast('แก้แล้ว: ' + (data.result?.detail||'สำเร็จ'), 'success'); setTimeout(loadCommandCenter, 1500); }
-    else { toast(data.error||'แก้ไม่ได้', 'error'); if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-bolt"></i> แก้';} }
-  } catch(e) { toast('ผิดพลาด', 'error'); if(btn) btn.disabled=false; }
-}
-
-async function ccDiagnose(serverName, btn) {
-  const box = document.getElementById('cc-diag-' + serverName.replace(/\s/g,''));
-  if (!box) return;
-  if (box.style.display === 'block') { box.style.display = 'none'; return; }
-  box.style.display = 'block';
-  box.innerHTML = '<div style="font-size:12px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> กำลังดึงข้อมูลจริงจาก server...</div>';
-  if (btn) btn.disabled = true;
-  try {
-    const res = await fetch(`${API}/api/diagnose/${encodeURIComponent(serverName)}`);
-    const d = await res.json();
-    if (!d.ok) {
-      // timeout → ลองใช้ข้อมูล LIVE จาก cache แทน
-      let cacheNote = '';
-      try {
-        const liveRes = await fetch(`${API}/api/server-metrics-live`);
-        const liveData = await liveRes.json();
-        const cached = liveData.cache && liveData.cache[serverName];
-        if (cached && cached.metrics) {
-          const m = cached.metrics;
-          const swapDanger = m.swapPct > 40 && m.ramPct > 80;
-          box.innerHTML = `
-            <div style="font-size:11px;color:var(--amber);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> วินิจฉัยสดไม่ได้ (server แน่นจนตอบไม่ทัน) — แสดงข้อมูลล่าสุดจาก cache (${timeAgo(cached.at)})</div>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-bottom:10px">
-              <div>Load: <b style="color:${m.loadPerCore>1?'var(--red)':'var(--text)'}">${m.load1} (${m.loadPerCore}/core)</b></div>
-              <div>RAM: <b style="color:${m.ramPct>85?'var(--red)':'var(--text)'}">${m.ramPct}%</b></div>
-              <div>Swap: <b style="color:${swapDanger?'var(--red)':'var(--text)'}">${m.swapPct}%</b></div>
-              <div>PHP-FPM: <b style="color:${m.phpfpm>80?'var(--red)':'var(--text)'}">${m.phpfpm} proc</b></div>
-            </div>
-            ${(cached.recommendations||[]).length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">
-              ${cached.recommendations.map(r => `<button class="btn btn-sm btn-green" onclick="ccApplyFix('${r.action}','${serverName}',this)" title="${r.reason}"><i class="ti ti-wand"></i> ${r.label}</button>`).join('')}
-            </div>` : ''}
-          `;
-          if (btn) btn.disabled = false;
+      // รัน plesk loop ผ่าน Agent — ติดตั้ง SSL + redirect ทุกโดเมนใน server นั้น
+      const cmd = 'for domain in $(plesk bin domain --list); do ' +
+        'plesk bin extension --exec letsencrypt cli.php -d $domain -m seofullgod@gmail.com --redirect 2>/dev/null && echo "SSL_OK:$domain"; ' +
+        'done; echo "SSL_DONE"';
+      
+      const cmdId = queueCommand(srv.host, cmd);
+      console.log(`[SSL] ส่งคำสั่งไป ${srv.name}...`);
+      
+      // รอผล max 10 นาที (โดเมนเยอะ)
+      setTimeout(async () => {
+        const result = agentResults[cmdId];
+        if (!result) {
+          console.log(`[SSL] ${srv.name}: ไม่ได้รับผล (Agent อาจ timeout)`);
           return;
         }
-      } catch(e2) {}
-      box.innerHTML = '<div style="font-size:12px;color:var(--red)">วินิจฉัยไม่ได้: ' + (d.error||'') + '</div>';
-      if(btn)btn.disabled=false; return;
+        delete agentResults[cmdId];
+        const output = (result.output || '').replace(/~/g, ' ');
+        const installed = (output.match(/SSL_OK:(\S+)/g) || []).map(m => m.replace('SSL_OK:', ''));
+        
+        console.log(`[SSL] ${srv.name}: ติดตั้งสำเร็จ ${installed.length} โดเมน`);
+        
+        if (installed.length > 0) {
+          sendTelegram(
+            `✅ <b>Auto SSL + Redirect สำเร็จ</b>
+` +
+            `🖥️ ${srv.name}
+` +
+            `🔒 ติดตั้ง ${installed.length} โดเมน
+` +
+            `📋 ${installed.slice(0,10).join(', ')}${installed.length > 10 ? '...' : ''}`
+          );
+          // Update domain records
+          installed.forEach(domain => {
+            const idx = memoryDomains.findIndex(d => d.domain === domain);
+            if (idx !== -1) {
+              memoryDomains[idx].sslDaysLeft = 90;
+              memoryDomains[idx].sslExpiry = new Date(Date.now() + 90*24*60*60*1000).toISOString().split('T')[0];
+            }
+          });
+          await saveToSheets(memoryDomains).catch(() => {});
+        }
+      }, 10 * 60 * 1000); // รอ 10 นาที
+      
+    } catch(e) {
+      console.error('[SSL]', srv.name, e.message);
     }
-    const m = d.metrics;
-    const vColor = d.verdict==='critical'?'var(--red)':d.verdict==='warning'?'var(--amber)':'var(--green)';
-    const vText = d.verdict==='critical'?'🔴 วิกฤต':d.verdict==='warning'?'🟡 เริ่มมีปัญหา':'🟢 ปกติ';
-    box.innerHTML = `
-      <div style="font-size:12px;font-weight:600;color:${vColor};margin-bottom:8px">${vText}</div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;font-size:11px;margin-bottom:10px">
-        <div>Load: <b style="color:${m.loadPerCore>1?'var(--amber)':'var(--text)'}">${m.load1} (${m.loadPerCore}/core)</b></div>
-        <div>RAM: <b style="color:${m.ramPct>85?'var(--red)':'var(--text)'}">${m.ramPct}% (เหลือ ${m.ramAvail}MB)</b></div>
-        <div>Swap: <b style="color:${m.swapPct>40?'var(--red)':'var(--text)'}">${m.swapPct}% (${m.swapUsed}MB)</b></div>
-        <div>Disk: <b style="color:${m.disk>85?'var(--red)':'var(--text)'}">${m.disk}%</b></div>
-        <div>PHP-FPM: <b style="color:${m.phpfpm>80?'var(--amber)':'var(--text)'}">${m.phpfpm} proc</b></div>
-        <div>MySQL: <b>${m.mysqlMem}MB</b></div>
-      </div>
-      ${d.issues.length ? `<div style="margin-bottom:10px">
-        ${d.issues.map(i => `<div style="font-size:11px;color:${i.level==='high'?'var(--red)':'var(--amber)'};margin-bottom:3px">• ${i.text}</div>`).join('')}
-      </div>` : '<div style="font-size:11px;color:var(--green);margin-bottom:8px">ไม่พบปัญหา</div>'}
-      ${d.recommendations.length ? `<div style="display:flex;flex-wrap:wrap;gap:6px">
-        ${d.recommendations.map(r => `<button class="btn btn-sm btn-green" onclick="ccApplyFix('${r.action}','${serverName}',this)" title="${r.reason}"><i class="ti ti-wand"></i> ${r.label}</button>`).join('')}
-      </div>` : ''}
-    `;
-  } catch(e) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ผิดพลาด: ' + e.message + '</div>'; }
-  if (btn) btn.disabled = false;
+  }
 }
 
-async function ccApplyFix(action, serverName, btn) {
-  if (!confirm('ส่งงาน "' + (action==='phpfpm-ondemand'?'ปรับ PHP-FPM ondemand':'ทำความสะอาด disk') + '" เข้าขออนุมัติ?\n(งานนี้กระทบโฮส ต้องอนุมัติก่อนทำ)')) return;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i>'; }
-  try {
-    const res = await fetch(`${API}/api/problems/fix`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ action, meta: {}, immediate: false })
-    });
-    const data = await res.json();
-    if (data.ok) { toast('ส่งขออนุมัติแล้ว — ดูที่หน้ารออนุมัติ', 'info'); refreshApprovalBadge(); }
-    else toast(data.error||'ส่งไม่ได้', 'error');
-  } catch(e) { toast('ผิดพลาด', 'error'); }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> ส่งแล้ว'; }
+// ===== FIX PHP UPLOAD LIMITS =====
+async function fixPHPUploadLimits() {
+  console.log('[PHP] ปรับค่า upload limits ทุก server...');
+  const cmd = [
+    // แก้ php.ini หลัก
+    'for f in /etc/php.ini /etc/php/*/php.ini /opt/plesk/php/*/etc/php.ini; do [ -f "$f" ] && sed -i "s/upload_max_filesize = .*/upload_max_filesize = 128M/" "$f" && sed -i "s/post_max_size = .*/post_max_size = 256M/" "$f" && sed -i "s/memory_limit = .*/memory_limit = 256M/" "$f"; done',
+    // แก้ sw-engine (PHP ของ Plesk)
+    'for f in /etc/sw-engine/php.ini /usr/local/psa/admin/conf/php.ini; do [ -f "$f" ] && sed -i "s/upload_max_filesize = .*/upload_max_filesize = 128M/" "$f" && sed -i "s/post_max_size = .*/post_max_size = 256M/" "$f"; done',
+    // Restart PHP-FPM
+    'systemctl restart sw-engine 2>/dev/null; systemctl restart php-fpm 2>/dev/null',
+    // ยืนยันค่า
+    'php -r "echo ini_get(\'upload_max_filesize\')" 2>/dev/null | xargs -I{} echo "upload_max: {}" || echo "PHP OK"',
+    'echo "PHP Upload Limit Fixed: 128M"'
+  ].join('; ');
+
+  for (const srv of PLESK_SERVERS) {
+    const cmdId = queueCommand(srv.host, cmd);
+    console.log(`[PHP] ส่งคำสั่งไปที่ ${srv.name}...`);
+    
+    setTimeout(async () => {
+      const result = agentResults[cmdId];
+      if (result) {
+        delete agentResults[cmdId];
+        const output = (result.output || '').replace(/~/g, ' ');
+        const success = output.includes('128M') || output.includes('Fixed');
+        sendTelegram(
+          `${success ? '✅' : '⚠️'} <b>PHP Upload Limit</b>
+` +
+          `🖥️ ${srv.name}
+` +
+          `📋 ${output.slice(0, 200)}`
+        );
+        console.log(`[PHP] ${srv.name}: ${output.slice(0, 100)}`);
+      }
+    }, 90000);
+  }
 }
 
-// ===== Auto-remediate (วินิจฉัยแล้วแก้เอง) =====
-async function toggleRemediate() {
-  try {
-    const res = await fetch(`${API}/api/remediate/toggle`, { method: 'POST' });
-    const data = await res.json();
-    toast(data.enabled ? 'เปิดแก้เองอัตโนมัติแล้ว' : 'ปิดแก้เองอัตโนมัติแล้ว — จะขออนุมัติแทน', 'success');
-  } catch(e) {}
-}
+// ===== BLACKLIST MONITOR =====
+// Blacklist cooldown (แจ้งซ้ำทุก 6 ชั่วโมง)
+const blacklistCooldown = {};
+const BLACKLISTS = ['zen.spamhaus.org', 'bl.spamcop.net', 'dnsbl.sorbs.net', 'b.barracudacentral.org', 'dnsbl-1.uceprotect.net'];
 
-async function runRemediateNow() {
-  const btn = document.getElementById('remediate-run-btn');
-  if (!confirm('ให้บอทวินิจฉัยทุก server ที่สุขภาพต่ำ แล้วแก้งานปลอดภัยเองเดี๋ยวนี้?\n(เฉพาะ cleanup / PHP-FPM ondemand · มี cooldown กันทำซ้ำ)')) return;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> วินิจฉัย+แก้...'; }
-  try {
-    const res = await fetch(`${API}/api/remediate/run`, { method: 'POST' });
-    const data = await res.json();
-    if (data.ok) {
-      toast(`วินิจฉัย ${data.diagnosed} server · แก้ ${data.applied} รายการ`, 'success');
+async function checkBlacklists() {
+  try { empLog('security', 'ตรวจ IP blacklist', 'สแกน DNSBL'); } catch(e){}
+  const dns = require('dns');
+  const serverIPs = [...new Set(PLESK_SERVERS.map(s => s.host))];
+  const results = [];
+  console.log('[Blacklist] ตรวจสอบ', serverIPs.length, 'IPs...');
+
+  for (const ip of serverIPs) {
+    const reversed = ip.split('.').reverse().join('.');
+    const listed = [];
+    for (const bl of BLACKLISTS) {
+      try {
+        await new Promise(resolve => {
+          dns.lookup(reversed + '.' + bl, (err, addr) => {
+            if (!err && addr) listed.push(bl);
+            resolve();
+          });
+        });
+      } catch(e) {}
+    }
+    const srv = PLESK_SERVERS.find(s => s.host === ip);
+    const key = 'bl:' + ip;
+    if (listed.length > 0) {
+      if (!blacklistCooldown[key] || Date.now() - blacklistCooldown[key] > 6*60*60*1000) {
+        blacklistCooldown[key] = Date.now();
+        smartAlert('critical',
+          '🚨 IP Blacklisted!\n' +
+          '🖥️ ' + (srv?.name || ip) + ' (' + ip + ')\n' +
+          '📋 พบใน: ' + listed.join(', ') + '\n' +
+          '💡 ต้องติดต่อ provider เพื่อ delist ด่วน'
+        );
+      }
+      results.push({ ip, server: srv?.name, listed });
     } else {
-      toast(data.reason || data.error || 'ทำงานไม่ได้', 'error');
+      console.log('[Blacklist] ' + ip + ': clean ✅');
     }
-    setTimeout(loadCommandCenter, 1500);
-  } catch(e) { toast('ผิดพลาด: ' + e.message, 'error'); }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-wand"></i> วินิจฉัย+แก้เลย'; }
+  }
+  return results;
 }
 
-async function loadRemediateStatus() {
-  try {
-    const res = await fetch(`${API}/api/remediate/status`);
-    const data = await res.json();
-    const toggle = document.getElementById('remediate-toggle');
-    if (toggle) toggle.checked = data.enabled;
-  } catch(e) {}
+// ===== WEEKLY REPORT =====
+let weeklyStats = { fixed: 0, checked: 0, uptime: 0, startTime: Date.now() };
+
+function updateWeeklyStats(fixed, checked) {
+  weeklyStats.fixed += fixed;
+  weeklyStats.checked += checked;
 }
 
-// ===== Smart Polling: live server metrics ทุก 10 วิ =====
-let ccMetricsTimer = null;
-function startServerMetricsPolling() {
-  stopServerMetricsPolling();
-  updateLiveMetrics(); // ดึงทันทีรอบแรก
-  ccMetricsTimer = setInterval(() => {
-    if (currentPageName !== 'command') { stopServerMetricsPolling(); return; }
-    updateLiveMetrics();
-  }, 10000);
+async function sendWeeklyReport() {
+  try { empLog('ceo', 'ส่งรายงานประจำสัปดาห์', 'สรุปภาพรวมให้เจ้าของ'); } catch(e){}
+  const total = memoryDomains.length;
+  const upDomains = memoryDomains.filter(d => d.status === 'up').length;
+  const downDomains = memoryDomains.filter(d => d.status === 'down').length;
+  const uptimePct = total ? Math.round(upDomains / total * 100) : 0;
+  const sslExpiring = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30 && d.sslDaysLeft > 0).length;
+  const domainExpiring = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0).length;
+  const uptimeHours = Math.round((Date.now() - weeklyStats.startTime) / 3600000);
+
+  // Top 5 GSC traffic this week
+  const topGSC = [...memoryDomains]
+    .filter(d => d.gsc?.d7?.clicks > 0)
+    .sort((a,b) => (b.gsc.d7.clicks||0) - (a.gsc.d7.clicks||0))
+    .slice(0, 5);
+
+  // SSL expiring soon
+  const sslList = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0)
+    .sort((a,b) => a.sslDaysLeft - b.sslDaysLeft).slice(0, 5);
+
+  let msg = '📊 <b>Weekly Report — DomainIntel</b>\n';
+  msg += '🗓️ ' + new Date().toLocaleDateString('th-TH', {weekday:'long',year:'numeric',month:'long',day:'numeric'}) + '\n\n';
+  msg += '🌐 โดเมนทั้งหมด: <b>' + total + '</b>\n';
+  msg += '✅ Up: <b>' + upDomains + '</b> (' + uptimePct + '%)\n';
+  msg += '🔴 Down: <b>' + downDomains + '</b>\n';
+  msg += '🔧 Auto-fixed: ' + weeklyStats.fixed + ' ครั้ง\n';
+  msg += '⏱️ System Uptime: ' + uptimeHours + ' ชั่วโมง\n\n';
+
+  if (sslExpiring > 0) msg += '⚠️ SSL ใกล้หมด: ' + sslExpiring + ' โดเมน\n';
+  if (domainExpiring > 0) msg += '⚠️ Domain ใกล้หมด: ' + domainExpiring + ' โดเมน\n';
+  if (sslList.length > 0) {
+    msg += '\n🔒 <b>SSL ใกล้หมด (14 วัน):</b>\n';
+    sslList.forEach(d => { msg += '  • ' + d.domain + ' (' + d.sslDaysLeft + ' วัน)\n'; });
+  }
+  if (topGSC.length > 0) {
+    msg += '\n📈 <b>Top Traffic 7 วันล่าสุด:</b>\n';
+    topGSC.forEach((d,i) => { msg += '  ' + (i+1) + '. ' + d.domain + ' — ' + d.gsc.d7.clicks + ' clicks\n'; });
+  }
+
+  sendTelegram(msg);
+  weeklyStats = { fixed: 0, checked: 0, uptime: 0, startTime: Date.now() };
+  console.log('[WeeklyReport] ส่งรายงานรายสัปดาห์แล้ว');
 }
-function stopServerMetricsPolling() {
-  if (ccMetricsTimer) { clearInterval(ccMetricsTimer); ccMetricsTimer = null; }
+
+
+
+// ===== GSC TRAFFIC DROP ALERT =====
+const gscDropCooldown = {}; // { domain: lastAlertTime }
+
+async function checkGSCTrafficDrop() {
+  try { empLog('security', 'ตรวจ traffic drop', 'สแกนทุกโดเมน'); } catch(e){}
+  const withGSC = memoryDomains.filter(d => d.gsc && d.gsc.d7 && d.gsc.d30);
+  let alerts = 0;
+  for (const d of withGSC) {
+    try {
+      // เปรียบเทียบ 7 วันนี้ vs 7 วันก่อน (โดยใช้ d30 - d7)
+      const recent7 = d.gsc.d7?.clicks || 0;
+      const d30clicks = d.gsc.d30?.clicks || 0;
+      const prev7 = Math.max(0, d30clicks - recent7); // clicks ใน 7-30 วันที่แล้ว
+      if (prev7 < 5) continue; // ไม่นับถ้า traffic น้อยเกินไป
+
+      const dropPct = Math.round((prev7 - recent7) / prev7 * 100);
+      if (dropPct >= 30) {
+        const key = d.domain;
+        if (!gscDropCooldown[key] || Date.now() - gscDropCooldown[key] > 7*24*60*60*1000) {
+          gscDropCooldown[key] = Date.now();
+          smartAlert('warning',
+            '📉 Traffic Drop Alert\n' +
+            '🌐 ' + d.domain + '\n' +
+            '📊 7 วันนี้: ' + recent7 + ' clicks\n' +
+            '📊 7 วันก่อน: ' + prev7 + ' clicks\n' +
+            '⬇️ ลดลง <b>' + dropPct + '%</b>\n' +
+            '💡 ตรวจสอบ GSC — อาจโดน penalty'
+          );
+          alerts++;
+        }
+      }
+    } catch(e) {}
+  }
+  if (alerts === 0) console.log('[GSCDrop] ไม่พบ traffic drop ผิดปกติ');
+}
+// ===== DDOS DETECTION =====
+const requestCounts = {}; // { ip: { count, firstSeen } }
+const blockedIPs = new Set();
+
+function trackRequest(ip) {
+  const now = Date.now();
+  if (!requestCounts[ip]) requestCounts[ip] = { count: 0, firstSeen: now };
+  requestCounts[ip].count++;
+  
+  // Reset after 1 minute
+  if (now - requestCounts[ip].firstSeen > 60000) {
+    requestCounts[ip] = { count: 1, firstSeen: now };
+  }
+  
+  // DDoS threshold: 500 requests/minute
+  if (requestCounts[ip].count > 500 && !blockedIPs.has(ip)) {
+    blockedIPs.add(ip);
+    console.log(`[DDoS] บล็อก IP: ${ip} (${requestCounts[ip].count} req/min)`);
+    smartAlert('critical', `🚨 DDoS Detection
+🌐 IP: <code>${ip}</code>
+📊 ${requestCounts[ip].count} requests/นาที
+🛡️ บล็อกอัตโนมัติแล้ว`);
+    
+    // Auto-unblock after 1 hour
+    setTimeout(() => {
+      blockedIPs.delete(ip);
+      console.log(`[DDoS] ปลดบล็อก IP: ${ip}`);
+    }, 60 * 60 * 1000);
+  }
+  
+  return blockedIPs.has(ip);
 }
 
-async function updateLiveMetrics() {
-  try {
-    const res = await fetch(`${API}/api/server-metrics-live`);
-    const data = await res.json();
-    if (!data.success) return;
-    const cache = data.cache || {};
-    // อัพเดทเวลาล่าสุด
-    const updEl = document.getElementById('cc-metrics-updated');
-    if (updEl) updEl.textContent = data.collecting ? '(กำลังเก็บข้อมูล...)' : (data.lastCollectAt ? 'อัพเดต ' + timeAgo(data.lastCollectAt) : '');
+// Clean up old request counts every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  Object.keys(requestCounts).forEach(ip => {
+    if (now - requestCounts[ip].firstSeen > 60000) delete requestCounts[ip];
+  });
+}, 5 * 60 * 1000);
 
-    // อัพเดท badge แต่ละ server
-    Object.entries(cache).forEach(([serverName, info]) => {
-      const sid = serverName.replace(/\s/g,'');
-      const box = document.getElementById('cc-live-' + sid);
-      if (!box || !info.metrics) return;
-      const m = info.metrics;
-      const badge = (label, val, warn) => `<span style="font-size:10px;padding:2px 7px;border-radius:8px;background:${warn?'var(--red-dim)':'var(--bg4)'};color:${warn?'var(--red)':'var(--text2)'}">${label} ${val}</span>`;
-      // Swap แดงเฉพาะเมื่อ swap สูง + RAM ก็สูงด้วย (= ใช้ swap จริง ไม่ใช่ค้างจาก spike เก่า)
-      const swapDanger = m.swapPct > 40 && m.ramPct > 80;
-      box.innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:4px">
-        ${badge('Load', m.load1+' ('+m.loadPerCore+'/c)', m.loadPerCore>1.5)}
-        ${badge('RAM', m.ramPct+'%', m.ramPct>85)}
-        ${badge('Swap', m.swapPct+'%', swapDanger)}
-        ${badge('PHP-FPM', m.phpfpm, m.phpfpm>80)}
-        ${badge('Disk', m.disk+'%', m.disk>85)}
-      </div>`;
-    });
-  } catch(e) {}
+// ===== DATABASE BACKUP MONITOR =====
+async function checkDatabaseBackups() {
+  console.log('[Backup] ตรวจสอบ backup ทุก server...');
+  
+  for (const srv of PLESK_SERVERS) {
+    const cmd = [
+      // เช็ค backup ล่าสุด
+      'BACKUP_DIR="/var/lib/psa/dumps"',
+      'if [ -d "$BACKUP_DIR" ]; then',
+      '  LATEST=$(ls -t $BACKUP_DIR/*.tar.gz 2>/dev/null | head -1)',
+      '  if [ -n "$LATEST" ]; then',
+      '    AGE=$(( ($(date +%s) - $(stat -c %Y "$LATEST")) / 3600 ))',
+      '    SIZE=$(du -sh "$LATEST" | cut -f1)',
+      '    echo "BACKUP_OK:$AGE:$SIZE:$(basename $LATEST)"',
+      '  else',
+      '    echo "BACKUP_MISSING"',
+      '  fi',
+      'else',
+      '  echo "BACKUP_DIR_MISSING"',
+      'fi'
+    ].join('\n');
+    
+    const cmdId = queueCommand(srv.host, cmd);
+    
+    setTimeout(async () => {
+      const result = agentResults[cmdId];
+      if (!result) return;
+      delete agentResults[cmdId];
+      
+      const output = (result.output || '').replace(/~/g, ' ');
+      
+      if (output.includes('BACKUP_MISSING') || output.includes('BACKUP_DIR_MISSING')) {
+        sendTelegram(`⚠️ <b>Backup Warning!</b>
+🖥️ ${srv.name}
+❌ ไม่พบ backup file
+กรุณาตรวจสอบ backup system`);
+      } else if (output.includes('BACKUP_OK:')) {
+        const match = output.match(/BACKUP_OK:(\d+):([^:]+):(.+)/);
+        if (match) {
+          const [, age, size, filename] = match;
+          if (parseInt(age) > 48) {
+            sendTelegram(`⚠️ <b>Backup เก่าเกินไป!</b>
+🖥️ ${srv.name}
+⏰ Backup ล่าสุด: ${age} ชั่วโมงที่แล้ว
+📦 ไฟล์: ${filename} (${size})`);
+          } else {
+            console.log(`[Backup] ${srv.name}: OK - ${age}h ago, ${size}`);
+          }
+        }
+      }
+    }, 90000);
+  }
 }
-</script>
-<script>
-// ===== วินิจฉัยโดเมนเดี่ยว =====
-let lastDiagResult = null;
 
-// ===== ผู้ช่วย AI วิเคราะห์ error =====
-async function aiAnalyze(prefillText, context) {
-  const input = document.getElementById('ai-error-input');
-  if (prefillText && input) input.value = prefillText;
-  const errorText = (input.value||'').trim();
-  const btn = document.getElementById('ai-analyze-btn');
-  const box = document.getElementById('ai-analyze-result');
-  if (!errorText) { toast('วาง error ก่อน', 'error'); return; }
+// ===== DOMAIN EXPIRY MONITOR =====
+// Domain expiry alert cooldown (ป้องกัน spam)
+const domainExpiryCooldown = {}; // { 'domain+threshold': lastAlertTime }
 
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> AI กำลังวิเคราะห์...'; }
-  if (box) box.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px"><i class="ti ti-refresh ti-spin"></i> AI กำลังอ่านและวิเคราะห์...</div>';
-  try {
-    const res = await fetch(`${API}/api/ai-analyze`, {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ errorText, context: context || 'วินิจฉัยจากศูนย์บัญชาการ DomainIntel' })
-    });
-    const d = await res.json();
-    if (d.ok && d.text) {
-      box.innerHTML = `<div style="background:var(--bg3);border-radius:8px;padding:16px;border-left:3px solid var(--purple)">
-        <div style="font-size:12px;font-weight:600;color:var(--purple);margin-bottom:10px"><i class="ti ti-robot"></i> AI วิเคราะห์:</div>
-        <div style="font-size:13px;line-height:1.7;color:var(--text);white-space:pre-wrap">${formatAIResponse(d.text)}</div>
-      </div>`;
-    } else {
-      box.innerHTML = '<div style="font-size:12px;color:var(--red);padding:10px">วิเคราะห์ไม่ได้: ' + (d.error||'') + '</div>';
+async function checkDomainExpiry() {
+  console.log('[DomainExpiry] ตรวจสอบวันหมดอายุโดเมน...');
+  // แจ้งเตือนที่ 60/30/14/7/1 วัน
+  const thresholds = [60, 30, 14, 7, 1];
+  const now = new Date();
+  const COOLDOWN = 20 * 60 * 60 * 1000; // cooldown 20 ชั่วโมง (แจ้งซ้ำได้วันละครั้ง)
+  const expiringList = [];
+
+  for (const domain of memoryDomains) {
+    if (!domain.expiryDate) continue;
+    const expiry = new Date(domain.expiryDate);
+    const daysLeft = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    const idx = memoryDomains.findIndex(d => d.domain === domain.domain);
+    if (idx !== -1) memoryDomains[idx].daysLeft = daysLeft;
+
+    for (const t of thresholds) {
+      if (daysLeft <= t && daysLeft > (t === 1 ? 0 : thresholds[thresholds.indexOf(t)+1] || 0)) {
+        const key = domain.domain + ':' + t;
+        if (!domainExpiryCooldown[key] || Date.now() - domainExpiryCooldown[key] > COOLDOWN) {
+          domainExpiryCooldown[key] = Date.now();
+          const icon = daysLeft <= 1 ? '🚨' : daysLeft <= 7 ? '🔴' : daysLeft <= 14 ? '🟠' : '⚠️';
+          sendTelegram(
+            icon + ' <b>Domain หมดอายุใน ' + daysLeft + ' วัน!</b>\n' +
+            '🌐 <code>' + domain.domain + '</code>\n' +
+            '📅 หมดอายุ: ' + domain.expiryDate + '\n' +
+            '🖥️ Server: ' + (domain.pleskServer || '—') + '\n' +
+            (daysLeft <= 7 ? '🚨 <b>ต่ออายุด่วนมาก!</b>' : '💡 กรุณาต่ออายุโดเมน')
+          );
+          expiringList.push({ domain: domain.domain, daysLeft, expiryDate: domain.expiryDate });
+        }
+        break;
+      }
     }
-  } catch(e) { box.innerHTML = '<div style="font-size:12px;color:var(--red);padding:10px">ผิดพลาด: ' + e.message + '</div>'; }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-sparkles"></i> ให้ AI วิเคราะห์'; }
+  }
+
+  // สรุปรายการใกล้หมดอายุ (เฉพาะ <= 30 วัน) ลง log
+  const expiring30 = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0);
+  if (expiring30.length) console.log('[DomainExpiry] ใกล้หมดอายุ:', expiring30.map(d => d.domain + '(' + d.daysLeft + 'd)').join(', '));
 }
 
-// จัด format ผลตอบ AI (โค้ด block + bullet)
-function formatAIResponse(text) {
-  let html = text.replace(/</g,'&lt;');
-  // code block
-  html = html.replace(/\`\`\`[\w]*\n?([\s\S]*?)\`\`\`/g, (m,code) => `<pre style="background:#000;border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;color:#4ade80;overflow-x:auto;white-space:pre-wrap;margin:8px 0;font-family:var(--mono)">${code.trim()}</pre>`);
-  // inline code
-  html = html.replace(/\`([^\`]+)\`/g, '<code style="background:var(--bg4);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:12px">$1</code>');
-  return html;
-}
 
-async function runDomainDiag() {
-  const input = document.getElementById('diag-domain-input');
-  const btn = document.getElementById('diag-domain-btn');
-  const resultEl = document.getElementById('diag-domain-result');
-  const domain = (input.value||'').trim();
-  if (!domain) { toast('ใส่ชื่อโดเมนก่อน', 'error'); return; }
 
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังตรวจ...'; }
-  resultEl.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px"><i class="ti ti-refresh ti-spin"></i> กำลังเช็ค DNS, Cloudflare, SSL, vhost...</div>';
+// ===== RESOURCE USAGE PER DOMAIN =====
+async function getDomainResourceUsage(srv) {
   try {
-    const res = await fetch(`${API}/api/diagnose-domain/${encodeURIComponent(domain)}`);
-    const d = await res.json();
-    if (!d.success) { resultEl.innerHTML = '<div style="color:var(--red);font-size:12px;padding:10px">ตรวจไม่ได้: ' + (d.error||'') + '</div>'; return; }
-    lastDiagResult = d; // เก็บไว้ให้ renderDiagFix ใช้
+    const cmd = [
+      // System overview (เร็วมาก)
+      'echo "=SYS="',
+      'echo "Load:$(cat /proc/loadavg | cut -d" " -f1-3)"',
+      'echo "RAM:$(free -m | grep Mem | tr -s " " | cut -d" " -f3)/$(free -m | grep Mem | tr -s " " | cut -d" " -f2)MB"',
+      'echo "Disk:$(df -h / | tail -1 | tr -s " " | cut -d" " -f3)/$(df -h / | tail -1 | tr -s " " | cut -d" " -f2) ($(df -h / | tail -1 | tr -s " " | cut -d" " -f5))"',
+      'echo "Domains:$(ls /var/www/vhosts/ 2>/dev/null | wc -l)"',
+      // PHP-FPM processes (เร็วมาก)
+      'echo "=PHP="',
+      'ps aux | grep -E "php-fpm|php[0-9]" | grep -v grep | awk "{print $NF}" | sort | uniq -c | sort -rn | head -20',
+      // Top processes by CPU (เร็วมาก)
+      'echo "=TOP="',
+      'ps aux --sort=-%cpu | awk "NR>1 && NR<=11 {print $3\\"% \\"$11}" | head -10',
+      // Apache connections per domain (เร็ว)
+      'echo "=CONN="',
+      'ss -tn state established 2>/dev/null | wc -l || echo "0"'
+    ].join('; ');
 
-    const verdictColor = d.verdict === 'ok-origin' ? 'var(--green)' : 'var(--amber)';
-    resultEl.innerHTML = `
-      <div style="background:var(--bg3);border-radius:var(--radius-sm);padding:14px">
-        <div style="font-size:13px;font-weight:600;color:${verdictColor};margin-bottom:10px">
-          <i class="ti ti-clipboard-text"></i> ${d.summary || 'ผลวินิจฉัย ' + d.domain}
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px">
-          ${(d.checks||[]).map(ch => `
-            <div style="display:flex;align-items:flex-start;gap:8px;font-size:12px">
-              <span style="flex-shrink:0">${ch.ok ? '✅' : '❌'}</span>
-              <span style="font-weight:600;min-width:130px">${ch.name}</span>
-              <span style="color:var(--text2);flex:1">${ch.detail}</span>
-            </div>
-          `).join('')}
-        </div>
-        ${renderDiagFix(d.verdict, d.domain)}
-      </div>`;
-  } catch(e) { resultEl.innerHTML = '<div style="color:var(--red);font-size:12px;padding:10px">เกิดข้อผิดพลาด: ' + e.message + '</div>'; }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-search"></i> วินิจฉัย'; }
+    const cmdId = queueCommand(srv.host, cmd);
+    for (let i = 0; i < 45; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const res = agentResults[cmdId]; delete agentResults[cmdId];
+        return { server: srv.name, output: (res.output||'').replace(/~/g,'\n'), ok: true };
+      }
+    }
+    return { server: srv.name, output: 'timeout', ok: false };
+  } catch(e) { return { server: srv.name, output: e.message, ok: false }; }
+}
+// ===== UPTIME SLA TRACKER =====
+// เก็บ uptime history รายวัน คำนวณ % SLA รายเดือน
+const uptimeHistory = {}; // { 'domain': [{ date, checks, up, pct }] }
+const dailyChecks = {};   // { 'domain': { checks, up, date } } สำหรับวันนี้
+
+function recordUptimeCheck(domain, isUp) {
+  const today = new Date().toISOString().split('T')[0];
+  if (!dailyChecks[domain]) dailyChecks[domain] = { checks: 0, up: 0, date: today };
+  if (dailyChecks[domain].date !== today) {
+    // บันทึกวันเมื่อวาน
+    const prev = dailyChecks[domain];
+    if (!uptimeHistory[domain]) uptimeHistory[domain] = [];
+    uptimeHistory[domain].push({ date: prev.date, checks: prev.checks, up: prev.up, pct: prev.checks > 0 ? Math.round(prev.up/prev.checks*1000)/10 : 0 });
+    // เก็บแค่ 90 วัน
+    if (uptimeHistory[domain].length > 90) uptimeHistory[domain].shift();
+    dailyChecks[domain] = { checks: 0, up: 0, date: today };
+  }
+  dailyChecks[domain].checks++;
+  if (isUp) dailyChecks[domain].up++;
 }
 
-function renderDiagFix(verdict, domain) {
-  const fixes = {
-    'domain-no-ssl-hosting': '🔧 วิธีแก้ (ตรงจุด!): เข้า Plesk → โดเมนนี้ → "Hosting & DNS" → "Hosting Settings" → ติ๊ก "SSL/TLS support" แล้วเลือก cert ที่มีอยู่ → Apply | หรือเข้า "SSL/TLS Certificates" ออก Lets Encrypt ใหม่ ระบบจะเปิด 443 ให้อัตโนมัติ',
-    'no-ssl': '🔧 วิธีแก้: ออก SSL ที่ origin (Lets Encrypt ใน Plesk) หรือเปลี่ยน Cloudflare SSL mode เป็น "Flexible" ชั่วคราว',
-    'no-vhost': '🔧 วิธีแก้: โดเมนยังไม่ได้ตั้งใน Plesk จริง — เข้า Plesk เพิ่ม subscription/domain ก่อน',
-    'wrong-ip': '🔧 วิธีแก้: แก้ A record ใน Cloudflare ให้ชี้ IP ที่ถูกต้องของ server',
-    'nginx-down': '🔧 วิธีแก้: nginx ไม่ทำงาน — ต้อง restart (งานนี้กระทบโฮส แนะนำตรวจก่อน)',
-    'dns': '🔧 วิธีแก้: ตั้ง DNS A record ใน Cloudflare ให้ชี้มา server',
-    'ok-origin': '💡 origin ปกติดี ปัญหาอยู่ที่ Cloudflare — เช็ค SSL mode (ควรเป็น Full ถ้า origin มี SSL) และ proxy status'
+function getSLAStats(domain, days) {
+  const history = uptimeHistory[domain] || [];
+  const recent = history.slice(-days);
+  if (!recent.length) return { uptime: null, checks: 0, days: 0 };
+  const totalChecks = recent.reduce((s,d) => s+d.checks, 0);
+  const totalUp = recent.reduce((s,d) => s+d.up, 0);
+  return {
+    uptime: totalChecks > 0 ? Math.round(totalUp/totalChecks*1000)/10 : 0,
+    checks: totalChecks, days: recent.length
   };
-  let html = '';
-  const fix = fixes[verdict];
-  if (fix) html += `<div style="margin-top:12px;padding:10px 12px;background:var(--bg2);border-left:3px solid var(--teal);border-radius:4px;font-size:12px;color:var(--text);line-height:1.5">${fix}</div>`;
+}
 
-  // ถ้า port 443 server ไม่ฟัง → เสนอปุ่มตรวจลึก nginx
-  if (lastDiagResult && lastDiagResult.checks) {
-    const port443Server = lastDiagResult.checks.find(c => c.name === 'Port 443 (server)');
-    const curlCheck = lastDiagResult.checks.find(c => c.name === 'ทดสอบเข้าจริง (curl)');
-    if ((port443Server && !port443Server.ok) || (curlCheck && !curlCheck.ok)) {
-      const srvCheck = lastDiagResult.checks.find(c => c.name === 'Plesk server');
-      const srvName = srvCheck ? (srvCheck.detail.match(/อยู่ (Server \d+)/)||[])[1] : null;
-      if (srvName) {
-        html += `<div style="margin-top:10px;padding:12px;background:var(--bg2);border-left:3px solid var(--amber);border-radius:4px">
-          <div style="font-size:12px;color:var(--amber);font-weight:600;margin-bottom:8px">⚠️ nginx ไม่ฟัง 443 — ต้องตรวจลึกก่อนแก้ (ปลอดภัย ไม่แตะอะไร)</div>
-          <button class="btn btn-sm btn-green" onclick="runDeepNginx('${srvName}')" id="deep-nginx-btn"><i class="ti ti-microscope"></i> ตรวจลึก nginx ${srvName}</button>
-          <div id="deep-nginx-result" style="margin-top:10px"></div>
-        </div>`;
+function getAllSLAStats() {
+  return memoryDomains.map(d => ({
+    domain: d.domain,
+    d7:  getSLAStats(d.domain, 7),
+    d30: getSLAStats(d.domain, 30),
+    status: d.status
+  })).filter(d => d.d30.checks > 0);
+}
+// ===== PERFORMANCE MONITOR =====
+const performanceHistory = {}; // { domain: [responseTimes] }
+
+const perfHourly = {}; // เก็บค่าเฉลี่ยรายชั่วโมง สำหรับ chart
+
+function trackPerformance(domain, responseTime) {
+  if (!performanceHistory[domain]) performanceHistory[domain] = [];
+  performanceHistory[domain].push({ time: responseTime, at: Date.now() });
+  if (performanceHistory[domain].length > 10) performanceHistory[domain].shift();
+
+  // เก็บ hourly average (สำหรับ trend chart - 48 ชั่วโมงล่าสุด)
+  const hourKey = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
+  if (!perfHourly[domain]) perfHourly[domain] = {};
+  if (!perfHourly[domain][hourKey]) perfHourly[domain][hourKey] = { sum: 0, count: 0 };
+  perfHourly[domain][hourKey].sum += responseTime;
+  perfHourly[domain][hourKey].count++;
+  // เก็บแค่ 48 ชั่วโมง
+  const keys = Object.keys(perfHourly[domain]).sort();
+  while (keys.length > 48) { delete perfHourly[domain][keys.shift()]; }
+  
+  // Alert if consistently slow (avg > 5000ms over last 3 checks)
+  const recent = performanceHistory[domain].slice(-3);
+  if (recent.length === 3) {
+    const avg = recent.reduce((s, r) => s + r.time, 0) / 3;
+    if (avg > 5000) {
+      const idx = memoryDomains.findIndex(d => d.domain === domain);
+      const srv = idx !== -1 ? memoryDomains[idx].pleskServer : '—';
+      console.log(`[Perf] ${domain}: ช้าผิดปกติ avg ${Math.round(avg)}ms`);
+      // Only alert once per hour
+      const lastAlert = performanceHistory[domain].lastAlert || 0;
+      if (Date.now() - lastAlert > 60 * 60 * 1000) {
+        performanceHistory[domain].lastAlert = Date.now();
+        smartAlert('warning', '🐌 Performance Warning\n🌐 ' + domain + '\n⏱️ Response เฉลี่ย: ' + Math.round(avg) + 'ms\n🖥️ Server: ' + srv, 'perf:' + domain);
+        logEvent('slow', domain + ' ช้าผิดปกติ ' + Math.round(avg) + 'ms', { domain, avgMs: Math.round(avg), server: srv });
       }
     }
   }
-  return html;
 }
 
-async function runDeepNginx(serverName) {
-  const btn = document.getElementById('deep-nginx-btn');
-  const box = document.getElementById('deep-nginx-result');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังตรวจลึก...'; }
-  if (box) box.innerHTML = '<div style="font-size:12px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> ตรวจ nginx -t, listen ports, error log...</div>';
-  try {
-    const res = await fetch(`${API}/api/deep-nginx/${encodeURIComponent(serverName)}`);
-    const d = await res.json();
-    if (!d.ok) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ตรวจไม่ได้: ' + (d.error||'') + '</div>'; if(btn)btn.disabled=false; return; }
-
-    const fixBtn = d.fixAction === 'reload-nginx'
-      ? `<button class="btn btn-sm btn-green" onclick="applyNginxReload('${serverName}',this)" style="margin-top:8px"><i class="ti ti-reload"></i> Reload nginx (ปลอดภัย — config ผ่านแล้ว)</button>`
-      : d.fixAction === 'none'
-      ? `<div style="margin-top:8px">
-          <div style="font-size:11px;color:var(--red);margin-bottom:6px">⚠️ config มี error — ต้องดู error เต็มก่อนแก้</div>
-          <button class="btn btn-sm" onclick="showNginxError('${serverName}',this)" id="nginx-err-btn" style="background:var(--amber-dim);color:var(--amber);border-color:rgba(251,191,36,0.3)"><i class="ti ti-file-text"></i> ดู error เต็มๆ</button>
-          <div id="nginx-err-full" style="margin-top:8px"></div>
-        </div>`
-      : '';
-
-    box.innerHTML = `
-      <div style="background:var(--bg3);border-radius:6px;padding:12px">
-        <div style="display:flex;flex-direction:column;gap:5px;margin-bottom:10px">
-          ${d.checks.map(ch => `<div style="display:flex;gap:8px;font-size:11px"><span>${ch.ok?'✅':'❌'}</span><span style="font-weight:600;min-width:150px">${ch.name}</span><span style="color:var(--text2);flex:1;word-break:break-all">${ch.detail}</span></div>`).join('')}
-        </div>
-        <div style="font-size:12px;color:var(--amber);padding:8px;background:var(--bg2);border-radius:4px;line-height:1.5"><b>สาเหตุ:</b> ${d.cause}<br><b>แก้:</b> ${d.fix}</div>
-        ${fixBtn}
-      </div>`;
-  } catch(e) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ผิดพลาด: ' + e.message + '</div>'; }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-microscope"></i> ตรวจลึก nginx อีกครั้ง'; }
-}
-
-async function showNginxError(serverName, btn) {
-  const box = document.getElementById('nginx-err-full');
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลังดึง error...'; }
-  if (box) box.innerHTML = '<div style="font-size:12px;color:var(--text3)"><i class="ti ti-refresh ti-spin"></i> ดึงข้อความ nginx -t เต็มๆ...</div>';
-  try {
-    const res = await fetch(`${API}/api/nginx-error/${encodeURIComponent(serverName)}`);
-    const d = await res.json();
-    if (!d.ok) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ดึงไม่ได้: ' + (d.error||'') + '</div>'; if(btn)btn.disabled=false; return; }
-    box.innerHTML = `
-      <div style="font-size:11px;color:var(--text3);margin-bottom:4px">ข้อความเต็มจาก nginx -t:</div>
-      <pre style="background:#000;border:1px solid var(--border);border-radius:6px;padding:12px;font-size:11px;color:#4ade80;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;font-family:var(--mono)">${(d.rawOutput||'').replace(/</g,'&lt;')}</pre>
-      <button class="btn btn-sm btn-green" onclick="aiAnalyze(${JSON.stringify(d.rawOutput||'').replace(/"/g,'&quot;')}, 'nginx -t error จาก ${serverName}')" style="margin-top:8px"><i class="ti ti-robot"></i> ส่งให้ AI วิเคราะห์เลย</button>`;
-  } catch(e) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ผิดพลาด: ' + e.message + '</div>'; }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-text"></i> ดู error เต็มๆ อีกครั้ง'; }
-}
-
-async function applyNginxReload(serverName, btn) {
-  if (!confirm('Reload nginx บน ' + serverName + '?\n\nปลอดภัยเพราะ nginx -t ผ่านแล้ว (config ไม่มี error)\nแต่เป็นการแตะ service บนโฮส — ยืนยันไหม?')) return;
-  if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-refresh ti-spin"></i> กำลัง reload...'; }
-  try {
-    const res = await fetch(`${API}/api/nginx-reload/${encodeURIComponent(serverName)}`, { method: 'POST' });
-    const d = await res.json();
-    if (d.ok) { toast('Reload สำเร็จ: ' + (d.detail||''), 'success'); }
-    else toast(d.error || 'reload ไม่สำเร็จ', 'error');
-  } catch(e) { toast('ผิดพลาด: ' + e.message, 'error'); }
-  if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-reload"></i> Reload nginx'; }
-}
-</script>
-
-<script>
-// ===== DIAGNOSTIC REPORT PAGE (added feature) =====
-// สร้างหน้า report แบบ dynamic (ไม่ต้องแก้ HTML เดิม) แล้ว reuse ระบบ showPage
-function ensureReportPage() {
-  if (document.getElementById('page-report')) return;
-  const anchor = document.getElementById('page-events') || document.querySelector('[id^="page-"]');
-  const container = anchor ? anchor.parentElement : document.getElementById('main-app');
-  const div = document.createElement('div');
-  div.id = 'page-report';
-  div.style.display = 'none';
-  div.style.flexDirection = 'column';
-  div.style.padding = '18px';
-  div.style.gap = '12px';
-  div.style.overflow = 'auto';
-  div.innerHTML =
-    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">' +
-      '<div>' +
-        '<h2 style="margin:0;font-size:18px">🩺 Diagnostic Report</h2>' +
-        '<div style="font-size:12px;color:var(--text3,#888)">รวม error · เหตุการณ์ · งานบอท · คำสั่งที่รันบนเซิร์ฟเวอร์ · สุขภาพเครื่อง — ค่าลับถูกปิดบังแล้ว</div>' +
-      '</div>' +
-      '<div style="display:flex;gap:8px;flex-wrap:wrap">' +
-        '<button class="btn" onclick="loadReportPage()"><i class="ti ti-reload"></i> รีเฟรช</button>' +
-        '<button class="btn btn-green" onclick="copyReport()"><i class="ti ti-copy"></i> คัดลอกทั้งหมด</button>' +
-        '<button class="btn" onclick="downloadReport()"><i class="ti ti-download"></i> ดาวน์โหลด .txt</button>' +
-      '</div>' +
-    '</div>' +
-    '<div id="rpt-status" style="font-size:12px;color:var(--text3,#888)"></div>' +
-    '<pre id="rpt-body" style="white-space:pre-wrap;word-break:break-word;background:var(--bg2,#0f0f0f);border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:14px;font-size:12px;line-height:1.5;max-height:70vh;overflow:auto;margin:0;color:var(--text,#ddd)"></pre>';
-  container.appendChild(div);
-}
-
-function openReport() {
-  ensureReportPage();
-  showPage('report');
-  // set nav active เอง (เพราะ nav ใช้ openReport ไม่ใช่ showPage)
-  document.querySelectorAll('.nav-item').forEach(n => {
-    if ((n.getAttribute('onclick') || '') === 'openReport()') n.classList.add('active');
-  });
-  loadReportPage();
-}
-
-let _reportText = '';
-async function loadReportPage() {
-  ensureReportPage();
-  const body = document.getElementById('rpt-body');
-  const status = document.getElementById('rpt-status');
-  if (status) status.textContent = 'กำลังโหลด...';
-  try {
-    const res = await fetch(API + '/api/report.txt');
-    _reportText = await res.text();
-    if (body) body.textContent = _reportText;
-    if (status) status.textContent = 'อัปเดตล่าสุด: ' + new Date().toLocaleString();
-  } catch (e) {
-    if (body) body.textContent = 'โหลด report ไม่ได้: ' + e.message;
-    if (status) status.textContent = '';
-  }
-}
-
-async function copyReport() {
-  const text = _reportText || (document.getElementById('rpt-body') || {}).textContent || '';
-  try {
-    await navigator.clipboard.writeText(text);
-    if (typeof toast === 'function') toast('คัดลอก report แล้ว — วางในแชทให้ Claude วิเคราะห์ได้เลย', 'success');
-  } catch (e) {
-    if (typeof toast === 'function') toast('คัดลอกไม่ได้: ' + e.message, 'error');
-  }
-}
-
-function downloadReport() {
-  const text = _reportText || (document.getElementById('rpt-body') || {}).textContent || '';
-  const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'domainintel-report-' + new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-') + '.txt';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-}
-</script>
-
-<script>
-// ===== ISP BLOCK CHECK PAGE (added feature) =====
-function ensureISPPage(){
-  if(document.getElementById('page-isp')) return;
-  var anchor=document.getElementById('page-report')||document.getElementById('page-events')||document.querySelector('[id^="page-"]');
-  var container=anchor?anchor.parentElement:document.getElementById('main-app');
-  var div=document.createElement('div');
-  div.id='page-isp'; div.style.display='none'; div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
-  div.innerHTML=
-    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'+
-      '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-network"></i> ISP Block Check</h2>'+
-      '<div style="font-size:12px;color:var(--text3,#888)">โดเมนไหนโดนบล็อกในค่ายเน็ตไหน (AIS/True/3BB/TOT/dtac) — DNS screening</div></div>'+
-      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-        '<button class="btn" onclick="loadISP()"><i class="ti ti-reload"></i> รีเฟรช</button>'+
-        '<button class="btn btn-green" onclick="ispCheckAll()"><i class="ti ti-player-play"></i> เช็กทุกโดเมนเลย</button>'+
-      '</div>'+
-    '</div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
-      '<input id="isp-one" placeholder="พิมพ์โดเมนเช็กทันที เช่น example.com" style="flex:1;min-width:220px;padding:8px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg2,#111);color:inherit">'+
-      '<button class="btn" onclick="ispCheckOne()">เช็กโดเมนนี้</button>'+
-    '</div>'+
-    '<div id="isp-status" style="font-size:12px;color:var(--text3,#888)"></div>'+
-    '<div id="isp-body"></div>';
-  container.appendChild(div);
-}
-function openISP(){ ensureISPPage(); showPage('isp');
-  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openISP()') n.classList.add('active'); });
-  loadISP();
-}
-function ispBadge(status){
-  var c = status==='blocked' ? '#e24b4a' : (status==='unknown' ? '#888' : '#2ecc71');
-  return '<span style="color:'+c+';font-weight:600">'+status+'</span>';
-}
-function ispThumb(domain, w, h){
-  w=w||120; h=h||75;
-  var url='https://s.wordpress.com/mshots/v1/'+encodeURIComponent('https://'+domain)+'?w='+(w*2)+'&h='+(h*2);
-  return '<a href="https://'+domain+'" target="_blank" rel="noopener">'+
-    '<img loading="lazy" src="'+url+'" title="เปิด '+domain+'" '+
-    'style="width:'+w+'px;height:'+h+'px;object-fit:cover;border-radius:6px;border:1px solid var(--border,#2a2a2a);background:#111" '+
-    'onerror="this.style.opacity=0.3"></a>';
-}
-async function loadISP(){
-  ensureISPPage();
-  var st=document.getElementById('isp-status'), body=document.getElementById('isp-body');
-  if(st) st.textContent='กำลังโหลด...';
-  try{
-    var res=await fetch(API+'/api/isp-status'); var d=await res.json();
-    var statusTxt='เช็กรอบล่าสุด(DNS): '+(d.lastCheckAt?new Date(d.lastCheckAt).toLocaleString():'ยังไม่เคยเช็ก')+' · เช็กแล้ว '+d.total+' โดเมน';
-    if(d.hasAgent){ statusTxt+=' · ✅ ผลจริงจากไทย: โดนบล็อก '+d.thBlockedCount+' โดเมน (agent รายงานล่าสุด '+new Date(d.lastAgentReportAt).toLocaleString()+')'; }
-    else { statusTxt+=' · ⚠️ ยังไม่มี agent ในไทย — ค่าที่เห็นเป็นการเดาจาก DNS ต่างประเทศ ('+d.blockedCount+' โดนบล็อก)'; }
-    if(st) st.textContent=statusTxt;
-
-    // ถ้ามี agent ไทย → โชว์ผลจริงจากไทยเป็นหลัก (แยกคอลัมน์รายค่าย)
-    if(d.hasAgent && d.thBlocked && d.thBlocked.length){
-      var carriers=(d.carriers&&d.carriers.length)?d.carriers:['th'];
-      var hh='<div style="margin-bottom:8px;color:#2ecc71;font-size:13px">แสดงผลจริงจากเน็ตไทย (agent แยกรายค่าย)</div>'+
-        '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
-        '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">พรีวิว</th><th style="padding:8px">โดเมน</th>'+
-        carriers.map(function(c){return '<th style="padding:8px">'+c+'</th>';}).join('')+'<th style="padding:8px">เช็กเมื่อ</th></tr>';
-      d.thBlocked.forEach(function(r){
-        hh+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:8px">'+ispThumb(r.domain)+'</td>'+
-          '<td style="padding:8px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+r.domain+'</a></td>';
-        carriers.forEach(function(c){
-          var a=r.thAgents&&r.thAgents[c];
-          hh+='<td style="padding:8px" title="'+((a&&a.detail)||'')+'">'+(a?ispBadge(a.status):'<span style="color:#555">—</span>')+'</td>';
-        });
-        hh+='<td style="padding:8px;color:var(--text3,#888)">'+(r.checkedAt?new Date(r.checkedAt).toLocaleTimeString():'-')+'</td></tr>';
-      });
-      hh+='</table>';
-      body.innerHTML=hh; return;
-    }
-
-    // ยังไม่มี agent → โชว์ผลเดาจาก DNS (เหมือนเดิม พร้อมคำเตือน)
-    if(!d.blocked || !d.blocked.length){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">ยังไม่พบโดเมนที่โดนบล็อก (หรือยังไม่ถึงรอบเช็ก — กด "เช็กทุกโดเมนเลย" ได้)<br><br>💡 ตั้ง agent ในไทยเพื่อผลที่แม่นจริง</div>'; return; }
-    var isps=['ais','true','3bb','tot','dtac'];
-    var h='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
-      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">พรีวิว</th><th style="padding:8px">โดเมน</th>'+isps.map(function(x){return '<th style="padding:8px">'+x+'</th>';}).join('')+'<th style="padding:8px">เช็กเมื่อ</th></tr>';
-    d.blocked.forEach(function(r){
-      h+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:8px">'+ispThumb(r.domain)+'</td>'+
-        '<td style="padding:8px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+r.domain+'</a></td>';
-      isps.forEach(function(x){ var v=r.isps[x]?r.isps[x].status:'-'; h+='<td style="padding:8px">'+ispBadge(v)+'</td>'; });
-      h+='<td style="padding:8px;color:var(--text3,#888)">'+(r.checkedAt?new Date(r.checkedAt).toLocaleTimeString():'-')+'</td></tr>';
-    });
-    h+='</table>';
-    body.innerHTML=h;
-  }catch(e){ if(body) body.innerHTML='โหลดไม่ได้: '+e.message; if(st) st.textContent=''; }
-}
-async function ispCheckAll(){
-  try{ await fetch(API+'/api/isp-check-all',{method:'POST'}); if(typeof toast==='function') toast('เริ่มเช็กทุกโดเมนเบื้องหลังแล้ว รีเฟรชดูผลได้เรื่อยๆ','success'); }
-  catch(e){ if(typeof toast==='function') toast('เริ่มไม่ได้: '+e.message,'error'); }
-}
-async function ispCheckOne(){
-  var dom=(document.getElementById('isp-one')||{}).value; if(!dom) return;
-  var body=document.getElementById('isp-body'); body.innerHTML='กำลังเช็ก '+dom+'...';
-  try{
-    var res=await fetch(API+'/api/isp-check/'+encodeURIComponent(dom.trim())); var d=await res.json();
-    if(!d.success){ body.innerHTML='ผิดพลาด: '+(d.error||'?'); return; }
-    var r=d.result, isps=['ais','true','3bb','tot','dtac'];
-    var h='<div style="padding:12px;background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:8px">'+
-      '<div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:10px">'+ispThumb(r.domain,200,125)+
-      '<div><b>'+r.domain+'</b><br>baseline IP: '+(r.baselineIps.join(', ')||'-')+'</div></div>';
-    isps.forEach(function(x){ var v=r.isps[x]; h+='<div style="padding:4px 0">'+x+': '+ispBadge(v.status)+' <span style="color:var(--text3,#888)">— '+v.why+'</span></div>'; });
-    h+='</div>'; body.innerHTML=h;
-  }catch(e){ body.innerHTML='ผิดพลาด: '+e.message; }
-}
-</script>
-
-<script>
-// ===== BACKUP DOMAIN GROUPS (added feature) =====
-var _bkGroups = [];
-function ensureBackupPage(){
-  if(document.getElementById('page-backup')) return;
-  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
-  var div=document.createElement('div'); div.id='page-backup'; div.style.display='none'; div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
-  div.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'+
-    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-switch-horizontal"></i> โดเมนสำรอง (Backup Sets)</h2>'+
-    '<div style="font-size:12px;color:var(--text3,#888)">จัดกลุ่มโดเมนหลัก+สำรอง ระบบจะบอกว่าควรใช้ตัวไหน (ตัวแรกที่ยัง up และไม่โดนบล็อก)</div></div>'+
-    '<div style="display:flex;gap:8px"><button class="btn" onclick="bkAddGroup()"><i class="ti ti-plus"></i> เพิ่มกลุ่ม</button>'+
-    '<button class="btn btn-green" onclick="bkSave()"><i class="ti ti-device-floppy"></i> บันทึก</button></div></div>'+
-    '<div id="bk-note" style="font-size:12px;color:var(--text3,#888)"></div><div id="bk-body"></div>';
-  c.appendChild(div);
-}
-function openBackup(){ ensureBackupPage(); showPage('backup');
-  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openBackup()') n.classList.add('active'); });
-  loadBackup();
-}
-async function loadBackup(){
-  ensureBackupPage();
-  try{ var r=await fetch(API+'/api/domain-groups'); var d=await r.json(); _bkGroups=d.groups||[]; renderBackup(); }
-  catch(e){ document.getElementById('bk-body').innerHTML='โหลดไม่ได้: '+e.message; }
-}
-function bkStatusBadge(s,blocked){
-  var c=s==='up'?'#2ecc71':(s==='down'?'#e24b4a':(s==='warn'?'#e3b93b':'#888'));
-  return '<span style="color:'+c+'">'+s+'</span>'+(blocked?' <span style="color:#e24b4a">· บล็อก</span>':'');
-}
-function renderBackup(){
-  var body=document.getElementById('bk-body');
-  if(!_bkGroups.length){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">ยังไม่มีกลุ่ม — กด "เพิ่มกลุ่ม" เพื่อจัดโดเมนหลัก+สำรอง</div>'; return; }
-  var h='';
-  _bkGroups.forEach(function(g,gi){
-    h+='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px;margin-bottom:12px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
-      '<b>'+g.name+'</b>'+
-      '<span style="font-size:12px">แนะนำใช้: '+(g.recommended?'<b style="color:#2ecc71">'+g.recommended+'</b>':'<span style="color:#e24b4a">ไม่มีตัวที่ใช้ได้!</span>')+
-      ' <button class="btn" style="margin-left:8px" onclick="bkAddDomain('+gi+')">+ โดเมน</button>'+
-      ' <button class="btn" onclick="bkDelGroup('+gi+')">ลบกลุ่ม</button></span></div>';
-    (g.domains||[]).forEach(function(dm,di){
-      var isRec = dm.domain===g.recommended;
-      h+='<div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;'+(isRec?'background:#12351f;border:1px solid #2ecc71':'')+'">'+
-        '<span style="color:var(--text3,#888);width:70px">'+(di===0?'หลัก':'สำรอง '+di)+'</span>'+
-        '<a href="https://'+dm.domain+'" target="_blank" rel="noopener" style="color:inherit;flex:1">'+dm.domain+'</a>'+
-        '<span style="font-size:12px">'+bkStatusBadge(dm.status,dm.blocked)+'</span>'+
-        (isRec?'<span style="color:#2ecc71;font-size:12px">← ใช้ตัวนี้</span>':'')+
-        '<button class="btn" onclick="bkDelDomain('+gi+','+di+')" style="padding:2px 8px">×</button></div>';
-    });
-    h+='</div>';
-  });
-  body.innerHTML=h;
-}
-function bkAddGroup(){ var n=prompt('ชื่อกลุ่ม (เช่น แบรนด์ ORACLE):'); if(!n)return; _bkGroups.push({id:'g'+Date.now(),name:n,domains:[]}); renderBackup(); }
-function bkDelGroup(gi){ if(confirm('ลบกลุ่มนี้?')){ _bkGroups.splice(gi,1); renderBackup(); } }
-function bkAddDomain(gi){ var d=prompt('โดเมน (เรียงหลักก่อน สำรองทีหลัง):'); if(!d)return; _bkGroups[gi].domains.push({domain:d.trim().replace(/^https?:\/\//,'')}); renderBackup(); }
-function bkDelDomain(gi,di){ _bkGroups[gi].domains.splice(di,1); renderBackup(); }
-async function bkSave(){
-  var payload={groups:_bkGroups.map(function(g){ return {id:g.id,name:g.name,domains:(g.domains||[]).map(function(x){return x.domain;})}; })};
-  try{ var r=await fetch(API+'/api/domain-groups',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
-    var d=await r.json(); if(d.success){ _bkGroups=d.groups; renderBackup(); if(typeof toast==='function') toast('บันทึกกลุ่มแล้ว','success'); } }
-  catch(e){ if(typeof toast==='function') toast('บันทึกไม่ได้: '+e.message,'error'); }
-}
-
-// ===== HISTORY / TREND (added feature) =====
-function ensureHistoryPage(){
-  if(document.getElementById('page-history')) return;
-  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
-  var div=document.createElement('div'); div.id='page-history'; div.style.display='none'; div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
-  div.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'+
-    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-chart-line"></i> แนวโน้มย้อนหลัง</h2>'+
-    '<div style="font-size:12px;color:var(--text3,#888)">Down / โดนบล็อก / Warn ตามเวลา (เก็บ snapshot ทุก 1 ชม.)</div></div>'+
-    '<button class="btn" onclick="loadHistory()"><i class="ti ti-reload"></i> รีเฟรช</button></div>'+
-    '<div id="hist-body"></div>';
-  c.appendChild(div);
-}
-function openHistory(){ ensureHistoryPage(); showPage('history');
-  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openHistory()') n.classList.add('active'); });
-  loadHistory();
-}
-async function loadHistory(){
-  ensureHistoryPage();
-  var body=document.getElementById('hist-body');
-  try{
-    var r=await fetch(API+'/api/history'); var d=await r.json(); var hist=d.history||[];
-    if(hist.length<2){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">ยังไม่มีข้อมูลพอ — ระบบเก็บ snapshot ทุก 1 ชม. รออีกสักครู่แล้วกลับมาดู</div>'; return; }
-    body.innerHTML=drawChart(hist);
-  }catch(e){ body.innerHTML='โหลดไม่ได้: '+e.message; }
-}
-function drawChart(hist){
-  var W=900,H=280,pad=34, n=hist.length;
-  var keys=[['down','#e24b4a','Down'],['blocked','#e39a3b','โดนบล็อก'],['warn','#e3d03b','Warn']];
-  var maxV=1; hist.forEach(function(p){ keys.forEach(function(k){ if(p[k[0]]>maxV)maxV=p[k[0]]; }); });
-  function x(i){ return pad+(i/(n-1))*(W-2*pad); }
-  function y(v){ return H-pad-(v/maxV)*(H-2*pad); }
-  var svg='<svg viewBox="0 0 '+W+' '+H+'" style="width:100%;background:var(--bg2,#111);border-radius:8px">';
-  svg+='<line x1="'+pad+'" y1="'+(H-pad)+'" x2="'+(W-pad)+'" y2="'+(H-pad)+'" stroke="#444"/>';
-  svg+='<line x1="'+pad+'" y1="'+pad+'" x2="'+pad+'" y2="'+(H-pad)+'" stroke="#444"/>';
-  svg+='<text x="'+(pad+4)+'" y="'+(pad+2)+'" fill="#888" font-size="11">'+maxV+'</text>';
-  keys.forEach(function(k){
-    var pts=hist.map(function(p,i){ return x(i)+','+y(p[k[0]]||0); }).join(' ');
-    svg+='<polyline points="'+pts+'" fill="none" stroke="'+k[1]+'" stroke-width="2"/>';
-  });
-  svg+='<text x="'+pad+'" y="'+(H-8)+'" fill="#888" font-size="11">'+new Date(hist[0].at).toLocaleString()+'</text>';
-  svg+='<text x="'+(W-pad)+'" y="'+(H-8)+'" fill="#888" font-size="11" text-anchor="end">'+new Date(hist[n-1].at).toLocaleString()+'</text>';
-  svg+='</svg>';
-  var leg='<div style="display:flex;gap:18px;margin-top:8px;font-size:12px">';
-  keys.forEach(function(k){ leg+='<span style="color:'+k[1]+'">■ '+k[2]+'</span>'; });
-  var last=hist[n-1];
-  leg+='</div><div style="margin-top:10px;font-size:13px;color:var(--text3,#888)">ล่าสุด: Down '+last.down+' · โดนบล็อก '+last.blocked+' · Warn '+last.warn+' · จาก '+last.total+' โดเมน</div>';
-  return svg+leg;
-}
-</script>
-
-<script>
-// ===== AUTO-HEAL TOGGLE (added feature) =====
-window._ahDisabled = [];
-async function loadAutoHealConfig(){
-  try {
-    const r = await fetch(API + '/api/autoheal-config');
-    const d = await r.json();
-    window._ahDisabled = (d.disabled || []).map(function(x){ return String(x).trim().toLowerCase(); });
-  } catch(e) {}
-}
-function ahIsOff(name, host){
-  var l = window._ahDisabled || [];
-  return l.indexOf(String(name||'').trim().toLowerCase()) !== -1
-      || l.indexOf(String(host||'').trim().toLowerCase()) !== -1;
-}
-async function toggleAutoHeal(name){
-  var off = ahIsOff(name);
-  var msg = off
-    ? 'เปิด Auto-heal สำหรับ ' + name + ' ?\n\nระบบจะกลับมา reload PHP-FPM ให้อัตโนมัติเมื่อ Load > 15'
-    : 'ปิด Auto-heal สำหรับ ' + name + ' ?\n\nระบบจะแจ้งเตือนอย่างเดียว ไม่แตะเซิร์ฟเวอร์ให้';
-  if (!confirm(msg)) return;
-  try {
-    var r = await fetch(API + '/api/autoheal-toggle', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ server: name, disabled: !off })
-    });
-    var d = await r.json();
-    if (d.success) {
-      window._ahDisabled = (d.list || []).map(function(x){ return String(x).trim().toLowerCase(); });
-      if (typeof toast === 'function') toast('Auto-heal ' + (d.disabled ? 'ปิด' : 'เปิด') + ' สำหรับ ' + name + ' แล้ว', 'success');
-      if (typeof renderServerCards === 'function' && window._pleskServers) refreshServerHealth();
-    } else if (typeof toast === 'function') toast('ทำไม่ได้: ' + (d.error||'?'), 'error');
-  } catch(e) {
-    if (typeof toast === 'function') toast('ทำไม่ได้: ' + e.message, 'error');
-  }
-}
-</script>
-
-<script>
-// ===== DOMAIN INCIDENT HISTORY PAGE (added feature) =====
-function ensureIncPage(){
-  if(document.getElementById('page-incidents')) return;
-  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
-  var div=document.createElement('div'); div.id='page-incidents'; div.style.display='none';
-  div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
-  div.innerHTML=
-    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">'+
-      '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-alert-triangle"></i> ประวัติดับ/ผิดปกติ 24 ชม.ล่าสุด</h2>'+
-      '<div style="font-size:12px;color:var(--text3,#888)">โดเมนไหนดับกี่ครั้ง · ดับเพราะโฮสหรือเพราะเว็บเอง · อยู่เครื่องไหน</div></div>'+
-      '<div style="display:flex;gap:8px">'+
-        '<input id="inc-search" placeholder="ค้นหาโดเมน..." oninput="renderInc()" style="padding:8px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg2,#111);color:inherit">'+
-        '<button class="btn" onclick="loadIncidents()"><i class="ti ti-reload"></i> รีเฟรช</button>'+
-      '</div>'+
-    '</div>'+
-    '<div id="inc-cards" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px"></div>'+
-    '<div id="inc-watch"></div>'+
-    '<div id="inc-servers"></div>'+'<div id="inc-hogs"></div>'+
-    '<div id="inc-body"></div>'+
-    '<div id="inc-note" style="font-size:11px;color:var(--text3,#888)"></div>';
-  c.appendChild(div);
-}
-function openIncidents(){ ensureIncPage(); showPage('incidents');
-  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openIncidents()') n.classList.add('active'); });
-  loadIncidents();
-}
-var _incData=null;
-async function loadIncidents(){
-  ensureIncPage();
-  var body=document.getElementById('inc-body'); body.innerHTML='กำลังโหลด...';
-  try{
-    var r=await fetch(API+'/api/incidents'); _incData=await r.json();
-    try { var w=await fetch(API+'/api/watchlist'); _wlData=await w.json(); } catch(e){ _wlData=null; }
-    renderInc();
-    document.getElementById('inc-note').textContent='หมายเหตุ: '+(_incData.note||'');
-  }catch(e){ body.innerHTML='โหลดไม่ได้: '+e.message; }
-}
-function incCard(label,val,color){
-  return '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
-    '<div style="font-size:22px;font-weight:800;color:'+color+'">'+val+'</div>'+
-    '<div style="font-size:11px;color:var(--text3,#888)">'+label+'</div></div>';
-}
-var _wlData=null;
-function renderWatch(){
-  var el=document.getElementById('inc-watch'); if(!el) return;
-  var w=_wlData||{domains:[]};
-  var list=(w.domains||[]);
-  el.innerHTML='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:12px">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
-    '<div><b style="font-size:13px">⚡ เช็กถี่ทุก 1 นาที</b> <span style="color:var(--text3,#888);font-size:11px">'+
-      '— โดเมนในลิสต์นี้จับ "ดับแป๊บเดียว" ได้ (ที่เหลือเช็กทุก 5 นาที) · '+list.length+'/'+(w.max||50)+' โดเมน'+
-      (w.lastCheckAt?' · ล่าสุด '+new Date(w.lastCheckAt).toLocaleTimeString():'')+'</span></div>'+
-    '<button class="btn" style="padding:2px 10px;font-size:11px" onclick="wlAdd()">+ เพิ่มโดเมน</button></div>'+
-    (list.length?'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">'+list.map(function(x){
-      return '<span style="background:rgba(59,154,227,0.12);border:1px solid rgba(59,154,227,0.3);color:#3b9ae3;padding:2px 8px;border-radius:12px;font-size:11px">'+x+
-        ' <span style="cursor:pointer;color:var(--text3,#888)" onclick="wlToggle(\''+x+'\')">×</span></span>';
-    }).join('')+'</div>':'<div style="margin-top:8px;color:var(--text3,#888);font-size:12px">ยังไม่มีโดเมน — เพิ่มเว็บหลักที่คุณแก้บ่อย จะได้เห็นตอนมันสะดุด</div>')+
-    '</div>';
-}
-async function wlSave(domains){
-  try{
-    var r=await fetch(API+'/api/watchlist',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({domains:domains})});
-    var d=await r.json();
-    if(d.success){ _wlData=_wlData||{}; _wlData.domains=d.domains; renderWatch(); loadIncidents(); if(typeof toast==='function') toast('บันทึกแล้ว','success'); }
-  }catch(e){ if(typeof toast==='function') toast('บันทึกไม่ได้: '+e.message,'error'); }
-}
-function wlAdd(){
-  var v=prompt('โดเมนที่อยากเช็กทุก 1 นาที (เช่น example.com):'); if(!v) return;
-  var list=((_wlData||{}).domains||[]).slice();
-  v=v.trim().replace(/^https?:\/\//,'').replace(/\/.*$/,'');
-  if(list.indexOf(v)===-1) list.push(v);
-  wlSave(list);
-}
-function wlToggle(dom){
-  var list=((_wlData||{}).domains||[]).slice();
-  var i=list.indexOf(dom);
-  if(i===-1) list.push(dom); else list.splice(i,1);
-  wlSave(list);
-}
-function renderInc(){
-  if(!_incData) return;
-  renderWatch();
-  loadHogs();
-  var d=_incData;
-  var totDown=0, totWarn=0;
-  (d.domains||[]).forEach(function(x){ totDown+=(x.downCount||0); totWarn+=(x.warnCount||0); });
-  document.getElementById('inc-cards').innerHTML=
-    incCard('ดับ เข้าไม่ได้ (24 ชม.)', totDown, '#e24b4a')+
-    incCard('ผิดปกติ warn (24 ชม.)', totWarn, '#e3b93b')+
-    incCard('ยังมีปัญหาตอนนี้', d.stillDown, d.stillDown?'#e24b4a':'#2ecc71')+
-    incCard('โดเมนที่กระทบ', (d.domains||[]).length, '#e3b93b')+
-    incCard('เครื่องที่กระทบ', (d.servers||[]).length, '#e3b93b');
-
-  var sh='';
-  if((d.servers||[]).length){
-    sh='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
-      '<div style="font-weight:700;margin-bottom:8px;font-size:14px">สรุปรายเครื่อง</div>'+
-      '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
-      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">เครื่อง</th><th style="padding:6px">ครั้งที่ดับ</th><th style="padding:6px">โดเมนที่กระทบ</th><th style="padding:6px">เหตุที่มาจากโฮส</th></tr>';
-    d.servers.forEach(function(s){
-      sh+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:6px;font-weight:600">'+s.server+'</td>'+
-        '<td style="padding:6px">'+s.incidents+'</td><td style="padding:6px">'+s.domains+'</td>'+
-        '<td style="padding:6px">'+(s.hostEvents?'<span style="color:#e24b4a;font-weight:600">'+s.hostEvents+'</span>':'<span style="color:var(--text3,#888)">0</span>')+'</td></tr>';
-    });
-    sh+='</table></div>';
-  }
-  document.getElementById('inc-servers').innerHTML=sh;
-
-  var q=((document.getElementById('inc-search')||{}).value||'').trim().toLowerCase();
-  var rows=(d.domains||[]).filter(function(r){ return !q || r.domain.toLowerCase().indexOf(q)!==-1; });
-  var body=document.getElementById('inc-body');
-  if(!rows.length){ body.innerHTML='<div style="padding:20px;color:var(--text3,#888)">'+(q?'ไม่พบโดเมนที่ค้นหา':'ยังไม่มีโดเมนดับใน 24 ชม.ที่ผ่านมา 🎉')+'</div>'; return; }
-  var h='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
-    '<tr style="text-align:left;color:var(--text3,#888)">'+
-    '<th style="padding:8px">โดเมน</th><th style="padding:8px">เครื่อง</th>'+
-    '<th style="padding:8px">ดับ (เข้าไม่ได้)</th><th style="padding:8px">ผิดปกติ (warn)</th>'+
-    '<th style="padding:8px">สาเหตุ</th><th style="padding:8px">อาการล่าสุด</th><th style="padding:8px">รวมเวลา</th><th style="padding:8px"></th></tr>';
-  rows.forEach(function(r){
-    var cause='';
-    if(r.hostCause && r.domainCause) cause='<span style="color:#e24b4a">โฮส '+r.hostCause+'</span> · <span style="color:#e3b93b">เว็บ '+r.domainCause+'</span>';
-    else if(r.hostCause) cause='<span style="color:#e24b4a;font-weight:600">โฮสมีปัญหา</span>';
-    else if(r.domainCause) cause='<span style="color:#e3b93b;font-weight:600">เฉพาะเว็บนี้</span>';
-    else cause='<span style="color:var(--text3,#888)">-</span>';
-    var badges='';
-    if(r.onWatchlist) badges+=' <span title="เช็กทุก 1 นาที" style="color:#3b9ae3;font-size:10px">⚡1น.</span>';
-    if((r.thBlockedCarriers||[]).length) badges+=' <span title="โดนบล็อกในเน็ตไทย: '+r.thBlockedCarriers.join(', ')+'" style="color:#e39a3b;font-size:10px">🇹🇭บล็อก</span>';
-    h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(r.stillDown?';background:rgba(226,75,74,0.08)':'')+'">'+
-      '<td style="padding:8px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+r.domain+'</a>'+
-        (r.stillDown?' <span style="color:#e24b4a;font-size:11px">● ยังมีปัญหา</span>':'')+badges+'</td>'+
-      '<td style="padding:8px">'+(r.server||'<span style="color:var(--text3,#888)">ไม่ทราบ</span>')+'</td>'+
-      '<td style="padding:8px;font-weight:700;color:'+(r.downCount>=3?'#e24b4a':(r.downCount?'inherit':'var(--text3,#888)'))+'">'+(r.downCount||0)+'</td>'+
-      '<td style="padding:8px;font-weight:700;color:'+(r.warnCount?'#e3b93b':'var(--text3,#888)')+'">'+(r.warnCount||0)+'</td>'+
-      '<td style="padding:8px">'+cause+'</td>'+
-      '<td style="padding:8px;color:var(--text3,#888)">'+(r.lastError||'-')+(r.lastCode?' ('+r.lastCode+')':'')+'</td>'+
-      '<td style="padding:8px">'+(r.totalMin?r.totalMin+' นาที':'-')+'</td>'+
-      '<td style="padding:8px;white-space:nowrap"><button class="btn" style="padding:2px 8px;font-size:11px" onclick="incDetail(\''+r.domain+'\')">ประวัติ</button> '+
-        '<button class="btn" style="padding:2px 8px;font-size:11px" onclick="wlToggle(\''+r.domain+'\')" title="'+(r.onWatchlist?'เอาออกจากการเช็กทุก 1 นาที':'เพิ่มเข้าการเช็กทุก 1 นาที')+'">'+(r.onWatchlist?'−1น.':'+1น.')+'</button></td></tr>';
-  });
-  h+='</table>';
-  body.innerHTML=h;
-}
-async function incDetail(dom){
-  var body=document.getElementById('inc-body'); body.innerHTML='กำลังโหลดประวัติ '+dom+'...';
-  try{
-    var r=await fetch(API+'/api/incidents/'+encodeURIComponent(dom)); var d=await r.json();
-    var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
-      '<div><b style="font-size:15px">'+d.domain+'</b> <span style="color:var(--text3,#888);font-size:12px">· เครื่อง: '+(d.server||'ไม่ทราบ')+' · ตอนนี้: '+(d.currentStatus||'?')+'</span></div>'+
-      '<button class="btn" style="padding:2px 10px;font-size:12px" onclick="renderInc()">← กลับ</button></div>';
-    if(!(d.incidents||[]).length){ h+='<div style="color:var(--text3,#888)">ยังไม่มีประวัติดับ</div>'; }
-    else{
-      h+='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
-        '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">เริ่มดับ</th><th style="padding:6px">กลับมา</th><th style="padding:6px">นาน</th><th style="padding:6px">สาเหตุ</th><th style="padding:6px">Error</th></tr>';
-      d.incidents.forEach(function(i){
-        var cz=i.cause==='host'?'<span style="color:#e24b4a">โฮส'+(i.batchSize?' ('+i.batchSize+' โดเมนพร้อมกัน)':'')+'</span>'
-              :i.cause==='domain'?'<span style="color:#e3b93b">เฉพาะเว็บนี้</span>':'<span style="color:var(--text3,#888)">-</span>';
-        cz=(i.kind==='warn'?'<span style="color:#e3b93b">⚠️ warn</span> · ':'<span style="color:#e24b4a">🔴 ดับ</span> · ')+cz;
-        h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
-          '<td style="padding:6px">'+new Date(i.startAt).toLocaleString()+'</td>'+
-          '<td style="padding:6px">'+(i.endAt?new Date(i.endAt).toLocaleString():'<span style="color:#e24b4a">ยังดับอยู่</span>')+'</td>'+
-          '<td style="padding:6px">'+(i.durationMin?i.durationMin+' นาที':'-')+'</td>'+
-          '<td style="padding:6px">'+cz+'</td>'+
-          '<td style="padding:6px;color:var(--text3,#888)">'+(i.error||'-')+(i.statusCode?' ('+i.statusCode+')':'')+'</td></tr>';
-      });
-      h+='</table>';
-    }
-    h+='</div>'; body.innerHTML=h;
-  }catch(e){ body.innerHTML='โหลดไม่ได้: '+e.message; }
-}
-</script>
-
-<script>
-// ===== RESOURCE HOG ANALYSIS (added feature) =====
-var _hogHours=168;
-function setHogHours(h){ _hogHours=h; loadHogs(); }
-async function loadHogs(){
-  var el=document.getElementById('inc-hogs'); if(!el) return;
-  try{
-    var r=await fetch(API+'/api/server-hogs?hours='+_hogHours); var d=await r.json();
-    if(!d.success){ el.innerHTML=''; return; }
-    function tabBtn(h,label){ return '<button class="btn" onclick="setHogHours('+h+')" style="padding:3px 12px;font-size:12px;'+(_hogHours===h?'background:var(--blue,#3b82f6);color:#fff;border-color:var(--blue,#3b82f6)':'')+'">'+label+'</button>'; }
-    var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px;margin-top:4px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">'+
-      '<div style="font-weight:700;font-size:14px">🔎 วิเคราะห์โดเมนที่ทำโฮสแย่</div>'+
-      '<div style="display:flex;gap:6px">'+tabBtn(1,'1 ชม.')+tabBtn(24,'24 ชม.')+tabBtn(168,'7 วัน')+'</div></div>';
-
-    // ===== ตาราง 1: โดเมนที่ดับทั้งหมดในช่วงนี้ (ไม่ต้องรอโฮสแย่) =====
-    h+='<div style="font-weight:600;font-size:13px;margin-bottom:6px">โดเมนที่ดับบ่อยสุด — Top '+(d.topN||5)+' ต่อเครื่อง (จากทั้งหมด '+(d.allDomains||[]).length+' โดเมน · '+d.totalIncidents+' ครั้ง)</div>';
-    if(!(d.topPerServer||[]).length){
-      h+='<div style="color:var(--green,#2ecc71);font-size:13px;padding:6px 0">ไม่มีโดเมนดับในช่วงนี้ 🎉</div>';
-    } else {
-      d.topPerServer.forEach(function(g){
-        var hidden=g.total-g.shown;
-        h+='<div style="margin-bottom:14px">'+
-          '<div style="font-weight:700;font-size:13px;color:var(--blue,#3b82f6);margin-bottom:4px">🖥️ '+g.server+
-            ' <span style="font-weight:400;color:var(--text3,#888);font-size:11px">— โชว์ '+g.shown+' โดเมนที่ดับบ่อยสุด'+(hidden>0?(' (ซ่อนอีก '+hidden+' โดเมน)'):'')+'</span></div>'+
-          '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
-          '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">โดเมน</th><th style="padding:6px">ดับ</th><th style="padding:6px">warn</th><th style="padding:6px">รวมเวลา</th><th style="padding:6px">อาการล่าสุด</th></tr>';
-        g.domains.forEach(function(a){
-          h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(a.stillDown?';background:rgba(226,75,74,0.08)':'')+'">'+
-            '<td style="padding:6px;font-weight:600"><a href="https://'+a.domain+'" target="_blank" rel="noopener" style="color:inherit">'+a.domain+'</a>'+(a.stillDown?' <span style="color:#e24b4a;font-size:10px">●</span>':'')+'</td>'+
-            '<td style="padding:6px;font-weight:700;color:'+(a.downCount?'#e24b4a':'var(--text3,#888)')+'">'+a.downCount+'</td>'+
-            '<td style="padding:6px;color:'+(a.warnCount?'#e3b93b':'var(--text3,#888)')+'">'+a.warnCount+'</td>'+
-            '<td style="padding:6px">'+(a.totalMin?a.totalMin+' น.':'-')+'</td>'+
-            '<td style="padding:6px;color:var(--text3,#888)">'+(a.lastError||'-')+'</td></tr>';
-        });
-        h+='</table></div>';
-      });
-    }
-
-    // ===== ตาราง 2: ผู้ต้องสงสัยเป็นตัวการ (เฉพาะตอนมีเหตุการณ์โฮสแย่) =====
-    h+='<div style="font-weight:600;font-size:13px;margin-bottom:4px">ผู้ต้องสงสัยว่าเป็น "ตัวจุดชนวน"</div>'+
-      '<div style="font-size:11px;color:var(--text3,#888);margin-bottom:8px">ดูจาก "ดับเป็นตัวแรกๆ ตอนโฮสเริ่มแย่ ซ้ำๆ" — ชี้เป้าเท่านั้น กด "วัดจริง" เพื่อยืนยันจากในเครื่อง</div>';
-    if(!(d.suspects||[]).length){
-      h+='<div style="color:var(--text3,#888);font-size:13px">ยังไม่มี "เหตุการณ์โฮสแย่" (หลายโดเมนดับพร้อมกัน) ในช่วงนี้ — ยังชี้ตัวจุดชนวนไม่ได้ (ดูตารางด้านบนแทน)</div></div>';
-      el.innerHTML=h; return;
-    }
-    h+='<table style="width:100%;border-collapse:collapse;font-size:13px">'+
-      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">อันดับ</th><th style="padding:6px">โดเมน</th><th style="padding:6px">เครื่อง</th>'+
-      '<th style="padding:6px">คะแนนสงสัย</th><th style="padding:6px">ดับเป็นตัวแรก</th><th style="padding:6px">ในเหตุโฮสแย่</th><th style="padding:6px"></th></tr>';
-    d.suspects.forEach(function(s,i){
-      var danger=i===0&&s.firstToFail>0;
-      var measured='<span style="color:var(--text3,#888)">ยังไม่วัด</span>';
-      if(s.measuredPhpfpm){
-        var p=s.measuredPhpfpm;
-        var col=(p.pct>=100?'#e24b4a':p.pct>=80?'#e3b93b':'#2ecc71');
-        measured='<span style="color:'+col+';font-weight:600" title="PHP-FPM worker ที่ใช้จริง">'+p.active+'/'+(p.max||'?')+(p.pct!=null?' ('+p.pct+'%)':'')+'</span>';
-        if(s.measuredHot&&s.measuredHot.topIpHits>1000) measured+=' <span title="โดน IP เดียวยิงหนัก" style="color:#e39a3b;font-size:10px">🤖'+s.measuredHot.topIp+'</span>';
+// ===== EMAIL/SPAM MONITOR =====
+async function checkEmailSpam() {
+  console.log('[Email] ตรวจสอบ mail queue...');
+  
+  for (const srv of PLESK_SERVERS) {
+    const cmd = [
+      'QUEUE=$(postqueue -p 2>/dev/null | tail -1)',
+      'DEFERRED=$(postqueue -p 2>/dev/null | grep -c "^[A-F0-9]" 2>/dev/null || echo 0)',
+      'BL_CHECK=$(grep -c "blocked" /var/log/maillog 2>/dev/null | head -1 || echo 0)',
+      'echo "MAIL_QUEUE:$QUEUE DEFERRED:$DEFERRED BLOCKED:$BL_CHECK"'
+    ].join('; ');
+    
+    const cmdId = queueCommand(srv.host, cmd);
+    
+    setTimeout(async () => {
+      const result = agentResults[cmdId];
+      if (!result) return;
+      delete agentResults[cmdId];
+      
+      const output = (result.output || '').replace(/~/g, ' ');
+      const deferred = parseInt((output.match(/DEFERRED:(\d+)/) || [])[1] || 0);
+      const blocked = parseInt((output.match(/BLOCKED:(\d+)/) || [])[1] || 0);
+      
+      if (deferred > 100) {
+        sendTelegram(
+          `📧 <b>Email Queue Warning!</b>
+` +
+          `🖥️ ${srv.name}
+` +
+          `📬 Deferred mail: ${deferred} ข้อความ
+` +
+          `🚫 Blocked: ${blocked}
+` +
+          `💡 อาจถูก blacklist หรือมี spam`
+        );
       }
-      h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(danger?';background:rgba(226,75,74,0.08)':'')+'">'+
-        '<td style="padding:6px;font-weight:700">'+(i+1)+(danger?' 🔴':'')+'</td>'+
-        '<td style="padding:6px;font-weight:600"><a href="https://'+s.domain+'" target="_blank" rel="noopener" style="color:inherit">'+s.domain+'</a></td>'+
-        '<td style="padding:6px">'+s.server+'</td>'+
-        '<td style="padding:6px;font-weight:700;color:'+(s.points>=10?'#e24b4a':(s.points>=5?'#e3b93b':'inherit'))+'">'+s.points+'</td>'+
-        '<td style="padding:6px">'+(s.firstToFail?'<span style="color:#e24b4a;font-weight:600">'+s.firstToFail+' ครั้ง</span>':'-')+'</td>'+
-        '<td style="padding:6px">'+s.hostEventCount+'</td>'+
-        '<td style="padding:6px">'+measured+'</td>'+
-        '<td style="padding:6px;white-space:nowrap"><button class="btn" style="padding:2px 8px;font-size:11px" onclick="measureNow(\''+(s.server||'')+'\')" title="ให้ระบบวัดทรัพยากรจริงจากในเครื่องเดี๋ยวนี้">⚡ วัดจริง</button> '+
-        '<button class="btn" style="padding:2px 8px;font-size:11px" onclick="showHogCmd(\''+s.domain+'\',\''+(s.server||'')+'\')">คำสั่ง</button></td></tr>';
-    });
-    h+='</table>';
-    h=h.replace('<th style="padding:6px">ในเหตุโฮสแย่</th><th style="padding:6px"></th>',
-                '<th style="padding:6px">ในเหตุโฮสแย่</th><th style="padding:6px">วัดจริง (worker)</th><th style="padding:6px"></th>');
-    var rsAt=(d.suspects[0]&&d.suspects[0].measuredAt)?(' · วัดล่าสุด '+new Date(d.suspects[0].measuredAt).toLocaleTimeString()):'';
-    h+='<div style="font-size:11px;color:var(--text3,#888);margin-top:6px">⚡ = ให้ระบบเข้าไปวัด worker/IP/MySQL จริง (อ่านอย่างเดียว) · วัดเครื่องที่มีปัญหาอัตโนมัติทุก 30 นาทีอยู่แล้ว'+rsAt+'</div></div>';
-    el.innerHTML=h;
-  }catch(e){ el.innerHTML=''; }
+      console.log(`[Email] ${srv.name}: deferred=${deferred} blocked=${blocked}`);
+    }, 90000);
+  }
 }
 
-// ระดับ B (B2): สร้างคำสั่งวัดจริงให้ก็อปไปรันบนเครื่อง แล้ววางผลกลับมาให้แปล
-function showHogCmd(domain, server){
-  var cmds=
-'# ===== วัดทรัพยากรจริงของ '+domain+' บน '+(server||'เครื่องนี้')+' =====\n'+
-'# 1) PHP-FPM: worker ของโดเมนนี้ใช้ไปกี่ตัว (เต็ม pool = แย่งทรัพยากร)\n'+
-'grep -E "pm.max_children|pm =" /opt/plesk/php/*/etc/php-fpm.d/'+domain+'.conf 2>/dev/null\n'+
-'ps aux | grep "'+domain+'" | grep -v grep | wc -l\n\n'+
-'# 2) request ที่ถล่มเว็บนี้ 1 ชม.ล่าสุด (bot ยิงเยอะ = กินทรัพยากร)\n'+
-'tail -5000 /var/www/vhosts/'+domain+'/logs/proxy_access_log 2>/dev/null | awk \'{print $1}\' | sort | uniq -c | sort -rn | head -10\n\n'+
-'# 3) MySQL: query ของ DB นี้ที่ค้างนาน\n'+
-'MYSQL_PWD=$(cat /etc/psa/.psa.shadow 2>/dev/null) mysql -uadmin -e "SELECT db,time,state,LEFT(info,60) FROM information_schema.processlist WHERE command!=\'Sleep\' AND time>2 ORDER BY time DESC LIMIT 15;" 2>/dev/null\n\n'+
-'# 4) CPU/RAM ต่อ process ของโดเมนนี้ ณ ตอนนี้\n'+
-'ps aux --sort=-%cpu | grep "'+domain+'" | grep -v grep | head -8';
+// ===== MONTHLY REPORT =====
+async function sendMonthlyReport() {
+  const now = new Date();
+  const upDomains = memoryDomains.filter(d => d.status === 'up').length;
+  const downDomains = memoryDomains.filter(d => d.status === 'down').length;
+  const uptimePct = memoryDomains.length ? Math.round(upDomains / memoryDomains.length * 100) : 0;
+  const sslExpiring = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 30 && d.sslDaysLeft > 0).length;
+  const suspended = memoryDomains.filter(d => d.pleskId && !d.pleskActive).length;
+  const domainExpiring = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0).length;
+  
+  // Server stats summary
+  const serverSummary = PLESK_SERVERS.map(srv => {
+    const domains = memoryDomains.filter(d => d.pleskServer === srv.name);
+    const up = domains.filter(d => d.status === 'up').length;
+    const pct = domains.length ? Math.round(up / domains.length * 100) : 0;
+    return `  🖥️ ${srv.name}: ${up}/${domains.length} Up (${pct}%)`;
+  }).join('\n');
+  
+  sendTelegram(
+    `📊 <b>Monthly Report — ${now.toLocaleDateString('th-TH', { month: 'long', year: 'numeric' })}</b>
 
-  var box=document.getElementById('inc-body');
-  box.innerHTML='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
-    '<b style="font-size:14px">วัดทรัพยากรจริง: '+domain+'</b>'+
-    '<button class="btn" style="padding:2px 10px;font-size:12px" onclick="renderInc()">← กลับ</button></div>'+
-    '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">ก็อปคำสั่งชุดนี้ไปรันบน '+(server||'เครื่องนั้น')+' (SSH) — เป็นคำสั่ง<b>อ่านอย่างเดียว</b> ไม่แก้อะไร แล้วดูผล:</div>'+
-    '<textarea readonly onclick="this.select()" style="width:100%;height:230px;background:#0a0a0a;color:#8fd98f;border:1px solid var(--border,#2a2a2a);border-radius:8px;padding:10px;font-family:monospace;font-size:12px;white-space:pre">'+cmds.replace(/</g,'&lt;')+'</textarea>'+
-    '<div style="margin-top:10px;font-size:12px;color:var(--text3,#888)">'+
-    '<b>อ่านผลยังไง:</b><br>'+
-    '• ข้อ 1: ถ้า worker ใช้เต็ม max_children บ่อย = โดเมนนี้แย่ง PHP pool<br>'+
-    '• ข้อ 2: ถ้ามี IP ไหนยิงเป็นพัน = โดนบอทถล่ม (ตัวการจริงคือบอท ไม่ใช่เว็บ)<br>'+
-    '• ข้อ 3: ถ้า DB นี้มี query ค้างนานๆ = query หนัก/ปลั๊กอินมีปัญหา<br>'+
-    '• ข้อ 4: %CPU/%MEM สูงต่อเนื่อง = โดเมนนี้กินจริง</div>'+
-    '<div style="margin-top:10px"><button class="btn" onclick="copyHogCmd(this)"><i class="ti ti-copy"></i> คัดลอกคำสั่ง</button></div></div>';
-  window._lastHogCmd=cmds;
+` +
+    `🌐 โดเมนทั้งหมด: ${memoryDomains.length}
+` +
+    `✅ Uptime: ${uptimePct}% (${upDomains} Up / ${downDomains} Down)
+` +
+    `🚫 Plesk Suspended: ${suspended}
+` +
+    `🔒 SSL ใกล้หมด: ${sslExpiring} โดเมน
+` +
+    `📅 Domain ใกล้หมด: ${domainExpiring} โดเมน
+
+` +
+    `<b>สรุปแต่ละ Server:</b>
+${serverSummary}
+
+` +
+    `🕐 ${now.toLocaleString('th-TH')}`
+  );
+  
+  console.log('[Monthly] ส่ง Monthly Report แล้ว');
 }
-function copyHogCmd(btn){
-  if(navigator.clipboard) navigator.clipboard.writeText(window._lastHogCmd||'');
-  btn.innerHTML='<i class="ti ti-check"></i> คัดลอกแล้ว';
-  setTimeout(function(){ btn.innerHTML='<i class="ti ti-copy"></i> คัดลอกคำสั่ง'; },1500);
-}
-</script>
-<script>
-// ===== B1 MEASURE NOW (added feature) =====
-window._measureKey=null;
-async function measureNow(server){
-  if(!server){ if(typeof toast==='function')toast('ไม่รู้ว่าเครื่องไหน','error'); return; }
-  if(!window._measureKey){
-    window._measureKey=prompt('ใส่ ISP_AGENT_KEY (คีย์เดียวกับที่ตั้งใน Railway) เพื่อสั่งวัดทรัพยากรจริง:');
-    if(!window._measureKey) return;
-  }
-  if(typeof toast==='function')toast('กำลังวัด '+server+' ... (ประมาณ 10-30 วิ)','info');
-  try{
-    var r=await fetch(API+'/api/server-resources/measure',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({key:window._measureKey,server:server})});
-    var d=await r.json();
-    if(r.status===403){ window._measureKey=null; if(typeof toast==='function')toast('คีย์ผิด ลองใหม่','error'); return; }
-    if(!d.success){ if(typeof toast==='function')toast('วัดไม่ได้: '+(d.error||'?'),'error'); return; }
-    var top=(d.phpfpm||[])[0];
-    var msg='วัดเสร็จ';
-    if(top) msg+=' — '+top.domain+' worker '+top.active+'/'+(top.max||'?')+(top.pct!=null?' ('+top.pct+'%)':'');
-    if(typeof toast==='function')toast(msg,'success');
-    loadIncidents();
-  }catch(e){ if(typeof toast==='function')toast('วัดไม่ได้: '+e.message,'error'); }
-}
-</script>
-<script>
-// ===== WP-ADMIN TOGGLE PAGE (added feature) =====
-window._wpKey = null;
-window._wpDomains = [];
-window._wpServers = [];
-function wpEnsurePage(){
-  if(document.getElementById('page-wpadmin')) return;
-  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
-  var div=document.createElement('div'); div.id='page-wpadmin'; div.style.display='none';
-  div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='14px'; div.style.overflow='auto';
-  div.innerHTML=
-    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-lock-open"></i> เปิด/ปิด wp-admin</h2>'+
-    '<div style="font-size:12px;color:var(--text3,#888)">เปิดให้เข้าหลังบ้าน (wp-login) รายโดเมน — ระบบ configtest ก่อนทุกครั้ง ถ้า config ผิดจะ rollback อัตโนมัติ ไม่ทำเว็บพัง</div></div>'+
-    '<div style="background:rgba(227,154,59,0.1);border:1px solid rgba(227,154,59,0.3);border-radius:8px;padding:10px;font-size:12px;color:#e3b93b">'+
-      '⚠️ เว็บที่เปิด wp-admin ควรมี Cloudflare Managed Challenge กันบอทด้วย ไม่งั้นบอทจะยิงกลับมาที่เว็บนั้น</div>'+
-    '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
-      '<div style="font-weight:700;font-size:14px;margin-bottom:8px">เปิด wp-admin ให้โดเมน</div>'+
-      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
-        '<input id="wp-search" list="wp-domlist" placeholder="พิมพ์ชื่อโดเมน เช่น sum888th.com" oninput="wpOnPick()" '+
-          'style="flex:1;min-width:240px;padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit">'+
-        '<datalist id="wp-domlist"></datalist>'+
-        '<span id="wp-srv" style="font-size:12px;color:var(--text3,#888)"></span>'+
-        '<button class="btn" style="background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="wpSet(true)">🔓 เปิด wp-admin</button>'+
-        '<button class="btn" style="background:rgba(226,75,74,0.12);color:#e24b4a;border-color:rgba(226,75,74,0.3)" onclick="wpSet(false)">🔒 ปิด (บล็อก)</button>'+
-        '<button class="btn" style="background:rgba(245,130,32,0.13);color:#f58220;border-color:rgba(245,130,32,0.3)" onclick="cfDomain(true)" title="ตั้ง Cloudflare Managed Challenge กันบอทให้โดเมนนี้">☁️ ตั้ง CF กันบอท</button>'+
-      '</div></div>'+
-    '<div id="cf-bulk-card" style="background:var(--bg2,#111);border:1px solid rgba(245,130,32,0.3);border-radius:10px;padding:14px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
-        '<div><b style="font-size:14px">☁️ Cloudflare กันบอท — ทั้งหมดรวดเดียว</b>'+
-        '<div style="font-size:11px;color:var(--text3,#888)">ตั้ง Managed Challenge ที่ wp-login + block xmlrpc ให้ทุกโดเมนใน Cloudflare (เก็บ rule เดิมของคุณไว้)</div></div>'+
-        '<div style="display:flex;gap:8px">'+
-          '<button class="btn" style="background:rgba(245,130,32,0.15);color:#f58220;border-color:rgba(245,130,32,0.3)" onclick="cfBulk(true)">☁️ ตั้งทั้งหมด</button>'+
-          '<button class="btn" onclick="cfBulk(false)" title="ถอด rule ที่ระบบตั้งออกทั้งหมด">ถอดทั้งหมด</button>'+
-        '</div></div>'+
-      '<div id="cf-bulk-progress" style="margin-top:8px;font-size:12px;color:var(--text3,#888)"></div>'+
-    '</div>'+
-    '<div style="display:flex;justify-content:space-between;align-items:center">'+
-      '<div style="font-weight:700;font-size:14px">สถานะแต่ละเครื่อง</div>'+
-      '<button class="btn" onclick="wpLoadAll()"><i class="ti ti-reload"></i> โหลดสถานะ</button></div>'+
-    '<div id="wp-servers" style="display:flex;flex-direction:column;gap:10px"></div>'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px;flex-wrap:wrap;gap:8px">'+
-      '<div><b style="font-size:14px">รายชื่อโดเมน + สถานะ Cloudflare</b>'+
-        '<div style="font-size:11px;color:var(--text3,#888)">🟢 มี CF กันบอทแล้ว = เปิด wp-admin ได้ปลอดภัย · 🟡 มีใน CF แต่ยังไม่ตั้ง · ⚪ ไม่มีใน Cloudflare</div></div>'+
-      '<div style="display:flex;gap:8px;align-items:center">'+
-        '<input id="cfq" placeholder="ค้นหา..." oninput="cfRenderList()" style="padding:7px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit">'+
-        '<select id="cffilter" onchange="cfRenderList()" style="padding:7px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit">'+
-          '<option value="all">ทั้งหมด</option><option value="ready">🟢 พร้อมเปิด (มี CF)</option>'+
-          '<option value="norule">🟡 มี CF ยังไม่ตั้ง</option><option value="nozone">⚪ ไม่มีใน CF</option></select>'+
-        '<button class="btn" onclick="cfScan()"><i class="ti ti-radar"></i> สแกน CF</button>'+
-      '</div></div>'+
-    '<div id="cf-scan-progress" style="font-size:12px;color:var(--text3,#888)"></div>'+
-    '<div id="cf-domain-list"></div>';
-  c.appendChild(div);
-}
-function openWpAdmin(){ wpEnsurePage(); showPage('wpadmin');
-  setTimeout(cfLoadStatus,300);
-  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openWpAdmin()') n.classList.add('active'); });
-  wpInit();
-}
-async function wpInit(){
-  try{
-    var r=await fetch(API+'/api/wpadmin/domains'); var d=await r.json();
-    window._wpDomains=d.domains||[]; window._wpServers=d.servers||[];
-    var dl=document.getElementById('wp-domlist');
-    if(dl) dl.innerHTML=window._wpDomains.slice(0,2000).map(function(x){return '<option value="'+x.domain+'">';}).join('');
-  }catch(e){}
-  wpLoadAll();
-}
-function wpOnPick(){
-  var v=(document.getElementById('wp-search').value||'').trim().toLowerCase();
-  var hit=window._wpDomains.find(function(x){return x.domain===v;});
-  document.getElementById('wp-srv').textContent = hit ? ('→ อยู่ '+hit.server) : '';
-}
-function wpNeedKey(){
-  if(!window._wpKey){
-    window._wpKey=prompt('ใส่ ISP_AGENT_KEY (คีย์เดียวกับที่ตั้งใน Railway):');
-  }
-  return window._wpKey;
-}
-async function wpSet(open){
-  var v=(document.getElementById('wp-search').value||'').trim().toLowerCase();
-  if(!v){ if(typeof toast==='function')toast('พิมพ์ชื่อโดเมนก่อน','error'); return; }
-  var hit=window._wpDomains.find(function(x){return x.domain===v;});
-  var server=hit?hit.server:'';
-  if(!wpNeedKey()) return;
-  if(typeof toast==='function')toast((open?'กำลังเปิด ':'กำลังปิด ')+v+' ...','info');
-  try{
-    var r=await fetch(API+'/api/wpadmin/set',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({key:window._wpKey,domain:v,server:server,open:open})});
-    var d=await r.json();
-    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด ลองใหม่','error'); return; }
-    if(!d.success){ if(typeof toast==='function')toast('ทำไม่ได้: '+(d.error||'?'),'error'); return; }
-    if(typeof toast==='function')toast((open?'🔓 เปิด ':'🔒 ปิด ')+v+' ('+d.server+') แล้ว','success');
-    wpLoadOne(d.server);
-  }catch(e){ if(typeof toast==='function')toast('ทำไม่ได้: '+e.message,'error'); }
-}
-async function wpLoadAll(){
-  var box=document.getElementById('wp-servers'); if(!box) return;
-  box.innerHTML='';
-  (window._wpServers.length?window._wpServers:['Server 1','Server 2','Server 3','Server 4','Server 5']).forEach(function(s){
-    var el=document.createElement('div'); el.id='wpsrv-'+s.replace(/\s+/g,'_');
-    el.style.cssText='background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:12px';
-    el.innerHTML='<b>'+s+'</b> <span style="color:var(--text3,#888);font-size:12px">— กำลังโหลด...</span>';
-    box.appendChild(el);
-    wpLoadOne(s);
-  });
-}
-async function wpLoadOne(server){
-  var el=document.getElementById('wpsrv-'+server.replace(/\s+/g,'_')); if(!el) return;
-  try{
-    var r=await fetch(API+'/api/wpadmin/status?server='+encodeURIComponent(server));
-    var d=await r.json();
-    if(!d.success){ el.innerHTML='<b>'+server+'</b> <span style="color:#e24b4a;font-size:12px">— '+(d.error||'อ่านไม่ได้ (agent ไม่ตอบ?)')+'</span>'; return; }
-    if(d.apache===false){ el.innerHTML='<b>'+server+'</b> <span style="color:var(--text3,#888);font-size:12px">— ไม่ใช่ Apache (ฟีเจอร์นี้ข้าม)</span>'; return; }
-    var open=(d.openDomains||[]);
-    var blockBtn = d.blockOn
-      ? '<button class="btn" style="padding:3px 10px;font-size:11px;background:rgba(148,163,184,0.15);color:var(--text3,#888);border-color:rgba(148,163,184,0.3)" onclick="wpBlock(\''+server+'\',false)" title="ถอดบล็อก wp-login ออกทั้งเครื่อง (บอทเข้าได้อีก)">หยุดกันบอท</button>'
-      : '<button class="btn" style="padding:3px 10px;font-size:11px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="wpBlock(\''+server+'\',true)" title="เปิดบล็อก wp-login ทั้งเครื่อง กันบอทยิงรหัส">🛡️ เปิดกันบอท</button>';
-    var head='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
-      '<div><b>'+server+'</b> <span style="font-size:12px;color:'+(d.blockOn?'#2ecc71':'#e3b93b')+'">— บล็อก wp-login: '+(d.blockOn?'เปิดอยู่ 🔒':'ปิด (ไม่ได้กัน ⚠️)')+'</span></div>'+
-      blockBtn+'</div>';
-    if(!open.length){ el.innerHTML=head+'<div style="font-size:12px;color:var(--text3,#888);margin-top:6px">'+(d.blockOn?'ทุกเว็บถูกบล็อก wp-admin (ยังไม่เปิดให้เว็บไหน)':'เครื่องนี้ยังไม่ได้กันบอท — กด "เปิดกันบอท" เพื่อบล็อก wp-login')+'</div>'; return; }
-    var chips=open.map(function(dom){
-      return '<span style="background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.3);color:var(--green,#2ecc71);padding:3px 8px;border-radius:12px;font-size:12px;margin:2px;display:inline-block">🔓 '+dom+
-        ' <span style="cursor:pointer;color:var(--text3,#888)" title="ปิดกลับ" onclick="wpQuickClose(\''+dom+'\',\''+server+'\')">✕</span></span>';
-    }).join(' ');
-    el.innerHTML=head+'<div style="margin-top:8px;font-size:12px">🔓 เปิด wp-admin อยู่ '+open.length+' โดเมน (ที่เหลือบนเครื่องถูกบล็อก):</div><div style="margin-top:4px">'+chips+'</div>';
-  }catch(e){ el.innerHTML='<b>'+server+'</b> <span style="color:#e24b4a;font-size:12px">— '+e.message+'</span>'; }
-}
-async function wpBlock(server, enable){
-  if(!wpNeedKey()) return;
-  var msg = enable
-    ? 'เปิดกันบอท (บล็อก wp-login) ทั้งเครื่อง '+server+' ?\n\nทุกเว็บบนเครื่องนี้จะเข้า wp-admin ไม่ได้ ยกเว้นเว็บที่คุณเปิดไว้'
-    : 'หยุดกันบอท '+server+' ?\n\n⚠️ ถอดบล็อกออกทั้งเครื่อง — บอทจะยิง wp-login ได้อีก อาจทำเครื่องล่ม';
-  if(!confirm(msg)) return;
-  if(typeof toast==='function')toast((enable?'กำลังเปิดกันบอท ':'กำลังหยุดกันบอท ')+server+' ...','info');
-  try{
-    var r=await fetch(API+'/api/wpadmin/block',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({key:window._wpKey,server:server,enable:enable})});
-    var d=await r.json();
-    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
-    if(!d.success){ if(typeof toast==='function')toast('ทำไม่ได้: '+(d.error||'?'),'error'); return; }
-    if(typeof toast==='function')toast((enable?'🛡️ เปิดกันบอท ':'หยุดกันบอท ')+server+' แล้ว','success');
-    wpLoadOne(server);
-  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
-}
-async function wpQuickClose(domain, server){
-  if(!wpNeedKey()) return;
-  if(!confirm('ปิด wp-admin (บล็อกกลับ) ให้ '+domain+' ?')) return;
-  try{
-    var r=await fetch(API+'/api/wpadmin/set',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({key:window._wpKey,domain:domain,server:server,open:false})});
-    var d=await r.json();
-    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
-    if(!d.success){ if(typeof toast==='function')toast('ทำไม่ได้: '+(d.error||'?'),'error'); return; }
-    if(typeof toast==='function')toast('🔒 ปิด '+domain+' แล้ว','success');
-    wpLoadOne(server);
-  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
-}
-</script>
-<script>
-// ===== CLOUDFLARE CONTROL (added feature) =====
-async function cfDomain(enable){
-  var v=(document.getElementById('wp-search').value||'').trim().toLowerCase();
-  if(!v){ if(typeof toast==='function')toast('พิมพ์ชื่อโดเมนก่อน','error'); return; }
-  if(!wpNeedKey()) return;
-  if(typeof toast==='function')toast('กำลังตั้ง Cloudflare ให้ '+v+' ...','info');
-  try{
-    var r=await fetch(API+'/api/cloudflare/domain',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({key:window._wpKey,domain:v,enable:enable})});
-    var d=await r.json();
-    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
-    if(!d.success){ if(typeof toast==='function')toast('CF ทำไม่ได้: '+(d.error||'?'),'error'); return; }
-    if(typeof toast==='function')toast('☁️ ตั้ง Cloudflare กันบอทให้ '+v+' (zone '+(d.zone||v)+') แล้ว','success');
-  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
-}
-var _cfPoll=null;
-async function cfBulk(enable){
-  if(!wpNeedKey()) return;
-  var msg=enable?'ตั้ง Cloudflare กันบอทให้ทุกโดเมน?\n\nจะไล่ตั้ง Managed Challenge + block xmlrpc ทีละเว็บ (rule เดิมของคุณไม่หาย)'
-                :'ถอด Cloudflare rule ที่ระบบตั้ง ออกจากทุกโดเมน?';
-  if(!confirm(msg)) return;
-  try{
-    var r=await fetch(API+'/api/cloudflare/bulk',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({key:window._wpKey,enable:enable})});
-    var d=await r.json();
-    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
-    if(!d.success){ if(typeof toast==='function')toast(d.error||'เริ่มไม่ได้','error'); return; }
-    if(typeof toast==='function')toast('เริ่มตั้ง Cloudflare '+d.total+' โดเมน...','info');
-    cfPollStatus();
-  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
-}
-async function cfPollStatus(){
-  if(_cfPoll) clearInterval(_cfPoll);
-  var box=document.getElementById('cf-bulk-progress');
-  async function tick(){
-    try{
-      var r=await fetch(API+'/api/cloudflare/bulk-status'); var d=await r.json();
-      if(!box) return;
-      var pct=d.total?Math.round(d.done/d.total*100):0;
-      var bar='<div style="background:#222;border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#f58220;height:100%;width:'+pct+'%"></div></div>';
-      var line='ทำไป '+d.done+'/'+d.total+' — สำเร็จ '+d.ok+' · ล้มเหลว '+d.failed+(d.running?' (กำลังทำ...)':' ✅ เสร็จแล้ว');
-      var fails='';
-      if(d.failures&&d.failures.length){
-        fails='<div style="margin-top:6px;color:#e24b4a">ที่ล้มเหลว ('+d.failed+'):</div><div style="max-height:120px;overflow:auto;font-size:11px;color:var(--text3,#888)">'+
-          d.failures.map(function(f){return '• '+f.domain+': '+f.error;}).join('<br>')+'</div>';
+
+
+// ===== PHP-FPM ONDEMAND FIXER =====
+const PHPFPM_ONDEMAND_SCRIPT = [
+  'CHANGED=0',
+  'for CONF in $(find /opt/plesk/php/*/etc/php-fpm.d/ -name "*.conf" 2>/dev/null | grep -v plesk.conf | grep -v www.conf); do',
+  '  sed -i "s/^pm = .*/pm = ondemand/" "$CONF" 2>/dev/null && CHANGED=$((CHANGED+1));',
+  '  grep -q "^pm.max_children" "$CONF" && sed -i "s/^pm.max_children.*/pm.max_children = 3/" "$CONF" || echo "pm.max_children = 3" >> "$CONF";',
+  '  grep -q "^pm.process_idle_timeout" "$CONF" || echo "pm.process_idle_timeout = 10s" >> "$CONF";',
+  'done',
+  'GLOBAL=/etc/sw-engine/pool.d/plesk.conf',
+  '[ -f "$GLOBAL" ] && sed -i "s/^pm = .*/pm = ondemand/" "$GLOBAL"',
+  '[ -f "$GLOBAL" ] && grep -q "^pm.process_idle_timeout" "$GLOBAL" || echo "pm.process_idle_timeout = 10s" >> "$GLOBAL" 2>/dev/null',
+  'systemctl list-units --state=active --no-legend | grep plesk-php | awk \'{print $1}\' | xargs -I_ systemctl restart _ 2>/dev/null',
+  'systemctl restart sw-engine 2>/dev/null',
+  'echo "ONDEMAND_DONE CHANGED:$CHANGED"'
+].join('; ');
+
+async function applyPhpFpmOndemand(srv) {
+  try {
+    console.log('[OndemandFix] ' + srv.name + ': เปลี่ยน PHP-FPM เป็น ondemand...');
+    const cmdId = queueCommand(srv.host, PHPFPM_ONDEMAND_SCRIPT);
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        const output = (result.output || '').replace(/~/g, ' ');
+        const changed = parseInt((output.match(/CHANGED:(\d+)/) || [])[1] || 0);
+        const ok = output.includes('ONDEMAND_DONE');
+        console.log('[OndemandFix] ' + srv.name + ': ' + (ok?'✅':'❌') + ' ' + changed + ' configs');
+        return { ok, changed };
       }
-      box.innerHTML=bar+line+fails;
-      if(!d.running){ clearInterval(_cfPoll); _cfPoll=null; }
-    }catch(e){}
-  }
-  tick(); _cfPoll=setInterval(tick,1500);
-}
-</script>
-<script>
-// ===== CLOUDFLARE DOMAIN STATUS LIST (added feature) =====
-window._cfStatusRows = [];
-var _cfScanPoll = null;
-async function cfLoadStatus(){
-  try{
-    var r=await fetch(API+'/api/cloudflare/domains-status'); var d=await r.json();
-    window._cfStatusRows=d.domains||[];
-    cfRenderList();
-    if(d.scan&&d.scan.running) cfPollScan();
-    var box=document.getElementById('cf-scan-progress');
-    if(box&&d.lastScanCount===0) box.innerHTML='ยังไม่เคยสแกน — กด "สแกน CF" เพื่อเช็คว่าโดเมนไหนมี Cloudflare แล้ว';
-  }catch(e){}
-}
-function cfBadge(row){
-  if(row.hasZone===null) return '<span style="color:var(--text3,#888);font-size:11px">⚪ ยังไม่ได้สแกน</span>';
-  if(!row.hasZone) return '<span style="color:var(--text3,#888);font-size:11px">⚪ ไม่มีใน Cloudflare</span>';
-  if(row.hasRule) return '<span style="color:var(--green,#2ecc71);font-size:11px;font-weight:600">🟢 มี CF กันบอทแล้ว</span>';
-  return '<span style="color:#e3b93b;font-size:11px">🟡 มีใน CF (ยังไม่ตั้งกันบอท)</span>';
-}
-function cfRenderList(){
-  var el=document.getElementById('cf-domain-list'); if(!el) return;
-  var q=((document.getElementById('cfq')||{}).value||'').trim().toLowerCase();
-  var f=(document.getElementById('cffilter')||{}).value||'all';
-  var rows=window._cfStatusRows.filter(function(r){
-    if(q && r.domain.toLowerCase().indexOf(q)===-1) return false;
-    if(f==='ready') return r.hasRule===true;
-    if(f==='norule') return r.hasZone===true && r.hasRule===false;
-    if(f==='nozone') return r.hasZone===false;
-    return true;
-  });
-  var ready=window._cfStatusRows.filter(function(r){return r.hasRule===true;}).length;
-  var norule=window._cfStatusRows.filter(function(r){return r.hasZone===true&&r.hasRule===false;}).length;
-  var nozone=window._cfStatusRows.filter(function(r){return r.hasZone===false;}).length;
-  var head='<div style="font-size:12px;color:var(--text3,#888);margin:6px 0">🟢 พร้อมเปิด '+ready+' · 🟡 มี CF ยังไม่ตั้ง '+norule+' · ⚪ ไม่มีใน CF '+nozone+' (แสดง '+rows.length+')</div>';
-  if(!rows.length){ el.innerHTML=head+'<div style="color:var(--text3,#888);padding:10px">ไม่พบโดเมน</div>'; return; }
-  var h='<table style="width:100%;border-collapse:collapse;font-size:13px"><tr style="text-align:left;color:var(--text3,#888)">'+
-    '<th style="padding:6px">โดเมน</th><th style="padding:6px">เครื่อง</th><th style="padding:6px">สถานะ Cloudflare</th><th style="padding:6px">wp-admin</th></tr>';
-  rows.slice(0,400).forEach(function(r){
-    var act;
-    if(r.hasRule){
-      act='<button class="btn" style="padding:2px 10px;font-size:11px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="cfRowOpen(\''+r.domain+'\',\''+(r.server||'')+'\')">🔓 เปิด wp-admin</button>';
-    } else if(r.hasZone){
-      act='<button class="btn" style="padding:2px 10px;font-size:11px;background:rgba(245,130,32,0.13);color:#f58220;border-color:rgba(245,130,32,0.3)" onclick="cfRowSetCf(\''+r.domain+'\')">☁️ ตั้ง CF ก่อน</button>';
-    } else {
-      act='<span style="color:var(--text3,#888);font-size:11px" title="โดเมนนี้ไม่ได้อยู่ใน Cloudflare — เปิด wp-admin จะไม่มีอะไรกันบอท">— เพิ่มเข้า CF ก่อน</span>';
     }
-    h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
-      '<td style="padding:6px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit">'+r.domain+'</a></td>'+
-      '<td style="padding:6px">'+(r.server||'-')+'</td>'+
-      '<td style="padding:6px">'+cfBadge(r)+'</td>'+
-      '<td style="padding:6px">'+act+'</td></tr>';
-  });
-  h+='</table>';
-  if(rows.length>400) h+='<div style="font-size:11px;color:var(--text3,#888);margin-top:6px">แสดง 400 แรก — ใช้ช่องค้นหา/ตัวกรองเพื่อดูตัวอื่น</div>';
-  el.innerHTML=head+h;
+    return { ok: false, changed: 0 };
+  } catch(e) { return { ok: false, changed: 0 }; }
 }
-async function cfScan(){
-  if(!wpNeedKey()) return;
-  try{
-    var r=await fetch(API+'/api/cloudflare/scan',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:window._wpKey})});
-    var d=await r.json();
-    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
-    if(!d.success){ if(typeof toast==='function')toast(d.error||'สแกนไม่ได้','error'); return; }
-    if(typeof toast==='function')toast('เริ่มสแกน '+d.total+' โดเมน...','info');
-    cfPollScan();
-  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+
+async function applyAllPhpFpmOndemand() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const r = await applyPhpFpmOndemand(srv);
+    results.push({ server: srv.name, ...r });
+    await new Promise(r => setTimeout(r, 5000));
+  }
+  const msg = results.map(r => (r.ok?'✅':'❌') + ' ' + r.server + ': ' + r.changed + ' configs').join('\n');
+  smartAlert('info', '⚙️ PHP-FPM Ondemand Done\n' + msg + '\n\n✅ pm=ondemand + idle=10s → Load ลดลง');
+  return results;
 }
-function cfPollScan(){
-  if(_cfScanPoll) clearInterval(_cfScanPoll);
-  var box=document.getElementById('cf-scan-progress');
-  async function tick(){
-    try{
-      var r=await fetch(API+'/api/cloudflare/domains-status'); var d=await r.json();
-      window._cfStatusRows=d.domains||[];
-      var sc=d.scan||{};
-      if(box){
-        if(sc.running){ var pct=sc.total?Math.round(sc.done/sc.total*100):0;
-          box.innerHTML='กำลังสแกน '+sc.done+'/'+sc.total+' ('+pct+'%)...';
-        } else { box.innerHTML='สแกนเสร็จแล้ว ✅'; }
+
+// ===== DISK AUTO-CLEANUP =====
+const DISK_CLEANUP_THRESHOLD = 80;
+const DISK_CRITICAL_THRESHOLD = 90;
+
+const DISK_CLEANUP_SCRIPT = 'find /var/www/vhosts/*/logs/ -name "*.log" -mtime +3 -size +10M -exec truncate -s 0 {} \; 2>/dev/null; ' +
+  'find /var/www/vhosts/*/logs/ -name "*.log.*" -mtime +7 -delete 2>/dev/null; ' +
+  'find /tmp/ -name "sess_*" -mtime +1 -delete 2>/dev/null; ' +
+  'find /var/lib/php/sessions/ -mtime +1 -delete 2>/dev/null; ' +
+  'find /tmp/ -maxdepth 2 -mtime +7 -type f -delete 2>/dev/null; ' +
+  'rm -rf /var/cache/plesk_installer/* 2>/dev/null; ' +
+  'find /var/www/vhosts/*/httpdocs/wp-content/cache/ -type f -mtime +1 -delete 2>/dev/null; ' +
+  'yum clean all -q 2>/dev/null || apt-get clean -q 2>/dev/null; ' +
+  'DP=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo "CLEANUP_DONE DISK_AFTER:$DP"';
+
+async function diskCleanup(srv, diskPct) {
+  try {
+    const cmdId = queueCommand(srv.host, DISK_CLEANUP_SCRIPT);
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        const output = (result.output || '').replace(/~/g, ' ');
+        const diskAfter = parseInt((output.match(/DISK_AFTER:(\d+)/) || [])[1] || diskPct);
+        console.log('[DiskCleanup] ' + srv.name + ': ' + diskPct + '% → ' + diskAfter + '%');
+        try { empLog('janitor', 'ทำความสะอาด disk', srv.name, { server: srv.name }); } catch(e){}
+        smartAlert('info', '🧹 Disk Cleanup สำเร็จ\n🖥️ ' + srv.name + '\n📊 ' + diskPct + '% → ' + diskAfter + '%\n✅ ข้อมูลโดเมนปลอดภัย');
+        return { ok: true, diskAfter };
       }
-      cfRenderList();
-      if(!sc.running){ clearInterval(_cfScanPoll); _cfScanPoll=null; }
-    }catch(e){}
+    }
+    return { ok: false };
+  } catch(e) { return { ok: false }; }
+}
+
+async function checkAndCleanDisk() {
+  for (const srv of PLESK_SERVERS) {
+    try {
+      const cmdId = queueCommand(srv.host, 'DP=$(df / | tail -1 | tr -s " " | cut -d" " -f5 | tr -d "%"); echo "DISK:$DP"');
+      await new Promise(r => setTimeout(r, 35000));
+      const result = agentResults[cmdId]; if (!result) continue;
+      delete agentResults[cmdId];
+      const diskPct = parseInt((result.output||'').match(/DISK:(\d+)/)?.[1] || 0);
+      if (diskPct >= DISK_CRITICAL_THRESHOLD) {
+        smartAlert('critical', '🚨 Disk Critical!\n🖥️ ' + srv.name + ': <b>' + diskPct + '%</b>\n🧹 Auto-Cleanup...');
+        await diskCleanup(srv, diskPct);
+      } else if (diskPct >= DISK_CLEANUP_THRESHOLD) {
+        smartAlert('warning', '⚠️ Disk Warning\n🖥️ ' + srv.name + ': <b>' + diskPct + '%</b>\n🧹 Auto-Cleanup...');
+        await diskCleanup(srv, diskPct);
+      }
+    } catch(e) {}
   }
-  tick(); _cfScanPoll=setInterval(tick,2000);
 }
-async function cfRowOpen(domain, server){
-  document.getElementById('wp-search').value=domain;
-  wpOnPick();
-  await wpSet(true);
-}
-async function cfRowSetCf(domain){
-  document.getElementById('wp-search').value=domain;
-  await cfDomain(true);
-  setTimeout(function(){ cfLoadStatus(); },1500);
-}
-</script>
-<script>
-// ===== PRIVATE VAULT PAGE (added feature) =====
-window._vaultPass = null;   // เก็บรหัสไว้ในหน่วยความจำหน้าเว็บชั่วคราว (ไม่เก็บถาวร)
-window._vaultItems = [];
-function vaultEnsurePage(){
-  if(document.getElementById('page-vault')) return;
-  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
-  var div=document.createElement('div'); div.id='page-vault'; div.style.display='none';
-  div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='14px'; div.style.overflow='auto';
-  div.innerHTML=
-    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-shield-lock"></i> ข้อมูลลับส่วนตัว</h2>'+
-    '<div style="font-size:12px;color:var(--text3,#888)">เข้ารหัส AES-256 ด้วยรหัสของคุณ — เซิร์ฟเวอร์ไม่เก็บรหัส ต่อให้ใครเข้าถึงไฟล์ก็อ่านไม่ออก</div></div>'+
-    '<div id="vault-body"></div>';
-  c.appendChild(div);
-}
-function openVault(){ vaultEnsurePage(); showPage('vault');
-  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openVault()') n.classList.add('active'); });
-  vaultRender();
-}
-async function vaultRender(){
-  var body=document.getElementById('vault-body'); if(!body) return;
-  // ยังปลดล็อกอยู่ → โชว์รายการ
-  if(window._vaultPass){ vaultRenderItems(); return; }
-  // เช็คว่าตั้งรหัสหรือยัง
-  var st={initialized:false,persistent:false};
-  try{ var r=await fetch(API+'/api/vault/status'); st=await r.json(); }catch(e){}
-  if(!st.initialized){
-    body.innerHTML=
-      '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:18px;max-width:460px">'+
-      '<div style="font-weight:700;margin-bottom:4px">ตั้งรหัสตู้เซฟครั้งแรก</div>'+
-      '<div style="font-size:12px;color:#e3b93b;margin-bottom:12px">⚠️ ถ้าลืมรหัสนี้ ข้อมูลจะกู้คืนไม่ได้เลย (นี่คือความปลอดภัยของการเข้ารหัสจริง) — จดเก็บที่ปลอดภัย</div>'+
-      (st.persistent?'':'<div style="font-size:12px;color:#e39a3b;margin-bottom:12px">📌 ตอนนี้เก็บใน /tmp = หายเมื่อ redeploy · ถ้าต้องการเก็บถาวร ตั้ง Railway Volume แล้วใส่ env VAULT_DIR</div>')+
-      '<input id="v-init1" type="password" placeholder="ตั้งรหัสตู้เซฟ (6+ ตัว)" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:8px">'+
-      '<input id="v-init2" type="password" placeholder="พิมพ์รหัสอีกครั้ง" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:12px" onkeydown="if(event.key===\'Enter\')vaultInit()">'+
-      '<button class="btn btn-green" onclick="vaultInit()" style="width:100%;justify-content:center">ตั้งรหัส + เปิดตู้เซฟ</button>'+
-      '<div id="v-err" style="color:#e24b4a;font-size:12px;margin-top:8px;display:none"></div></div>';
-    return;
+
+async function runManualDiskCleanup() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const r = await diskCleanup(srv, 0);
+    results.push({ server: srv.name, ok: r.ok });
+    await new Promise(r => setTimeout(r, 3000));
   }
-  // มีตู้แล้ว → ให้ปลดล็อก
-  body.innerHTML=
-    '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:18px;max-width:420px">'+
-    '<div style="font-weight:700;margin-bottom:12px">🔒 ปลดล็อกตู้เซฟ</div>'+
-    '<input id="v-unlock" type="password" placeholder="ใส่รหัสตู้เซฟ" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:12px" onkeydown="if(event.key===\'Enter\')vaultUnlock()">'+
-    '<button class="btn btn-green" onclick="vaultUnlock()" style="width:100%;justify-content:center">ปลดล็อก</button>'+
-    '<div id="v-err" style="color:#e24b4a;font-size:12px;margin-top:8px;display:none"></div></div>';
-  setTimeout(function(){var e=document.getElementById('v-unlock');if(e)e.focus();},100);
+  return results;
 }
-function vErr(m){ var e=document.getElementById('v-err'); if(e){ e.style.display='block'; e.textContent='❌ '+m; } }
-async function vaultInit(){
-  var p1=document.getElementById('v-init1').value, p2=document.getElementById('v-init2').value;
-  if(p1.length<6){ vErr('รหัสต้องยาวอย่างน้อย 6 ตัว'); return; }
-  if(p1!==p2){ vErr('รหัสทั้งสองช่องไม่ตรงกัน'); return; }
-  try{
-    var r=await fetch(API+'/api/vault/init',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:p1})});
-    var d=await r.json();
-    if(!d.success){ vErr(d.error||'ตั้งรหัสไม่สำเร็จ'); return; }
-    window._vaultPass=p1; window._vaultItems=[];
-    if(typeof toast==='function')toast('ตั้งรหัสตู้เซฟแล้ว','success');
-    vaultRenderItems();
-  }catch(e){ vErr(e.message); }
+
+// ===== PHP-FPM PER-DOMAIN LIMITER =====
+const PHPFPM_LIMIT_SCRIPT = [
+  'CHANGED=0',
+  'for CONF in $(find /opt/plesk/php/*/etc/php-fpm.d/ -name "*.conf" 2>/dev/null | grep -v plesk.conf | grep -v www.conf); do',
+  '  CURRENT=$(grep -m1 "^pm.max_children" "$CONF" 2>/dev/null | awk \'{print $3}\'); ',
+  '  if [ -z "$CURRENT" ] || [ "$CURRENT" -gt 3 ] 2>/dev/null; then',
+  '    sed -i "s/^pm = .*/pm = dynamic/" "$CONF" 2>/dev/null;',
+  '    grep -q "^pm.max_children" "$CONF" && sed -i "s/^pm.max_children.*/pm.max_children = 3/" "$CONF" || echo "pm.max_children = 3" >> "$CONF";',
+  '    grep -q "^pm.start_servers" "$CONF" || echo "pm.start_servers = 1" >> "$CONF";',
+  '    grep -q "^pm.min_spare_servers" "$CONF" || echo "pm.min_spare_servers = 1" >> "$CONF";',
+  '    grep -q "^pm.max_spare_servers" "$CONF" || echo "pm.max_spare_servers = 2" >> "$CONF";',
+  '    CHANGED=$((CHANGED+1));',
+  '  fi',
+  'done',
+  'systemctl list-units --state=active --no-legend | grep plesk-php | awk \'{print $1}\' | xargs -I_ systemctl restart _ 2>/dev/null',
+  'echo "PHPFPM_DONE CHANGED:$CHANGED"'
+].join(' ');
+
+async function limitPhpFpm(srv) {
+  try {
+    const cmdId = queueCommand(srv.host, PHPFPM_LIMIT_SCRIPT);
+    for (let i = 0; i < 120; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        const output = (result.output||'').replace(/~/g,' ');
+        const changed = parseInt((output.match(/CHANGED:(\d+)/)||[])[1]||0);
+        const ok = output.includes('PHPFPM_DONE');
+        return { ok, changed };
+      }
+    }
+    return { ok: false, changed: 0 };
+  } catch(e) { return { ok: false, changed: 0 }; }
 }
-async function vaultUnlock(){
-  var p=document.getElementById('v-unlock').value;
-  if(!p){ vErr('ใส่รหัสก่อน'); return; }
-  try{
-    var r=await fetch(API+'/api/vault/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:p})});
-    var d=await r.json();
-    if(!d.success){ vErr(d.error||'ปลดล็อกไม่สำเร็จ'); return; }
-    window._vaultPass=p; window._vaultItems=d.items||[];
-    vaultRenderItems();
-  }catch(e){ vErr(e.message); }
+
+async function limitAllPhpFpm() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const { ok, changed } = await limitPhpFpm(srv);
+    results.push({ server: srv.name, ok, changed });
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  smartAlert('info', '⚙️ PHP-FPM Limiter เสร็จ\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server+': '+r.changed+' domains').join('\n'));
+  return results;
 }
-function vaultLock(){ window._vaultPass=null; window._vaultItems=[]; vaultRender(); if(typeof toast==='function')toast('ล็อกตู้เซฟแล้ว','info'); }
-function vaultRenderItems(){
-  var body=document.getElementById('vault-body'); if(!body) return;
-  var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">'+
-    '<div style="font-size:13px;color:var(--green,#2ecc71)">🔓 ปลดล็อกแล้ว · '+window._vaultItems.length+' รายการ</div>'+
-    '<div style="display:flex;gap:8px">'+
-      '<button class="btn" onclick="vaultAddItem()"><i class="ti ti-plus"></i> เพิ่มรายการ</button>'+
-      '<button class="btn" onclick="vaultChangePass()">เปลี่ยนรหัส</button>'+
-      '<button class="btn" onclick="vaultLock()"><i class="ti ti-lock"></i> ล็อก</button>'+
-    '</div></div>';
-  if(!window._vaultItems.length){
-    h+='<div style="color:var(--text3,#888);padding:20px;text-align:center">ยังไม่มีข้อมูล — กด "เพิ่มรายการ"</div>';
+
+// ===== APACHE WATCHDOG INSTALLER =====
+const APACHE_WATCHDOG_SCRIPT = [
+  '#!/bin/bash',
+  'if ! systemctl is-active --quiet httpd; then',
+  '  systemctl restart httpd',
+  '  echo "[$(date)] Apache restarted" >> /var/log/apache-watchdog.log',
+  'fi'
+].join('\n');
+
+async function installApacheWatchdog(srv) {
+  try {
+    const cmd = [
+      'cat > /usr/local/bin/apache-watchdog.sh << WDEOF',
+      '#!/bin/bash',
+      'if ! systemctl is-active --quiet httpd; then',
+      '  systemctl restart httpd',
+      '  echo "[$(date)] Apache restarted" >> /var/log/apache-watchdog.log',
+      'fi',
+      'WDEOF',
+      'chmod +x /usr/local/bin/apache-watchdog.sh',
+      'echo "* * * * * root /usr/local/bin/apache-watchdog.sh" > /etc/cron.d/apache-watchdog',
+      'chmod 644 /etc/cron.d/apache-watchdog',
+      'echo "WATCHDOG_OK"'
+    ].join('; ');
+    const cmdId = queueCommand(srv.host, cmd);
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        return (result.output || '').includes('WATCHDOG_OK');
+      }
+    }
+    return false;
+  } catch(e) { return false; }
+}
+
+async function installAllApacheWatchdogs() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const ok = await installApacheWatchdog(srv);
+    results.push({ server: srv.name, ok });
+    await new Promise(r => setTimeout(r, 2000));
+  }
+  smartAlert('info', '🛡️ Apache Watchdog ติดตั้งแล้ว\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server).join('\n'));
+  return results;
+}
+
+// ===== CLOUDFLARE IP WHITELIST =====
+const CF_IPS = ['173.245.48.0/20','103.21.244.0/22','103.22.200.0/22','103.31.4.0/22','141.101.64.0/18','108.162.192.0/18','190.93.240.0/20','188.114.96.0/20','197.234.240.0/22','198.41.128.0/17','162.158.0.0/15','104.16.0.0/13','104.24.0.0/14','172.64.0.0/13','131.0.72.0/22'];
+
+async function setupCloudflareWhitelist(srv) {
+  try {
+    const cmd = CF_IPS.map(ip => 'iptables -C INPUT -s ' + ip + ' -j ACCEPT 2>/dev/null || iptables -I INPUT -s ' + ip + ' -j ACCEPT').join('; ') + '; iptables-save > /etc/sysconfig/iptables; echo "CF_DONE"';
+    const cmdId = queueCommand(srv.host, cmd);
+    for (let i = 0; i < 90; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const result = agentResults[cmdId]; delete agentResults[cmdId];
+        return result.output?.includes('CF_DONE') || result.exitCode === 0;
+      }
+    }
+    return false;
+  } catch(e) { return false; }
+}
+
+async function setupAllCloudflareWhitelists() {
+  const results = [];
+  for (const srv of PLESK_SERVERS) {
+    const ok = await setupCloudflareWhitelist(srv);
+    results.push({ server: srv.name, ok });
+    await new Promise(r => setTimeout(r, 3000));
+  }
+  smartAlert('info', '🛡️ Cloudflare Whitelist Done\n' + results.map(r=>(r.ok?'✅':'❌')+' '+r.server).join('\n') + '\n✅ ป้องกัน Error 521');
+  return results;
+}
+
+
+// ===== SMART ALERT SYSTEM =====
+// 🚨 Critical → ส่งทันที (cooldown 1 ชั่วโมง)
+// ⚠️ Warning  → รวม digest ทุก 30 นาที
+// ℹ️ Info     → รวม daily summary เท่านั้น
+
+const alertCooldowns = {};   // { key: lastSentTime }
+const warningDigest  = [];   // รอส่งใน digest
+const infoDigest     = [];   // รอส่งใน daily
+const CRITICAL_COOLDOWN = 60 * 60 * 1000;    // 1 ชั่วโมง
+const WARNING_COOLDOWN  = 30 * 60 * 1000;    // 30 นาที
+
+function smartAlert(level, message, key) {
+  const now = Date.now();
+  const cooldownKey = key || message.slice(0, 50);
+  // เก็บทุก alert เป็น event (สำหรับ timeline)
+  try { logEvent(level, message.split('\n')[0], { level, key: cooldownKey }); } catch(e) {}
+
+  if (level === 'critical') {
+    // ส่งทันที ถ้าไม่อยู่ใน cooldown
+    if (!alertCooldowns[cooldownKey] || now - alertCooldowns[cooldownKey] > CRITICAL_COOLDOWN) {
+      alertCooldowns[cooldownKey] = now;
+      sendTelegram('🚨 <b>CRITICAL</b>\n' + message);
+      console.log('[Alert] CRITICAL:', message.slice(0, 60));
+    }
+  } else if (level === 'warning') {
+    // เพิ่มเข้า digest ถ้าไม่ซ้ำ
+    if (!alertCooldowns['w:'+cooldownKey] || now - alertCooldowns['w:'+cooldownKey] > WARNING_COOLDOWN) {
+      alertCooldowns['w:'+cooldownKey] = now;
+      warningDigest.push({ time: new Date().toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'}), msg: message });
+      console.log('[Alert] Warning queued:', message.slice(0, 60));
+    }
   } else {
-    window._vaultItems.forEach(function(it,i){
-      var fileChip='';
-      if(it.file && it.file.name){
-        var sizeKB = it.file.data ? Math.round(it.file.data.length*0.75/1024) : 0;
-        fileChip='<div style="display:flex;align-items:center;gap:8px;background:var(--bg,#0a0a0a);border:1px solid var(--border,#333);border-radius:6px;padding:6px 10px;margin-top:8px">'+
-          '<i class="ti ti-paperclip"></i>'+
-          '<span style="flex:1;font-size:12px;word-break:break-all">'+it.file.name.replace(/</g,'&lt;')+' <span style="color:var(--text3,#888)">('+sizeKB+' KB)</span></span>'+
-          '<button class="btn" style="padding:2px 8px;font-size:11px" onclick="vaultDownloadFile('+i+')">⬇ ดาวน์โหลด</button>'+
-          '<button class="btn" style="padding:2px 8px;font-size:11px;color:#e24b4a" onclick="vaultRemoveFile('+i+')">✕</button>'+
-        '</div>';
+    // info → เก็บใน daily เท่านั้น
+    infoDigest.push({ time: new Date().toLocaleTimeString('th-TH', {hour:'2-digit',minute:'2-digit'}), msg: message });
+    console.log('[Alert] Info (silent):', message.slice(0, 60));
+  }
+}
+
+// ส่ง Warning Digest ทุก 30 นาที
+function sendWarningDigest() {
+  if (!warningDigest.length) return;
+  const items = warningDigest.splice(0, warningDigest.length);
+  const grouped = {};
+  items.forEach(i => {
+    const key = i.msg.split('\n')[0];
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(i.time);
+  });
+  let msg = '⚠️ <b>Warning Digest</b> (30 นาทีล่าสุด)\n\n';
+  Object.entries(grouped).forEach(([k, times]) => {
+    msg += '• ' + k + (times.length > 1 ? ' (' + times.length + ' ครั้ง)' : '') + '\n';
+  });
+  msg += '\n🕐 ' + new Date().toLocaleTimeString('th-TH');
+  sendTelegram(msg);
+  console.log('[Digest] ส่ง warning digest', items.length, 'รายการ');
+}
+
+// ส่ง Daily Summary ตอนเที่ยงคืน
+function sendDailySummary() {
+  try { empLog('ceo', 'สรุปรายวัน', 'รายงานเที่ยงคืน'); resetEmployeeDailyStats(); if(process.env.ANTHROPIC_API_KEY){ runEmployeeBrain('ceo').catch(()=>{}); } } catch(e){}
+  const infoItems = infoDigest.splice(0, infoDigest.length);
+  const warnings = []; // เก็บ warning ที่ผ่านมาวันนี้
+  const up = memoryDomains.filter(d => d.status === 'up').length;
+  const down = memoryDomains.filter(d => d.status === 'down').length;
+
+  let msg = '📊 <b>Daily Summary</b>\n';
+  msg += '📅 ' + new Date().toLocaleDateString('th-TH') + '\n\n';
+  msg += '🌐 โดเมน Up: <b>' + up + '</b> | Down: <b>' + down + '</b>\n';
+  msg += '🔧 Auto-heal: ' + (weeklyStats?.fixed || 0) + ' ครั้ง\n';
+  if (infoItems.length) msg += 'ℹ️ Events: ' + infoItems.length + ' รายการ (ดูใน DomainIntel)\n';
+  msg += '\n✅ ระบบทำงานปกติ';
+  sendTelegram(msg);
+}
+
+
+// ===== EVENT LOG / AUDIT TRAIL =====
+const eventLog = []; // เก็บ events ล่าสุด (in-memory, ไม่กระทบโฮส)
+const MAX_EVENTS = 500;
+
+function logEvent(type, message, meta) {
+  const event = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,7),
+    type, // 'down', 'up', 'fix', 'ssl', 'sync', 'alert', 'expiry', 'blacklist'
+    message,
+    meta: meta || {},
+    at: new Date().toISOString()
+  };
+  eventLog.unshift(event);
+  if (eventLog.length > MAX_EVENTS) eventLog.pop();
+  return event;
+}
+
+// ===== DIAGNOSTIC REPORT (added feature) =====
+// เก็บ error/crash ล่าสุดไว้ใน memory (ไม่กระทบโฮส)
+const errorLog = [];
+const MAX_ERRORS = 200;
+function logError(source, err) {
+  try {
+    const entry = {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 7),
+      source,
+      message: (err && err.message) ? err.message : String(err),
+      stack: (err && err.stack) ? String(err.stack).split('\n').slice(0, 6).join('\n') : '',
+      at: new Date().toISOString()
+    };
+    errorLog.unshift(entry);
+    if (errorLog.length > MAX_ERRORS) errorLog.pop();
+    try { logEvent('error', '[' + source + '] ' + entry.message); } catch (e) {}
+  } catch (e) { /* ห้าม throw ในตัว logger เอง */ }
+}
+
+// ดักจับ error ที่หลุดออกมาทั้งระบบ — log ไว้ ไม่ปล่อยให้ process ตายเงียบ
+// หมายเหตุ: ถ้าคุณรันใต้ตัว supervisor (PM2/Railway) และอยากให้ restart สะอาดเมื่อ crash จริง
+// เปลี่ยนบรรทัด uncaughtException ให้ทำ process.exit(1) หลัง log ได้
+process.on('uncaughtException', (err) => { console.error('[uncaughtException]', err); logError('uncaughtException', err); });
+process.on('unhandledRejection', (reason) => { console.error('[unhandledRejection]', reason); logError('unhandledRejection', reason); });
+
+// ปิดบังค่าลับก่อนส่งออก — token/password/apikey/refresh token ฯลฯ
+function redactString(str) {
+  if (!str) return str;
+  return String(str)
+    // ค่าลับที่อยู่ในรูป JSON "key":"value"
+    .replace(/"(pass(?:word)?|token|secret|api[_-]?key|apikey|authorization|bearer|refresh[_-]?token|client[_-]?secret|line[_-]?token|telegram[_-]?token|private[_-]?key)"\s*:\s*"[^"]*"/gi, '"$1":"***REDACTED***"')
+    // Anthropic / Google / Telegram / bearer patterns ที่โผล่ใน text
+    .replace(/sk-ant-[A-Za-z0-9_\-]{8,}/g, '***REDACTED***')
+    .replace(/GOCSPX-[A-Za-z0-9_\-]{6,}/g, '***REDACTED***')
+    .replace(/\b\d{6,}:[A-Za-z0-9_\-]{20,}\b/g, '***REDACTED***')
+    // token/hash แบบยาว
+    .replace(/\b[A-Fa-f0-9]{32,}\b/g, '***REDACTED***')
+    .replace(/\b[A-Za-z0-9+/]{40,}={0,2}\b/g, '***REDACTED***');
+}
+
+function _safe(fn, fallback) { try { return fn(); } catch (e) { return fallback; } }
+
+// รวบรวมทุกอย่างเป็น report เดียว
+function buildDiagnosticReport() {
+  const snap = (typeof gatherSystemSnapshot === 'function') ? _safe(gatherSystemSnapshot, {}) : {};
+  const warn = _safe(() => memoryDomains.filter(d => d.status === 'warn').length, 0);
+
+  // นับ event แยกตามชนิด
+  const counts = {};
+  _safe(() => eventLog.forEach(e => { counts[e.type] = (counts[e.type] || 0) + 1; }));
+
+  // event ที่เป็น "ปัญหา" เท่านั้น
+  const problemTypes = ['down', 'warning', 'error', 'slow', 'alert', 'fix'];
+  const problemEvents = _safe(() => eventLog.filter(e => problemTypes.includes(e.type)).slice(0, 80), []);
+
+  // ประวัติคำสั่งที่ถูกส่งไปรันบนเซิร์ฟเวอร์ (สำคัญมากสำหรับตรวจของแปลกปลอม)
+  const agentHistory = [];
+  _safe(() => Object.entries(agentCommands).forEach(([key, cmds]) => {
+    cmds.slice(-25).forEach(c => agentHistory.push({
+      server: key, id: c.id, cmd: c.cmd, status: c.status,
+      queuedAt: c.queuedAt, result: (c.result || '').slice(0, 300)
+    }));
+  }));
+
+  const connectivity = {
+    gsc: _safe(() => !!process.env.GSC_REFRESH_TOKEN, false),
+    pleskServers: _safe(() => PLESK_SERVERS.length, 0),
+    cloudflare: _safe(() => !!CF_API_TOKEN, false),
+    sheets: _safe(() => !!(typeof SHEET_ID !== 'undefined' && SHEET_ID), false),
+    anthropic: _safe(() => !!process.env.ANTHROPIC_API_KEY, false)
+  };
+
+  return {
+    generatedAt: new Date().toISOString(),
+    note: 'ค่าลับ (token/password/key) ถูกปิดบังเป็น ***REDACTED*** แล้ว — ปลอดภัยที่จะก็อปไปวางให้ Claude วิเคราะห์. หมายเหตุความปลอดภัย: endpoint /api/report นี้ยังไม่มี auth เหมือน endpoint อื่น ควรใส่ auth gate ตามที่คุยกันไว้',
+    meta: {
+      nodeVersion: process.version,
+      uptimeSec: Math.round(process.uptime()),
+      pid: process.pid,
+      rssMB: Math.round(process.memoryUsage().rss / 1048576)
+    },
+    summary: {
+      domains: snap.domains || {},
+      warn,
+      pleskServers: connectivity.pleskServers,
+      pendingApprovals: _safe(() => approvalQueue.filter(a => a.status === 'pending').length, 0),
+      recentErrors: errorLog.length,
+      eventCountsByType: counts
+    },
+    connectivity,
+    serverHealth: snap.serverHealth || [],
+    serverMetrics: _safe(() => Object.entries(serverMetricsCache).map(([name, v]) => ({
+      server: name, verdict: v.verdict, issues: v.issues, metrics: v.metrics, at: v.at
+    })), []),
+    recentErrors: errorLog.slice(0, 50),
+    problemEvents,
+    botActivity: _safe(() => employeeActivity.slice(0, 60), []),
+    agentCommands: agentHistory,
+    pendingApprovals: _safe(() => approvalQueue.filter(a => a.status === 'pending')
+      .map(a => ({ id: a.id, title: a.title, action: a.action, empId: a.empId, at: a.at })), [])
+  };
+}
+
+// แปลง report เป็น text อ่านง่าย (สำหรับก็อป/ดาวน์โหลด)
+function renderReportText(r) {
+  const L = [];
+  const sec = (t) => { L.push(''); L.push('===== ' + t + ' ====='); };
+  L.push('DomainIntel — Diagnostic Report');
+  L.push('Generated: ' + r.generatedAt);
+  L.push(r.note || '');
+  sec('SYSTEM');
+  L.push('node ' + (r.meta && r.meta.nodeVersion) + ' · uptime ' + (r.meta && r.meta.uptimeSec) + 's · RSS ' + (r.meta && r.meta.rssMB) + 'MB');
+  sec('SUMMARY');
+  L.push(JSON.stringify(r.summary, null, 2));
+  sec('CONNECTIVITY');
+  L.push(JSON.stringify(r.connectivity, null, 2));
+  sec('SERVER HEALTH');
+  L.push(JSON.stringify(r.serverHealth, null, 2));
+  sec('SERVER METRICS');
+  L.push(JSON.stringify(r.serverMetrics, null, 2));
+  sec('RECENT ERRORS (' + (r.recentErrors ? r.recentErrors.length : 0) + ')');
+  (r.recentErrors || []).forEach(e => L.push('[' + e.at + '] (' + e.source + ') ' + e.message + (e.stack ? '\n  ' + e.stack.replace(/\n/g, '\n  ') : '')));
+  sec('PROBLEM EVENTS (' + (r.problemEvents ? r.problemEvents.length : 0) + ')');
+  (r.problemEvents || []).forEach(e => L.push('[' + e.at + '] (' + e.type + ') ' + e.message));
+  sec('AGENT COMMANDS ON SERVERS (' + (r.agentCommands ? r.agentCommands.length : 0) + ')');
+  (r.agentCommands || []).forEach(c => L.push('[' + c.status + '] ' + c.server + ' :: ' + c.cmd + (c.result ? ' => ' + c.result : '')));
+  sec('BOT ACTIVITY (' + (r.botActivity ? r.botActivity.length : 0) + ')');
+  (r.botActivity || []).forEach(a => L.push('[' + a.at + '] ' + (a.empName || a.empId) + ': ' + a.action + (a.detail ? ' — ' + a.detail : '')));
+  sec('PENDING APPROVALS (' + (r.pendingApprovals ? r.pendingApprovals.length : 0) + ')');
+  (r.pendingApprovals || []).forEach(a => L.push('[' + a.at + '] ' + a.title + ' (' + a.action + ')'));
+  return L.join('\n');
+}
+
+// ===== HEALTH SCORE (คำนวณจากข้อมูลที่มี - read only) =====
+function calcServerHealthScore(serverName) {
+  // หาโดเมนใน server นี้
+  const domains = memoryDomains.filter(d => d.pleskServer === serverName);
+  if (!domains.length) return null;
+
+  const up = domains.filter(d => d.status === 'up').length;
+  const down = domains.filter(d => d.status === 'down').length;
+  const total = domains.length;
+
+  // uptime score (40%)
+  const uptimeScore = total ? (up / total) * 40 : 0;
+
+  // SSL health (20%)
+  const sslOk = domains.filter(d => d.sslDaysLeft === null || d.sslDaysLeft > 14).length;
+  const sslScore = total ? (sslOk / total) * 20 : 20;
+
+  // response time (20%) - เร็ว = คะแนนสูง
+  const withRt = domains.filter(d => d.responseTime > 0);
+  const avgRt = withRt.length ? withRt.reduce((s,d) => s+d.responseTime, 0) / withRt.length : 1000;
+  const rtScore = avgRt < 1000 ? 20 : avgRt < 3000 ? 15 : avgRt < 5000 ? 10 : 5;
+
+  // domain expiry (20%)
+  const expOk = domains.filter(d => d.daysLeft === null || d.daysLeft > 30).length;
+  const expScore = total ? (expOk / total) * 20 : 20;
+
+  const score = Math.round(uptimeScore + sslScore + rtScore + expScore);
+  return {
+    server: serverName,
+    score,
+    grade: score >= 90 ? 'A' : score >= 80 ? 'B' : score >= 70 ? 'C' : score >= 60 ? 'D' : 'F',
+    total, up, down,
+    avgResponseTime: Math.round(avgRt),
+    breakdown: {
+      uptime: Math.round(uptimeScore),
+      ssl: Math.round(sslScore),
+      responseTime: rtScore,
+      expiry: Math.round(expScore)
+    }
+  };
+}
+
+function getAllHealthScores() {
+  try { empLog('analyst', 'วิเคราะห์ health score', 'ทุก server'); } catch(e){}
+  const servers = [...new Set(memoryDomains.map(d => d.pleskServer).filter(Boolean))];
+  return servers.map(s => calcServerHealthScore(s)).filter(Boolean).sort((a,b) => b.score - a.score);
+}
+
+
+// ===== TODO / KANBAN TASKS =====
+const TASKS_FILE = '/tmp/domainintel-tasks.json';
+let memoryTasks = [];
+
+function loadTasks() {
+  try { memoryTasks = JSON.parse(fs.readFileSync(TASKS_FILE, 'utf8')); }
+  catch { memoryTasks = []; }
+  return memoryTasks;
+}
+function saveTasks() {
+  try { fs.writeFileSync(TASKS_FILE, JSON.stringify(memoryTasks, null, 2)); } catch(e) {}
+}
+
+
+// ===== BULK GSC ADD SYSTEM =====
+// เพิ่มโดเมนเข้า GSC แบบ bulk ผ่าน DNS TXT verification
+// รองรับ: Cloudflare API + Plesk DNS (via agent) + manual fallback
+
+const dnsPromises = require('dns').promises;
+
+// 1. เพิ่ม site เข้า GSC (sites.add) — ต้องทำก่อนขอ verification token
+async function gscAddSite(token, siteUrl) {
+  return new Promise(resolve => {
+    const apiPath = '/webmasters/v3/sites/' + encodeURIComponent(siteUrl);
+    const req = https.request({
+      hostname: 'www.googleapis.com', path: apiPath, method: 'PUT',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Length': 0 }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => resolve({ ok: res.statusCode === 200 || res.statusCode === 204, status: res.statusCode, body: d }));
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.end();
+  });
+}
+
+// 2. ขอ verification token (DNS TXT method) ผ่าน Site Verification API
+async function gscGetVerificationToken(token, domain) {
+  return new Promise(resolve => {
+    const body = JSON.stringify({
+      verificationMethod: 'DNS_TXT',
+      site: { type: 'INET_DOMAIN', identifier: domain }
+    });
+    const req = https.request({
+      hostname: 'www.googleapis.com',
+      path: '/siteVerification/v1/token',
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(d);
+          if (r.token) { resolve({ ok: true, token: r.token, raw: r }); }
+          else {
+            // แสดง error จริงจาก Google (เช่น scope ไม่พอ, API ไม่ enable)
+            const errMsg = (r.error && r.error.message) ? r.error.message : JSON.stringify(r).slice(0,150);
+            resolve({ ok: false, error: errMsg, status: res.statusCode });
+          }
+        } catch(e) { resolve({ ok: false, error: 'HTTP ' + res.statusCode + ': ' + d.slice(0,100) }); }
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.write(body); req.end();
+  });
+}
+
+// 3. เรียก GSC ให้ verify (หลังเขียน TXT แล้ว)
+async function gscVerifyDomain(token, domain) {
+  return new Promise(resolve => {
+    const body = JSON.stringify({
+      site: { type: 'INET_DOMAIN', identifier: domain }
+    });
+    const req = https.request({
+      hostname: 'www.googleapis.com',
+      path: '/siteVerification/v1/webResource?verificationMethod=DNS_TXT',
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        const ok = res.statusCode === 200;
+        let err = '';
+        if (!ok) { try { err = (JSON.parse(d).error||{}).message || d.slice(0,100); } catch { err = d.slice(0,100); } }
+        resolve({ ok, status: res.statusCode, error: err });
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.write(body); req.end();
+  });
+}
+
+// 4. ตรวจว่าโดเมนใช้ nameserver ที่ไหน (เพื่อเลือก method)
+async function detectDNSProvider(domain) {
+  try {
+    const ns = await dnsPromises.resolveNs(domain);
+    const nsStr = ns.join(',').toLowerCase();
+    if (nsStr.includes('cloudflare')) return { provider: 'cloudflare', ns };
+    // เช็คว่าเป็น Plesk server เราไหม (NS ชี้มาที่ IP server)
+    return { provider: 'other', ns };
+  } catch(e) {
+    return { provider: 'unknown', ns: [], error: e.message };
+  }
+}
+
+// 5. เขียน TXT record ผ่าน Cloudflare API
+async function cfWriteTXT(domain, txtValue) {
+  const cfToken = process.env.CLOUDFLARE_API_TOKEN;
+  if (!cfToken) return { ok: false, error: 'no CF token' };
+
+  // หา zone id ก่อน
+  const zoneId = await new Promise(resolve => {
+    const req = https.request({
+      hostname: 'api.cloudflare.com',
+      path: '/client/v4/zones?name=' + encodeURIComponent(domain),
+      headers: { 'Authorization': 'Bearer ' + cfToken, 'Content-Type': 'application/json' }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        try { const r = JSON.parse(d); resolve(r.result && r.result[0] ? r.result[0].id : null); }
+        catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.end();
+  });
+
+  if (!zoneId) return { ok: false, error: 'zone not found in this CF account' };
+
+  // เขียน TXT record
+  return new Promise(resolve => {
+    const body = JSON.stringify({ type: 'TXT', name: domain, content: txtValue, ttl: 3600 });
+    const req = https.request({
+      hostname: 'api.cloudflare.com',
+      path: '/client/v4/zones/' + zoneId + '/dns_records',
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + cfToken, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(d);
+          if (r.success) { resolve({ ok: true }); return; }
+          // ถ้า record มีอยู่แล้ว (81058/81057/81053) = ถือว่าสำเร็จ พร้อม verify ได้เลย
+          const errs = r.errors || [];
+          const alreadyExists = errs.some(e => [81058, 81057, 81053].includes(e.code) || (e.message||'').toLowerCase().includes('identical record'));
+          if (alreadyExists) { resolve({ ok: true, existed: true }); return; }
+          resolve({ ok: false, error: JSON.stringify(errs).slice(0,120) });
+        }
+        catch { resolve({ ok: false, error: d.slice(0,100) }); }
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.write(body); req.end();
+  });
+}
+
+// 6. เขียน TXT ผ่าน Plesk DNS (via agent) — สำหรับโดเมนที่ NS ชี้ Plesk
+async function pleskWriteTXT(domain, txtValue, serverHost) {
+  if (!serverHost) return { ok: false, error: 'no server host' };
+  // ใช้ plesk bin dns เพิ่ม TXT record
+  const cmd = 'plesk bin dns --add ' + domain + ' -txt "' + txtValue + '" -domain ' + domain + ' 2>&1 | head -3; echo "DNS_DONE"';
+  const cmdId = queueCommand(serverHost, cmd);
+  for (let i = 0; i < 30; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (agentResults[cmdId]) {
+      const res = agentResults[cmdId]; delete agentResults[cmdId];
+      const out = (res.output||'').replace(/~/g,'\n').toLowerCase();
+      // ถ้ามี record อยู่แล้ว ถือว่าสำเร็จ
+      const alreadyExists = out.includes('already exists') || out.includes('duplicate');
+      const ok = out.includes('dns_done') && (!out.includes('error') || alreadyExists);
+      return { ok, existed: alreadyExists, output: out.slice(0,150) };
+    }
+  }
+  return { ok: false, error: 'timeout' };
+}
+
+// ===== MAIN: Bulk Add โดเมนเข้า GSC =====
+const bulkGSCProgress = { running: false, total: 0, done: 0, success: 0, failed: 0, results: [], current: '' };
+
+async function bulkAddToGSC(domains) {
+  if (bulkGSCProgress.running) return { error: 'กำลังทำงานอยู่' };
+
+  const token = await refreshGSCToken();
+  if (!token) return { error: 'GSC token ใช้ไม่ได้ — เช็ค refresh token' };
+
+  bulkGSCProgress.running = true;
+  bulkGSCProgress.total = domains.length;
+  bulkGSCProgress.done = 0;
+  bulkGSCProgress.success = 0;
+  bulkGSCProgress.failed = 0;
+  bulkGSCProgress.results = [];
+
+  (async () => {
+    for (const d of domains) {
+      const domain = (typeof d === 'string' ? d : d.domain).toLowerCase().replace(/^https?:\/\//,'').replace(/\/$/,'');
+      bulkGSCProgress.current = domain;
+      const result = { domain, steps: [], ok: false };
+
+      try {
+        // Step 1: เพิ่ม sc-domain property เข้า GSC
+        const siteUrl = 'sc-domain:' + domain;
+        const addRes = await gscAddSite(token, siteUrl);
+        result.steps.push({ step: 'add', ok: addRes.ok });
+
+        // Step 2: ขอ verification token
+        const vtok = await gscGetVerificationToken(token, domain);
+        if (!vtok.ok) {
+          result.error = 'ขอ token ไม่ได้: ' + (vtok.error||'');
+          result.steps.push({ step: 'token', ok: false });
+          bulkGSCProgress.results.push(result); bulkGSCProgress.failed++; bulkGSCProgress.done++;
+          continue;
+        }
+        result.steps.push({ step: 'token', ok: true });
+        const txtValue = vtok.token; // "google-site-verification=xxxx"
+
+        // Step 3: detect DNS provider + เขียน TXT
+        const dnsInfo = await detectDNSProvider(domain);
+        result.provider = dnsInfo.provider;
+        let written = { ok: false };
+
+        if (dnsInfo.provider === 'cloudflare') {
+          written = await cfWriteTXT(domain, txtValue);
+          result.steps.push({ step: 'txt-cloudflare', ok: written.ok, error: written.error });
+        } else {
+          // ลองหา Plesk server ของโดเมนนี้
+          const domObj = memoryDomains.find(x => x.domain === domain);
+          const srv = domObj ? PLESK_SERVERS.find(s => s.name === domObj.pleskServer) : null;
+          if (srv) {
+            written = await pleskWriteTXT(domain, txtValue, srv.host);
+            result.steps.push({ step: 'txt-plesk', ok: written.ok, error: written.error });
+          } else {
+            // fallback: แสดง TXT ให้ก็อปเอง
+            result.manualTXT = txtValue;
+            result.steps.push({ step: 'txt-manual', ok: false });
+            result.error = 'ต้องเพิ่ม TXT เอง: ' + txtValue;
+            bulkGSCProgress.results.push(result); bulkGSCProgress.failed++; bulkGSCProgress.done++;
+            continue;
+          }
+        }
+
+        if (!written.ok) {
+          result.error = 'เขียน TXT ไม่ได้: ' + (written.error||'');
+          result.manualTXT = txtValue;
+          bulkGSCProgress.results.push(result); bulkGSCProgress.failed++; bulkGSCProgress.done++;
+          continue;
+        }
+
+        // Step 4: รอ DNS propagate แล้ว verify (retry หลายครั้ง)
+        // DNS propagation ใช้เวลา ลอง verify 3 ครั้ง ห่างกัน 15 วิ
+        let verifyRes = { ok: false };
+        for (let attempt = 0; attempt < 3; attempt++) {
+          await new Promise(r => setTimeout(r, attempt === 0 ? 8000 : 15000));
+          verifyRes = await gscVerifyDomain(token, domain);
+          if (verifyRes.ok) break;
+        }
+        result.steps.push({ step: 'verify', ok: verifyRes.ok, error: verifyRes.error });
+
+        if (verifyRes.ok) {
+          result.ok = true;
+          bulkGSCProgress.success++;
+          logEvent('gsc', 'เพิ่ม ' + domain + ' เข้า GSC สำเร็จ', { domain });
+          try { empLog('onboarder', 'เพิ่มโดเมนเข้า GSC', domain, { domain }); } catch(e){}
+        } else {
+          // TXT เขียนแล้วแต่ DNS ยังไม่ propagate — แยกเป็นสถานะ pending
+          result.pendingVerify = true;
+          result.error = 'TXT เขียนแล้ว · รอ DNS propagate (5-10 นาที) แล้วกด "Verify ที่ค้าง"';
+          bulkGSCProgress.pendingVerify = (bulkGSCProgress.pendingVerify || 0) + 1;
+          bulkGSCProgress.failed++;
+        }
+      } catch(e) {
+        result.error = e.message;
+        bulkGSCProgress.failed++;
       }
-      h+='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px;margin-bottom:14px;width:100%;box-sizing:border-box">'+
-        '<input value="'+(it.title||'').replace(/"/g,'&quot;')+'" placeholder="หัวข้อ" oninput="window._vaultItems['+i+'].title=this.value" style="width:100%;box-sizing:border-box;background:transparent;border:none;border-bottom:1px solid var(--border,#333);color:inherit;font-weight:700;font-size:16px;margin-bottom:10px;outline:none;padding:4px 0">'+
-        '<textarea placeholder="เนื้อหา (เข้ารหัสก่อนบันทึก)" oninput="window._vaultItems['+i+'].content=this.value" style="width:100%;box-sizing:border-box;background:var(--bg,#0a0a0a);border:1px solid var(--border,#333);border-radius:6px;color:inherit;padding:12px;min-height:160px;resize:vertical;font-family:inherit;font-size:14px;line-height:1.6">'+(it.content||'').replace(/</g,'&lt;')+'</textarea>'+
-        fileChip+
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">'+
-          '<label class="btn" style="padding:4px 12px;font-size:12px;cursor:pointer;margin:0"><i class="ti ti-upload"></i> '+(it.file&&it.file.name?'เปลี่ยนไฟล์':'แนบไฟล์')+'<input type="file" style="display:none" onchange="vaultAttachFile('+i+',this)"></label>'+
-          '<button class="btn" style="padding:4px 12px;font-size:12px;color:#e24b4a" onclick="vaultDeleteItem('+i+')"><i class="ti ti-trash"></i> ลบรายการ</button>'+
-        '</div>'+
-      '</div>';
+
+      bulkGSCProgress.results.push(result);
+      bulkGSCProgress.done++;
+      // delay กัน rate limit
+      await new Promise(r => setTimeout(r, 1500));
+    }
+    bulkGSCProgress.running = false;
+    bulkGSCProgress.current = '';
+    smartAlert('info', '📋 Bulk GSC เสร็จ: สำเร็จ ' + bulkGSCProgress.success + ' / ล้มเหลว ' + bulkGSCProgress.failed);
+  })().catch(e => { bulkGSCProgress.running = false; console.log('[BulkGSC] error:', e.message); });
+
+  return { ok: true, message: 'เริ่มเพิ่ม ' + domains.length + ' โดเมน' };
+}
+
+
+
+// ===== ระบบพนักงาน AI 11 คน =====
+// เฟสแรก: โครงสร้าง + activity tracking (ยังไม่ต่อ Claude API)
+// หลักการ: งานดู/วิเคราะห์ = อัตโนมัติ | งานแก้บนโฮส = ต้องอนุมัติจากเจ้าของ
+
+const EMPLOYEES = [
+  { id: 'ceo',          name: 'CEO',            emoji: '👔', dept: 'บริหาร',      role: 'ดูภาพรวมระบบ + สรุป report ส่งเจ้าของ', canActOnHost: false },
+  { id: 'manager',      name: 'Manager',        emoji: '📋', dept: 'บริหาร',      role: 'รับเรื่องจาก CEO มาแตกเป็นงานย่อย',     canActOnHost: false },
+  { id: 'diagnostician',name: 'Diagnostician',  emoji: '🔬', dept: 'แก้ปัญหา',    role: 'วินิจฉัยปัญหา หาสาเหตุและวิธีแก้',       canActOnHost: false },
+  { id: 'engineer',     name: 'Engineer',       emoji: '🔧', dept: 'แก้ปัญหา',    role: 'ลงมือแก้ปัญหาบนระบบ',                  canActOnHost: true },
+  { id: 'safety',       name: 'Safety Reviewer',emoji: '🛡️', dept: 'แก้ปัญหา',    role: 'ตรวจผลกระทบก่อนแก้ ป้องกันโฮสเสียหาย',  canActOnHost: false },
+  { id: 'janitor',      name: 'Janitor',        emoji: '🧹', dept: 'เฉพาะทาง',    role: 'ทำความสะอาดระบบ ลบ log/cache เก่า',     canActOnHost: true },
+  { id: 'security',     name: 'Security Guard', emoji: '👮', dept: 'เฉพาะทาง',    role: 'ตรวจความเสี่ยง + เฝ้า traffic drop',     canActOnHost: false },
+  { id: 'seo',          name: 'SEO Strategist', emoji: '📈', dept: 'เฉพาะทาง',    role: 'วิเคราะห์ + เสนอแนวทางพัฒนาโดเมน',       canActOnHost: false },
+  { id: 'onboarder',    name: 'Onboarder',      emoji: '📦', dept: 'เฉพาะทาง',    role: 'จัดการโดเมนใหม่ ตั้งค่าเริ่มต้น',         canActOnHost: true },
+  { id: 'coordinator',  name: 'Coordinator',    emoji: '🎯', dept: 'สนับสนุน',    role: 'จัดคิวงาน กระจายงาน เก็บสถิติพนักงาน',   canActOnHost: false },
+  { id: 'analyst',      name: 'Analyst',        emoji: '📊', dept: 'สนับสนุน',    role: 'วิเคราะห์คุณค่า-ต้นทุน โดเมน/server',     canActOnHost: false }
+];
+
+// สถานะพนักงาน (in-memory + persist /tmp)
+const EMP_STATE_FILE = '/tmp/domainintel-employees.json';
+let employeeState = {};
+let employeeActivity = []; // log งานที่พนักงานทำ (ล่าสุด 300)
+const MAX_EMP_ACTIVITY = 300;
+
+function loadEmployeeState() {
+  try {
+    const saved = JSON.parse(fs.readFileSync(EMP_STATE_FILE, 'utf8'));
+    employeeState = saved.state || {};
+    employeeActivity = saved.activity || [];
+  } catch { employeeState = {}; employeeActivity = []; }
+  // init ค่าเริ่มต้นให้ครบทุกคน
+  EMPLOYEES.forEach(e => {
+    if (!employeeState[e.id]) {
+      employeeState[e.id] = { status: 'idle', lastTask: null, lastActiveAt: null, tasksToday: 0, tasksTotal: 0 };
+    }
+  });
+}
+function saveEmployeeState() {
+  try { fs.writeFileSync(EMP_STATE_FILE, JSON.stringify({ state: employeeState, activity: employeeActivity })); } catch(e) {}
+}
+
+// บันทึกว่าพนักงานทำงาน
+function empLog(empId, action, detail, meta) {
+  const emp = EMPLOYEES.find(e => e.id === empId);
+  if (!emp) return;
+  const entry = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    empId, empName: emp.name, emoji: emp.emoji,
+    action, detail: detail || '',
+    meta: meta || {},
+    at: new Date().toISOString()
+  };
+  employeeActivity.unshift(entry);
+  if (employeeActivity.length > MAX_EMP_ACTIVITY) employeeActivity.pop();
+
+  // อัพเดทสถานะ
+  const st = employeeState[empId];
+  if (st) {
+    st.lastTask = action;
+    st.lastActiveAt = entry.at;
+    st.tasksToday = (st.tasksToday || 0) + 1;
+    st.tasksTotal = (st.tasksTotal || 0) + 1;
+  }
+  saveEmployeeState();
+  return entry;
+}
+
+// reset tasksToday ทุกเที่ยงคืน
+function resetEmployeeDailyStats() {
+  Object.values(employeeState).forEach(st => { st.tasksToday = 0; });
+  saveEmployeeState();
+}
+
+// ===== APPROVAL QUEUE (งานที่ต้องขออนุมัติจากเจ้าของ) =====
+const APPROVAL_FILE = '/tmp/domainintel-approvals.json';
+let approvalQueue = [];
+
+function loadApprovals() {
+  try { approvalQueue = JSON.parse(fs.readFileSync(APPROVAL_FILE, 'utf8')); }
+  catch { approvalQueue = []; }
+}
+function saveApprovals() {
+  try { fs.writeFileSync(APPROVAL_FILE, JSON.stringify(approvalQueue)); } catch(e) {}
+}
+
+// พนักงานขออนุมัติ (สำหรับงานแก้บนโฮส)
+function requestApproval(empId, title, description, action, meta) {
+  const emp = EMPLOYEES.find(e => e.id === empId);
+  const req = {
+    id: 'apr_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+    empId, empName: emp ? emp.name : empId, emoji: emp ? emp.emoji : '🤖',
+    title, description: description || '',
+    action: action || '', // action key ที่จะทำถ้าอนุมัติ
+    meta: meta || {},
+    status: 'pending', // pending | approved | rejected
+    createdAt: new Date().toISOString(),
+    decidedAt: null
+  };
+  approvalQueue.unshift(req);
+  saveApprovals();
+  empLog(empId, 'ขออนุมัติ', title, { approvalId: req.id });
+  // แจ้งเจ้าของผ่าน Telegram
+  try { smartAlert('warning', '🔔 รออนุมัติ: ' + (emp ? emp.name : empId) + ' ขอ "' + title + '"', 'approval:' + req.id); } catch(e) {}
+  return req;
+}
+
+
+// ===== เฟส 2: สมอง AI (Claude API) =====
+// เรียก Claude ให้พนักงานวิเคราะห์/คิด — เฉพาะงาน "ดู/วิเคราะห์" ปลอดภัย ไม่แตะโฮส
+// ต้องตั้ง ANTHROPIC_API_KEY ใน Railway env
+
+async function callClaude(systemPrompt, userPrompt, maxTokens) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return { ok: false, error: 'ยังไม่ได้ตั้ง ANTHROPIC_API_KEY' };
+
+  const body = JSON.stringify({
+    model: 'claude-haiku-4-5-20251001', // ใช้ Haiku ประหยัด เหมาะงานวิเคราะห์
+    max_tokens: maxTokens || 1024,
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userPrompt }]
+  });
+
+  return new Promise(resolve => {
+    const req = https.request({
+      hostname: 'api.anthropic.com',
+      path: '/v1/messages',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'Content-Length': Buffer.byteLength(body)
+      }
+    }, res => {
+      let d = ''; res.on('data', ch => d += ch);
+      res.on('end', () => {
+        try {
+          const r = JSON.parse(d);
+          if (r.content && r.content[0] && r.content[0].text) {
+            resolve({ ok: true, text: r.content[0].text, usage: r.usage });
+          } else {
+            resolve({ ok: false, error: (r.error && r.error.message) || 'no content' });
+          }
+        } catch(e) { resolve({ ok: false, error: 'parse error: ' + d.slice(0,100) }); }
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.write(body); req.end();
+  });
+}
+
+// เก็บผลงานวิเคราะห์ของพนักงาน (รายงานล่าสุด)
+const EMP_REPORTS_FILE = '/tmp/domainintel-reports.json';
+let employeeReports = {}; // { empId: { text, at, ... } }
+
+function loadReports() {
+  try { employeeReports = JSON.parse(fs.readFileSync(EMP_REPORTS_FILE, 'utf8')); }
+  catch { employeeReports = {}; }
+}
+function saveReports() {
+  try { fs.writeFileSync(EMP_REPORTS_FILE, JSON.stringify(employeeReports)); } catch(e) {}
+}
+
+// รวบรวมข้อมูลระบบให้พนักงานวิเคราะห์
+function gatherSystemSnapshot() {
+  const up = memoryDomains.filter(d => d.status === 'up').length;
+  const down = memoryDomains.filter(d => d.status === 'down').length;
+  const total = memoryDomains.length;
+  const sslExpiringSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0).length;
+  const domainExpiringSoon = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0).length;
+  const inGSC = memoryDomains.filter(d => d.gsc && d.gsc.inGSC).length;
+
+  // top traffic
+  const topTraffic = memoryDomains
+    .filter(d => d.gsc && d.gsc.d30 && d.gsc.d30.clicks > 0)
+    .sort((a,b) => (b.gsc.d30.clicks||0) - (a.gsc.d30.clicks||0))
+    .slice(0, 10)
+    .map(d => ({ domain: d.domain, clicks: d.gsc.d30.clicks, impressions: d.gsc.d30.impressions }));
+
+  // health scores (ห่อ try-catch กัน throw ทำให้ snapshot พัง)
+  let health = [];
+  try {
+    if (typeof getAllHealthScores === 'function') health = getAllHealthScores() || [];
+  } catch(e) { console.log('[Snapshot] health error:', e.message); }
+
+  return {
+    timestamp: new Date().toISOString(),
+    domains: { total, up, down, inGSC },
+    alerts: { sslExpiringSoon, domainExpiringSoon },
+    topTraffic,
+    serverHealth: health.map(h => ({ server: h.server, score: h.score, grade: h.grade, up: h.up, down: h.down }))
+  };
+}
+
+// ===== งานวิเคราะห์ของพนักงานแต่ละคน =====
+const EMP_BRAINS = {
+  ceo: {
+    system: 'คุณคือ CEO ของบริษัทจัดการโดเมนและเซิร์ฟเวอร์ มีหน้าที่สรุปภาพรวมให้เจ้าของบริษัทเข้าใจง่ายใน 3-5 บรรทัด ใช้ภาษาไทย กระชับ ชี้จุดที่ควรสนใจ ถ้าทุกอย่างปกติก็บอกว่าปกติ',
+    prompt: (snap) => 'สรุปสถานะบริษัทวันนี้ให้เจ้าของฟัง:\n' + JSON.stringify(snap, null, 2)
+  },
+  analyst: {
+    system: 'คุณคือนักวิเคราะห์ข้อมูล วิเคราะห์คุณค่า-ต้นทุนของโดเมนและ server เป็นภาษาไทย ชี้ว่าโดเมนไหนคุ้ม โดเมนไหนควรพิจารณา server ไหนใกล้เต็ม ตอบกระชับเป็นข้อๆ',
+    prompt: (snap) => 'วิเคราะห์ข้อมูลนี้ หาจุดที่ควรปรับปรุง:\n' + JSON.stringify(snap, null, 2)
+  },
+  seo: {
+    system: 'คุณคือผู้เชี่ยวชาญ SEO วิเคราะห์โอกาสเพิ่ม traffic ของโดเมน เป็นภาษาไทย เสนอแนวทางที่ทำได้จริง เช่น โดเมนที่ impression สูงแต่ CTR ต่ำควรปรับ title ตอบเป็นข้อๆ',
+    prompt: (snap) => 'หาโอกาสพัฒนา SEO จากข้อมูลนี้:\n' + JSON.stringify(snap, null, 2)
+  },
+  security: {
+    system: 'คุณคือเจ้าหน้าที่ความปลอดภัย ประเมินความเสี่ยงของระบบ เป็นภาษาไทย ชี้โดเมนที่เสี่ยง (SSL ใกล้หมด โดเมนใกล้หมดอายุ down) จัดลำดับความเร่งด่วน ตอบกระชับ',
+    prompt: (snap) => 'ประเมินความเสี่ยงด้านความปลอดภัยจากข้อมูลนี้:\n' + JSON.stringify(snap, null, 2)
+  }
+};
+
+async function runEmployeeBrain(empId) {
+  const brain = EMP_BRAINS[empId];
+  if (!brain) return { ok: false, error: 'พนักงานคนนี้ยังไม่มีสมอง AI' };
+
+  const snap = gatherSystemSnapshot();
+  const result = await callClaude(brain.system, brain.prompt(snap), 1024);
+
+  if (result.ok) {
+    employeeReports[empId] = {
+      text: result.text,
+      at: new Date().toISOString(),
+      usage: result.usage || null
+    };
+    saveReports();
+    empLog(empId, 'วิเคราะห์ด้วย AI', 'สร้างรายงานใหม่', { aiGenerated: true });
+  }
+  return result;
+}
+
+
+// ===== เฟส 3: ทะเบียน Action ที่ปลอดภัย =====
+// พนักงานเสนอได้เฉพาะที่นี่ — ทุกตัวผ่านการ test แล้วและไม่ทำลายโฮส
+const SAFE_ACTIONS = {
+  'disk-cleanup': {
+    label: 'ทำความสะอาด disk ทุก server',
+    desc: 'ลบ log เก่า, cache, session เก่า — ไม่แตะข้อมูลโดเมน',
+    emp: 'janitor',
+    run: async () => {
+      if (typeof runManualDiskCleanup === 'function') {
+        const results = await runManualDiskCleanup();
+        return { ok: true, detail: 'cleanup ' + results.filter(r=>r.ok).length + '/' + results.length + ' servers' };
+      }
+      return { ok: false, detail: 'function ไม่พร้อม' };
+    }
+  },
+  'phpfpm-ondemand': {
+    label: 'ปรับ PHP-FPM เป็น ondemand',
+    desc: 'ลด memory โดยให้ PHP-FPM ทำงานเมื่อมีคนเข้าเท่านั้น',
+    emp: 'engineer',
+    run: async () => {
+      if (typeof applyAllPhpFpmOndemand === 'function') {
+        await applyAllPhpFpmOndemand();
+        return { ok: true, detail: 'ปรับ PHP-FPM ondemand แล้ว' };
+      }
+      return { ok: false, detail: 'function ไม่พร้อม' };
+    }
+  },
+  'fix-down-domain': {
+    label: 'Auto-heal โดเมนที่ down',
+    desc: 'พยายามกู้โดเมนที่ down (unsuspend, restart service)',
+    emp: 'engineer',
+    run: async (meta) => {
+      const domain = meta && meta.domain;
+      if (!domain) return { ok: false, detail: 'ไม่ระบุโดเมน' };
+      const norm = String(domain).toLowerCase().trim().replace(/^https?:\/\//,'').replace(/\/$/,'');
+      const d = memoryDomains.find(x => (x.domain||'').toLowerCase() === norm);
+      if (!d) return { ok: false, detail: 'ไม่พบโดเมน "' + domain + '" ในระบบ (อาจถูกลบไปแล้ว)' };
+      if (d.status !== 'down') return { ok: true, detail: domain + ' กลับมา up แล้ว ไม่ต้องกู้' };
+      if (typeof autoFix === 'function') {
+        await autoFix(d, 'down');
+        return { ok: true, detail: 'พยายามกู้ ' + domain + ' แล้ว' };
+      }
+      return { ok: false, detail: 'function ไม่พร้อม' };
+    }
+  }
+};
+
+// รัน action หลังได้รับอนุมัติ
+async function executeApprovedAction(approval) {
+  const action = SAFE_ACTIONS[approval.action];
+  if (!action) {
+    empLog(approval.empId, 'รัน action ไม่ได้', 'ไม่รู้จัก action: ' + approval.action);
+    return { ok: false, detail: 'ไม่รู้จัก action นี้' };
+  }
+  try {
+    empLog(action.emp, 'เริ่มทำงาน (อนุมัติแล้ว)', action.label, { approvalId: approval.id });
+    const result = await action.run(approval.meta || {});
+    empLog(action.emp, result.ok ? 'ทำงานสำเร็จ' : 'ทำงานล้มเหลว', result.detail, { approvalId: approval.id });
+    logEvent(result.ok ? 'fix' : 'warning', '[' + action.emp + '] ' + action.label + ': ' + result.detail);
+    smartAlert('info', '🤖 ' + action.label + ' — ' + (result.ok ? 'สำเร็จ' : 'ล้มเหลว') + '\n' + result.detail);
+    return result;
+  } catch(e) {
+    empLog(action.emp, 'ทำงานผิดพลาด', e.message, { approvalId: approval.id });
+    return { ok: false, detail: e.message };
+  }
+}
+
+// พนักงาน AI เสนองาน (Diagnostician วิเคราะห์แล้วเสนอ)
+// เฉพาะเมื่อมี API key — ใช้ Claude ตัดสินใจว่าควรเสนออะไร
+async function proposeActionsFromAnalysis() {
+  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'ไม่มี API key' };
+
+  const snap = gatherSystemSnapshot();
+  // ให้ Diagnostician ดูว่ามีปัญหาอะไรที่ควรเสนอแก้
+  const proposals = [];
+
+  // ตรวจ disk เต็มจาก health (เสนอ cleanup)
+  const highDisk = (snap.serverHealth||[]).filter(h => h.score < 70);
+  if (highDisk.length > 0) {
+    proposals.push({ action: 'disk-cleanup', reason: 'มี ' + highDisk.length + ' server สุขภาพต่ำกว่า 70 คะแนน' });
+  }
+
+  // ตรวจโดเมน down (เสนอ auto-heal)
+  if (snap.domains.down > 0 && snap.domains.down <= 10) {
+    const downDomains = memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc')).slice(0, 5);
+    downDomains.forEach(d => {
+      proposals.push({ action: 'fix-down-domain', reason: 'โดเมน down', meta: { domain: d.domain } });
     });
   }
-  h+='<button class="btn btn-green" onclick="vaultSave()" style="justify-content:center;padding:12px 24px;font-size:14px"><i class="ti ti-device-floppy"></i> บันทึก (เข้ารหัสทั้งหมด)</button>';
-  h+='<div style="font-size:11px;color:var(--text3,#888);margin-top:8px">ข้อความและไฟล์จะถูกเข้ารหัสเมื่อกด "บันทึก" · ไฟล์ต่ออันไม่เกิน 3MB</div>';
-  body.innerHTML=h;
+
+  // สร้าง approval request สำหรับแต่ละข้อเสนอ (ไม่ซ้ำกับที่ pending อยู่)
+  let created = 0;
+  for (const p of proposals) {
+    const act = SAFE_ACTIONS[p.action];
+    if (!act) continue;
+    const dupe = approvalQueue.find(a => a.status === 'pending' && a.action === p.action &&
+      JSON.stringify(a.meta||{}) === JSON.stringify(p.meta||{}));
+    if (dupe) continue;
+    requestApproval(act.emp, act.label, act.desc + ' — เหตุผล: ' + p.reason, p.action, p.meta || {});
+    created++;
+  }
+  if (created > 0) empLog('diagnostician', 'เสนองานแก้ปัญหา', created + ' รายการ รออนุมัติ');
+  return { ok: true, created };
 }
-function vaultAttachFile(i, input){
-  var f=input.files&&input.files[0]; if(!f) return;
-  if(f.size>3*1024*1024){ if(typeof toast==='function')toast('ไฟล์ใหญ่เกิน 3MB','error'); input.value=''; return; }
-  var reader=new FileReader();
-  reader.onload=function(){
-    var b64=String(reader.result).split(',')[1]||'';
-    window._vaultItems[i].file={name:f.name,type:f.type||'',data:b64};
-    vaultRenderItems();
-    if(typeof toast==='function')toast('แนบไฟล์แล้ว — อย่าลืมกดบันทึก','info');
+
+
+// ===== งานที่พนักงานกดรันได้เดี๋ยวนี้ (real-time) =====
+// ประเภท: 'view' = ดูข้อมูล (รันเลย ไม่เรียก API ฟรี) | 'ai' = วิเคราะห์ (เรียก Claude) | 'host' = แก้โฮส (ขออนุมัติ)
+const EMPLOYEE_TASKS = {
+  ceo: [
+    { id: 'ceo-overview', type: 'view', label: 'ดูภาพรวมระบบ', run: () => {
+        const s = gatherSystemSnapshot();
+        return { summary: 'โดเมน ' + s.domains.total + ' (up ' + s.domains.up + '/down ' + s.domains.down + ') · SSL ใกล้หมด ' + s.alerts.sslExpiringSoon };
+      }},
+    { id: 'ceo-report', type: 'ai', label: 'เขียนรายงานสรุป (AI)', run: () => runEmployeeBrain('ceo') }
+  ],
+  manager: [
+    { id: 'mgr-pending', type: 'view', label: 'ดูงานที่ค้างอยู่', run: () => {
+        const pending = approvalQueue.filter(a => a.status === 'pending').length;
+        const tasks = memoryTasks.filter(t => t.status !== 'done').length;
+        return { summary: 'งานรออนุมัติ ' + pending + ' · งานในบอร์ด ' + tasks };
+      }}
+  ],
+  diagnostician: [
+    { id: 'diag-scan', type: 'view', label: 'สแกนหาปัญหา', run: () => {
+        const down = memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc')).length;
+        const sslSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0).length;
+        return { summary: 'พบโดเมน down ' + down + ' · SSL ใกล้หมด ' + sslSoon, issues: down + sslSoon };
+      }},
+    { id: 'diag-propose', type: 'host', label: 'เสนองานแก้ปัญหา', run: () => proposeActionsFromAnalysis() }
+  ],
+  engineer: [
+    { id: 'eng-disk', type: 'host', label: 'ขอทำความสะอาด disk', run: () => {
+        const act = SAFE_ACTIONS['disk-cleanup'];
+        requestApproval('engineer', act.label, act.desc, 'disk-cleanup', {});
+        return { summary: 'ส่งขออนุมัติแล้ว' };
+      }},
+    { id: 'eng-phpfpm', type: 'host', label: 'ขอปรับ PHP-FPM', run: () => {
+        const act = SAFE_ACTIONS['phpfpm-ondemand'];
+        requestApproval('engineer', act.label, act.desc, 'phpfpm-ondemand', {});
+        return { summary: 'ส่งขออนุมัติแล้ว' };
+      }}
+  ],
+  safety: [
+    { id: 'safety-check', type: 'view', label: 'ตรวจความปลอดภัยระบบ', run: () => {
+        const health = (typeof getAllHealthScores === 'function') ? getAllHealthScores() : [];
+        const low = health.filter(h => h.score < 70).length;
+        return { summary: 'Server สุขภาพต่ำกว่า 70: ' + low + '/' + health.length };
+      }}
+  ],
+  janitor: [
+    { id: 'jan-status', type: 'view', label: 'ดูสถานะ disk', run: () => {
+        return { summary: 'พร้อมทำความสะอาด — กดเสนองานเพื่อ cleanup' };
+      }},
+    { id: 'jan-cleanup', type: 'host', label: 'ขอทำความสะอาด', run: () => {
+        const act = SAFE_ACTIONS['disk-cleanup'];
+        requestApproval('janitor', act.label, act.desc, 'disk-cleanup', {});
+        return { summary: 'ส่งขออนุมัติแล้ว' };
+      }}
+  ],
+  security: [
+    { id: 'sec-risk', type: 'view', label: 'ประเมินความเสี่ยง', run: () => {
+        const expiring = memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 30 && d.daysLeft > 0).length;
+        const sslSoon = memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 14 && d.sslDaysLeft > 0).length;
+        return { summary: 'โดเมนใกล้หมดอายุ ' + expiring + ' · SSL ใกล้หมด ' + sslSoon };
+      }},
+    { id: 'sec-analyze', type: 'ai', label: 'วิเคราะห์ความเสี่ยง (AI)', run: () => runEmployeeBrain('security') }
+  ],
+  seo: [
+    { id: 'seo-opportunity', type: 'view', label: 'หาโอกาส SEO', run: () => {
+        const opp = memoryDomains.filter(d => d.gsc && d.gsc.d30 && d.gsc.d30.impressions >= 100 &&
+          d.gsc.d30.clicks > 0 && (d.gsc.d30.clicks / d.gsc.d30.impressions) < 0.02).length;
+        return { summary: 'พบ ' + opp + ' โดเมนที่ impression สูงแต่ CTR ต่ำ (โอกาสปรับ)' };
+      }},
+    { id: 'seo-analyze', type: 'ai', label: 'วิเคราะห์ SEO (AI)', run: () => runEmployeeBrain('seo') }
+  ],
+  onboarder: [
+    { id: 'onb-new', type: 'view', label: 'ดูโดเมนใหม่ที่ยังไม่ตั้งค่า', run: () => {
+        const notInGSC = memoryDomains.filter(d => !(d.gsc && d.gsc.inGSC)).length;
+        return { summary: 'โดเมนที่ยังไม่อยู่ใน GSC: ' + notInGSC + ' (เพิ่มได้ที่ Traffic & GSC)' };
+      }}
+  ],
+  coordinator: [
+    { id: 'coord-stats', type: 'view', label: 'ดูสถิติพนักงาน', run: () => {
+        const total = Object.values(employeeState).reduce((s,st)=>s+(st.tasksToday||0),0);
+        const busiest = Object.entries(employeeState).sort((a,b)=>(b[1].tasksToday||0)-(a[1].tasksToday||0))[0];
+        const busiestName = busiest ? (EMPLOYEES.find(e=>e.id===busiest[0])||{}).name : '-';
+        return { summary: 'งานวันนี้รวม ' + total + ' · ขยันสุด: ' + busiestName };
+      }}
+  ],
+  analyst: [
+    { id: 'ana-value', type: 'view', label: 'วิเคราะห์คุณค่าโดเมน', run: () => {
+        const ghost = memoryDomains.filter(d => d.gsc && d.gsc.inGSC && d.gsc.d30 && d.gsc.d30.clicks === 0).length;
+        const hot = memoryDomains.filter(d => d.gsc && d.gsc.d30 && d.gsc.d30.clicks >= 100).length;
+        return { summary: 'โดเมนทำเงิน (100+ clicks): ' + hot + ' · โดเมนเงียบ (0 clicks): ' + ghost };
+      }},
+    { id: 'ana-analyze', type: 'ai', label: 'วิเคราะห์เชิงลึก (AI)', run: () => runEmployeeBrain('analyst') }
+  ]
+};
+
+// รันงานของพนักงาน
+async function runEmployeeTask(empId, taskId) {
+  const tasks = EMPLOYEE_TASKS[empId];
+  if (!tasks) return { ok: false, error: 'ไม่พบพนักงาน' };
+  const task = tasks.find(t => t.id === taskId);
+  if (!task) return { ok: false, error: 'ไม่พบงาน' };
+
+  // งาน AI ต้องมี key
+  if (task.type === 'ai' && !process.env.ANTHROPIC_API_KEY) {
+    return { ok: false, error: 'งานนี้ต้องใช้ AI — ยังไม่ได้ตั้ง ANTHROPIC_API_KEY' };
+  }
+
+  try {
+    empLog(empId, task.label, task.type === 'view' ? 'ดูข้อมูล' : task.type === 'ai' ? 'วิเคราะห์ด้วย AI' : 'เสนองาน');
+    const result = await task.run();
+    return { ok: true, type: task.type, label: task.label, result };
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+
+// ===== ระบบแก้ปัญหาอัตโนมัติ (เฉพาะงานปลอดภัย) =====
+// หลักการ: ปัญหาปลอดภัย (disk เต็ม, โดเมน down) → แก้เองเลย
+//          ปัญหาเสี่ยง → ขออนุมัติ
+let autoFixEnabled = true; // เปิด/ปิดได้
+const autoFixHistory = []; // เก็บประวัติการแก้อัตโนมัติ
+const MAX_AUTOFIX_HISTORY = 200;
+
+// ตั้งสถานะ "กำลังทำงาน" ให้พนักงาน (ค้างไว้ตามเวลาที่กำหนด)
+function setEmployeeWorking(empId, taskLabel, durationMs) {
+  const st = employeeState[empId];
+  if (!st) return;
+  st.status = 'working';
+  st.currentTask = taskLabel;
+  st.workingSince = new Date().toISOString();
+  saveEmployeeState();
+  // กลับเป็น idle หลังเสร็จ
+  setTimeout(() => {
+    if (st.status === 'working' && st.currentTask === taskLabel) {
+      st.status = 'idle';
+      st.currentTask = null;
+      saveEmployeeState();
+    }
+  }, durationMs || 8000);
+}
+
+function logAutoFix(empId, problem, action, result) {
+  const emp = EMPLOYEES.find(e => e.id === empId);
+  const entry = {
+    id: Date.now() + '-' + Math.random().toString(36).slice(2,6),
+    empId, empName: emp ? emp.name : empId, emoji: emp ? emp.emoji : '🤖',
+    problem, action, result: result.ok ? 'สำเร็จ' : 'ล้มเหลว', detail: result.detail || '',
+    at: new Date().toISOString()
   };
-  reader.readAsDataURL(f);
+  autoFixHistory.unshift(entry);
+  if (autoFixHistory.length > MAX_AUTOFIX_HISTORY) autoFixHistory.pop();
+  return entry;
 }
-function vaultRemoveFile(i){ if(confirm('เอาไฟล์ออก?')){ window._vaultItems[i].file=null; vaultRenderItems(); } }
-function vaultDownloadFile(i){
-  var it=window._vaultItems[i]; if(!it.file||!it.file.data) return;
-  var bin=atob(it.file.data); var arr=new Uint8Array(bin.length);
-  for(var k=0;k<bin.length;k++) arr[k]=bin.charCodeAt(k);
-  var blob=new Blob([arr],{type:it.file.type||'application/octet-stream'});
-  var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=it.file.name||'file';
-  document.body.appendChild(a); a.click(); setTimeout(function(){URL.revokeObjectURL(a.href);a.remove();},1000);
+
+// สแกนปัญหา + แก้อัตโนมัติ (เฉพาะปลอดภัย)
+async function runAutoFixCycle() {
+  if (!autoFixEnabled) return { ok: false, reason: 'auto-fix ปิดอยู่' };
+
+  try {
+    const snap = gatherSystemSnapshot();
+    const fixed = [];
+
+    // 1. โดเมน down → Engineer auto-heal (ปลอดภัย: ใช้ autoFix เดิม)
+    const downDomains = memoryDomains.filter(d =>
+      d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer
+      && !isAutoHealDisabled(d.pleskServer) && !isAutoHealDisabled(d.pleskHost)
+    ).slice(0, 10); // ทีละไม่เกิน 10 (ข้ามเครื่องที่ปิด auto-heal ไว้)
+
+    if (downDomains.length > 0) {
+      setEmployeeWorking('engineer', 'กู้โดเมน down ' + downDomains.length + ' โดเมน', 30000);
+      for (const d of downDomains) {
+        try {
+          if (typeof autoFix === 'function') {
+            await autoFix(d, 'down');
+            const entry = logAutoFix('engineer', 'โดเมน ' + d.domain + ' down', 'auto-heal', { ok: true, detail: 'พยายามกู้แล้ว' });
+            empLog('engineer', 'แก้อัตโนมัติ: กู้โดเมน', d.domain);
+            fixed.push(entry);
+          }
+        } catch(e) {}
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    // 2. Server สุขภาพต่ำ (disk อาจเต็ม) → Janitor cleanup อัตโนมัติ
+    const lowHealth = (snap.serverHealth||[]).filter(h => h.score < 60);
+    if (lowHealth.length > 0 && typeof runManualDiskCleanup === 'function') {
+      setEmployeeWorking('janitor', 'ทำความสะอาด ' + lowHealth.length + ' server', 60000);
+      try {
+        const results = await runManualDiskCleanup();
+        const okCount = (results||[]).filter(r => r.ok).length;
+        const entry = logAutoFix('janitor', 'มี ' + lowHealth.length + ' server สุขภาพต่ำ', 'disk cleanup', { ok: true, detail: 'cleanup ' + okCount + ' servers' });
+        empLog('janitor', 'แก้อัตโนมัติ: ทำความสะอาด', okCount + ' servers');
+        fixed.push(entry);
+      } catch(e) { console.log('[AutoFix] cleanup error:', e.message); }
+    }
+
+    if (fixed.length > 0) {
+      logEvent('fix', 'Auto-fix แก้ปัญหา ' + fixed.length + ' รายการ', { count: fixed.length });
+      smartAlert('info', '🤖 Auto-fix ทำงาน: แก้ปัญหา ' + fixed.length + ' รายการอัตโนมัติ');
+    }
+    return { ok: true, fixed: fixed.length, details: fixed };
+  } catch(e) {
+    console.log('[AutoFix] error:', e.message);
+    return { ok: false, error: 'เกิดข้อผิดพลาด: ' + e.message };
+  }
 }
-function vaultAddItem(){ window._vaultItems.push({id:Date.now()+''+Math.floor(Math.random()*1000),title:'',content:''}); vaultRenderItems(); }
-function vaultDeleteItem(i){ if(confirm('ลบรายการนี้?')){ window._vaultItems.splice(i,1); vaultRenderItems(); } }
-async function vaultSave(){
-  if(!window._vaultPass){ vaultRender(); return; }
-  try{
-    var r=await fetch(API+'/api/vault/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:window._vaultPass,items:window._vaultItems})});
-    var d=await r.json();
-    if(!d.success){ if(typeof toast==='function')toast('บันทึกไม่ได้: '+(d.error||'?'),'error'); return; }
-    if(typeof toast==='function')toast('บันทึกแล้ว (เข้ารหัส '+d.count+' รายการ)','success');
-  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+
+
+// ===== ศูนย์บัญชาการ: รวมสถานะทุกอย่าง จัดหมวด เรียงความเร่งด่วน =====
+function buildCommandCenter() {
+  // 1. ปัญหาเร่งด่วน (เรียงตามความรุนแรง)
+  const problems = [];
+  memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer).slice(0,30).forEach(d => {
+    problems.push({ severity: 'high', emoji: '🔴', cat: 'โดเมนล่ม', title: d.domain, detail: 'Server: ' + (d.pleskServer||'-'), action: 'fix-down-domain', meta: { domain: d.domain }, canFix: true });
+  });
+  let health = [];
+  try { health = getAllHealthScores() || []; } catch(e) {}
+  health.filter(h => h.score < 70).forEach(h => {
+    problems.push({ severity: h.score < 50 ? 'high' : 'medium', emoji: '⚠️', cat: 'Server สุขภาพต่ำ', title: h.server + ' (เกรด ' + h.grade + ')', detail: 'คะแนน ' + h.score + '/100 · down ' + h.down + ' · ตอบสนอง ' + h.avgResponseTime + 'ms', action: 'disk-cleanup', meta: {}, canFix: true });
+  });
+  memoryDomains.filter(d => d.sslDaysLeft !== null && d.sslDaysLeft <= 7 && d.sslDaysLeft > 0).slice(0,20).forEach(d => {
+    problems.push({ severity: 'high', emoji: '🔒', cat: 'SSL ใกล้หมด', title: d.domain, detail: 'เหลือ ' + d.sslDaysLeft + ' วัน', action: null, canFix: false });
+  });
+  memoryDomains.filter(d => d.daysLeft !== null && d.daysLeft <= 7 && d.daysLeft > 0).slice(0,20).forEach(d => {
+    problems.push({ severity: 'high', emoji: '📅', cat: 'โดเมนใกล้หมดอายุ', title: d.domain, detail: 'เหลือ ' + d.daysLeft + ' วัน', action: null, canFix: false });
+  });
+  problems.sort((a,b) => ({high:0,medium:1,low:2}[a.severity]) - ({high:0,medium:1,low:2}[b.severity]));
+
+  // 2. สรุปตัวเลขรวม
+  const summary = {
+    totalDomains: memoryDomains.length,
+    up: memoryDomains.filter(d => d.status === 'up').length,
+    down: memoryDomains.filter(d => d.status === 'down' && !(d.tags||[]).includes('gsc') && d.pleskServer).length,
+    inGSC: memoryDomains.filter(d => d.gsc && d.gsc.inGSC).length,
+    highPriority: problems.filter(p => p.severity === 'high').length,
+    pendingApprovals: approvalQueue.filter(a => a.status === 'pending').length
+  };
+
+  // 3. สุขภาพ server เรียงจากแย่ไปดี
+  const serverHealth = health.slice().sort((a,b) => a.score - b.score);
+
+  // 4. พนักงานที่กำลังทำงาน + งานล่าสุด
+  const working = EMPLOYEES.filter(e => (employeeState[e.id]||{}).status === 'working')
+    .map(e => ({ name: e.name, emoji: e.emoji, task: employeeState[e.id].currentTask }));
+
+  // 5. CEO report ล่าสุด
+  const ceoReport = employeeReports['ceo'] || null;
+
+  // 6. auto-fix ล่าสุด
+  const recentFixes = (typeof autoFixHistory !== 'undefined' ? autoFixHistory : []).slice(0, 5);
+
+  return { summary, problems: problems.slice(0, 50), serverHealth, working, ceoReport, recentFixes,
+    pendingApprovals: approvalQueue.filter(a => a.status === 'pending').slice(0, 10) };
 }
-async function vaultChangePass(){
-  var oldp=prompt('รหัสเดิม:'); if(!oldp) return;
-  var newp=prompt('รหัสใหม่ (6+ ตัว):'); if(!newp) return;
-  if(newp.length<6){ if(typeof toast==='function')toast('รหัสใหม่สั้นเกิน','error'); return; }
-  try{
-    var r=await fetch(API+'/api/vault/change-pass',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({oldPassphrase:oldp,newPassphrase:newp})});
-    var d=await r.json();
-    if(!d.success){ if(typeof toast==='function')toast(d.error||'เปลี่ยนไม่ได้','error'); return; }
-    window._vaultPass=newp;
-    if(typeof toast==='function')toast('เปลี่ยนรหัสแล้ว','success');
-  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+
+
+// ===== วินิจฉัย server: ดึงข้อมูลจริง หาสาเหตุ slowness =====
+async function diagnoseServer(srv) {
+  try {
+    // สคริปต์เก็บ metric — ส่งแบบ base64 กัน quote/$ ถูก shell ชั้นกลาง expand ทิ้ง
+    // (ของเดิม TOP5/MYSQL_MEM ใช้ไม่ได้เพราะ $6/$3/$11 โดนกินหมด → awk error)
+    const diagScript = [
+      'echo "=LOAD="; cat /proc/loadavg | cut -d" " -f1-3',
+      'echo "=CPU_CORES="; nproc',
+      'echo "=RAM="; free -m | awk \'/Mem:/{print $2, $3, $4, $7}\'',
+      'echo "=SWAP="; free -m | awk \'/Swap:/{print $2, $3}\'',
+      'echo "=DISK="; df -h / | awk \'NR==2{print $5}\'',
+      'echo "=PHPFPM_COUNT="; ps aux | grep -c "[p]hp-fpm"',
+      'echo "=MYSQL_MEM="; ps aux | grep "[m]ysqld" | awk \'{print int($6/1024)}\' | head -1',
+      'echo "=TOP5="; ps aux --sort=-%cpu | awk \'NR>1 && NR<=6 {printf "%s|%s|%s\\n", $3, $4, $11}\'',
+      'echo "=APACHE_CONN="; ss -tn state established 2>/dev/null | grep -cE ":80|:443"',
+      'echo "=MYSQL_SLOW="; mysql -e "SHOW GLOBAL STATUS LIKE \'Slow_queries\';" 2>/dev/null | tail -1 | awk \'{print $2}\'',
+      'echo "=DONE="'
+    ].join('\n');
+    const cmd = 'echo ' + Buffer.from(diagScript).toString('base64') + ' | base64 -d | sh'
+
+    const cmdId = queueCommand(srv.host, cmd);
+    for (let i = 0; i < 60; i++) {
+      await new Promise(r => setTimeout(r, 1000));
+      if (agentResults[cmdId]) {
+        const res = agentResults[cmdId]; delete agentResults[cmdId];
+        const out = (res.output||'').replace(/~/g,'\n');
+        return parseDiagnostic(srv.name, out);
+      }
+    }
+    return { server: srv.name, ok: false, error: 'timeout (server แน่นมากจนตอบไม่ทัน — ดูข้อมูล LIVE จาก cache แทน)' };
+  } catch(e) { return { server: srv.name, ok: false, error: e.message }; }
 }
-</script>
+
+function parseDiagnostic(serverName, out) {
+  const section = (name) => {
+    const re = new RegExp('=' + name + '=\\s*\\n([\\s\\S]*?)(?:\\n=|$)');
+    const m = out.match(re);
+    return m ? m[1].trim() : '';
+  };
+
+  const load = section('LOAD').split(' ').map(Number);
+  const cores = parseInt(section('CPU_CORES')) || 1;
+  const ramParts = section('RAM').split(' ').map(Number); // total used free available
+  const swapParts = section('SWAP').split(' ').map(Number); // total used
+  const disk = parseInt(section('DISK')) || 0;
+  const phpfpm = parseInt(section('PHPFPM_COUNT')) || 0;
+  const mysqlMem = parseInt(section('MYSQL_MEM')) || 0;
+  const apacheConn = parseInt(section('APACHE_CONN')) || 0;
+  const slowQueries = section('MYSQL_SLOW');
+  const top5 = section('TOP5').split('\n').filter(Boolean).map(line => {
+    const [cpu, mem, command] = line.split('|');
+    return { cpu: parseFloat(cpu)||0, mem: parseFloat(mem)||0, command: (command||'').split('/').pop().slice(0,30) };
+  });
+
+  const load1 = load[0] || 0;
+  const ramTotal = ramParts[0] || 1;
+  const ramUsed = ramParts[1] || 0;
+  const ramAvail = ramParts[3] || 0;
+  const swapTotal = swapParts[0] || 0;
+  const swapUsed = swapParts[1] || 0;
+
+  const loadPerCore = load1 / cores;
+  const ramPct = Math.round(ramUsed / ramTotal * 100);
+  const swapPct = swapTotal ? Math.round(swapUsed / swapTotal * 100) : 0;
+
+  // วิเคราะห์หาสาเหตุ
+  const issues = [];
+  if (loadPerCore > 2) issues.push({ level: 'high', text: 'Load สูงมาก (' + load1.toFixed(1) + ' บน ' + cores + ' core = ' + loadPerCore.toFixed(1) + '/core) — CPU ทำงานหนักเกินไป' });
+  else if (loadPerCore > 1) issues.push({ level: 'medium', text: 'Load ค่อนข้างสูง (' + loadPerCore.toFixed(1) + '/core) — เริ่มแน่น' });
+  if (ramPct > 90) issues.push({ level: 'high', text: 'RAM เกือบเต็ม (' + ramPct + '%) — เหลือว่าง ' + ramAvail + 'MB' });
+  else if (ramPct > 80) issues.push({ level: 'medium', text: 'RAM ใช้เยอะ (' + ramPct + '%)' });
+  if (swapPct > 50 && ramPct > 80) issues.push({ level: 'high', text: 'ใช้ Swap หนัก (' + swapPct + '%) + RAM เต็ม (' + ramPct + '%) — นี่คือสาเหตุหลักที่ทำให้ช้า! RAM ไม่พอเลยต้องใช้ disk แทน' });
+  else if (swapPct > 50 && ramPct <= 60) { /* swap ค้างจาก spike เก่า แต่ RAM ว่าง = ไม่ใช่ปัญหาตอนนี้ ไม่ต้องเตือน */ }
+  else if (swapUsed > 100 && ramPct > 75) issues.push({ level: 'medium', text: 'เริ่มใช้ Swap (' + swapUsed + 'MB) — RAM ใกล้หมด' });
+  if (phpfpm > 100) issues.push({ level: 'high', text: 'PHP-FPM เยอะมาก (' + phpfpm + ' process) — แต่ละตัวกิน RAM, ควรปรับ ondemand' });
+  else if (phpfpm > 50) issues.push({ level: 'medium', text: 'PHP-FPM ค่อนข้างเยอะ (' + phpfpm + ' process)' });
+  if (disk > 90) issues.push({ level: 'high', text: 'Disk เกือบเต็ม (' + disk + '%) — ควร cleanup' });
+  if (mysqlMem > 2048) issues.push({ level: 'medium', text: 'MySQL กิน RAM เยอะ (' + mysqlMem + 'MB)' });
+
+  // แนะนำการแก้ (เฉพาะ safe action ที่มี) — เฉพาะเมื่อมีปัญหา RAM/PHP-FPM จริง ไม่ใช่ swap ค้าง
+  const recommendations = [];
+  if (phpfpm > 80 || (ramPct > 85 && phpfpm > 40) || (swapPct > 50 && ramPct > 80)) recommendations.push({ action: 'phpfpm-ondemand', label: 'ปรับ PHP-FPM ondemand (ลด RAM)', reason: 'PHP-FPM ' + phpfpm + ' process + RAM ' + ramPct + '% — ลด process ที่ค้างกิน RAM' });
+  if (disk > 80) recommendations.push({ action: 'disk-cleanup', label: 'ทำความสะอาด disk', reason: 'disk ' + disk + '% ใกล้เต็ม' });
+
+  return {
+    server: serverName, ok: true,
+    metrics: { load1, loadPerCore: +loadPerCore.toFixed(2), cores, ramPct, ramUsed, ramTotal, ramAvail, swapPct, swapUsed, swapTotal, disk, phpfpm, mysqlMem, apacheConn, slowQueries, top5 },
+    issues, recommendations,
+    verdict: issues.some(i => i.level === 'high') ? 'critical' : issues.length ? 'warning' : 'healthy'
+  };
+}
+
+
+// ===== ระบบแก้เองอัตโนมัติจากการวินิจฉัย (พร้อมตัวกันพลาด) =====
+let autoRemediateEnabled = true;        // เปิด/ปิดได้
+const AUTO_FIX_COOLDOWN_MS = 2 * 60 * 60 * 1000; // งานเดียวกัน server เดียวกัน ห้ามซ้ำใน 2 ชม.
+const AUTO_FIX_DAILY_CAP = 20;          // เพดานต่อวัน
+let autoFixCooldowns = {};              // { 'action:server': timestamp }
+let autoFixDailyCount = 0;
+let autoFixDayStamp = new Date().toISOString().split('T')[0];
+
+function canAutoFix(action, server) {
+  // เช็ควันใหม่ → reset count
+  const today = new Date().toISOString().split('T')[0];
+  if (today !== autoFixDayStamp) { autoFixDayStamp = today; autoFixDailyCount = 0; }
+  if (autoFixDailyCount >= AUTO_FIX_DAILY_CAP) return { ok: false, reason: 'ถึงเพดานต่อวันแล้ว (' + AUTO_FIX_DAILY_CAP + ')' };
+  const key = action + ':' + (server || 'all');
+  const last = autoFixCooldowns[key];
+  if (last && (Date.now() - last) < AUTO_FIX_COOLDOWN_MS) {
+    const mins = Math.ceil((AUTO_FIX_COOLDOWN_MS - (Date.now() - last)) / 60000);
+    return { ok: false, reason: 'cooldown เหลือ ' + mins + ' นาที' };
+  }
+  return { ok: true };
+}
+
+function markAutoFix(action, server) {
+  autoFixCooldowns[action + ':' + (server || 'all')] = Date.now();
+  autoFixDailyCount++;
+}
+
+// วินิจฉัย server แล้วแก้เองถ้าเจอปัญหาปลอดภัย
+async function autoRemediateServer(srv, appliedThisCycle) {
+  let diag = await diagnoseServer(srv);
+  // ถ้า diagnose timeout (server แน่นจนตอบไม่ทัน) → ใช้ cache ล่าสุดแทน
+  // (สำคัญ! server ที่วิกฤตสุดมักตอบไม่ทัน ถ้าข้ามไปจะไม่มีใครช่วย)
+  if (!diag.ok && serverMetricsCache[srv.name]) {
+    const cached = serverMetricsCache[srv.name];
+    const ageMin = (Date.now() - new Date(cached.at).getTime()) / 60000;
+    if (ageMin < 10) { // cache ไม่เกิน 10 นาที
+      diag = { ok: true, verdict: cached.verdict, metrics: cached.metrics, issues: cached.issues, recommendations: cached.recommendations, fromCache: true };
+      empLog('diagnostician', 'ใช้ข้อมูล cache (server แน่นจนตอบไม่ทัน)', srv.name);
+    }
+  }
+  if (!diag.ok) return { server: srv.name, ok: false, error: diag.error };
+
+  const applied = [];
+  // แก้เฉพาะถ้า verdict = critical และมี safe recommendation
+  if (diag.verdict === 'critical' && diag.recommendations.length > 0) {
+    for (const rec of diag.recommendations) {
+      const act = SAFE_ACTIONS[rec.action];
+      if (!act) continue;
+
+      // กัน action เดียวกันรันซ้ำในรอบเดียว (cleanup/phpfpm ครอบทุก server อยู่แล้ว)
+      if (appliedThisCycle && appliedThisCycle.has(rec.action)) {
+        applied.push({ action: rec.action, label: rec.label, result: { ok: true, detail: 'ทำไปแล้วในรอบนี้ (ครอบทุก server)' } });
+        continue;
+      }
+
+      // เช็คตัวกันพลาด
+      const gate = canAutoFix(rec.action, srv.name);
+      if (!gate.ok) {
+        logAutoFix(act.emp, srv.name + ': ' + rec.reason, rec.label + ' (ข้าม: ' + gate.reason + ')', { ok: false, detail: gate.reason });
+        continue;
+      }
+
+      // ลงมือแก้
+      try {
+        setEmployeeWorking(act.emp, rec.label + ' @ ' + srv.name, 45000);
+        markAutoFix(rec.action, srv.name);
+        if (appliedThisCycle) appliedThisCycle.add(rec.action);
+        const result = await act.run({ server: srv.name });
+        logAutoFix(act.emp, srv.name + ': ' + rec.reason, rec.label, result);
+        empLog(act.emp, 'วินิจฉัยแล้วแก้เอง', srv.name + ' — ' + rec.label);
+        applied.push({ action: rec.action, label: rec.label, result });
+        smartAlert('warning', '🤖 แก้อัตโนมัติ: ' + srv.name + '\n' + rec.label + ' — ' + (result.ok ? 'สำเร็จ' : 'ล้มเหลว') + '\nสาเหตุ: ' + rec.reason);
+      } catch(e) {
+        logAutoFix(act.emp, srv.name, rec.label + ' (error)', { ok: false, detail: e.message });
+      }
+    }
+  }
+  return { server: srv.name, ok: true, verdict: diag.verdict, applied, metrics: diag.metrics };
+}
+
+// วนวินิจฉัย+แก้ทุก server ที่สุขภาพต่ำ
+async function runDeepRemediation() {
+  if (!autoRemediateEnabled) return { ok: false, reason: 'auto-remediate ปิดอยู่' };
+  try {
+    let health = [];
+    try { health = getAllHealthScores() || []; } catch(e) {}
+    // วินิจฉัยเฉพาะ server สุขภาพต่ำกว่า 75 (ไม่ต้องวินิจฉัยทุกตัวทุกครั้ง ประหยัด)
+    const targets = health.filter(h => h.score < 75).map(h => h.server);
+    const allResults = [];
+    const appliedThisCycle = new Set(); // กัน action เดียวกันรันซ้ำในรอบเดียว (เพราะ cleanup/phpfpm ทำทุก server)
+    for (const serverName of targets) {
+      const srv = PLESK_SERVERS.find(s => s.name === serverName);
+      if (!srv) continue;
+      const r = await autoRemediateServer(srv, appliedThisCycle);
+      allResults.push(r);
+      await new Promise(rs => setTimeout(rs, 2000)); // เว้นระยะ
+    }
+    const totalApplied = allResults.reduce((s,r) => s + (r.applied ? r.applied.length : 0), 0);
+    if (totalApplied > 0) logEvent('fix', 'Deep remediation แก้ ' + totalApplied + ' รายการ', { count: totalApplied });
+    return { ok: true, diagnosed: targets.length, applied: totalApplied, results: allResults };
+  } catch(e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+
+// ===== ตัวเก็บ metrics เบื้องหลัง (กันถล่ม agent) =====
+// ดึงข้อมูล server ทุก 90 วิ เก็บใส่ cache → frontend ดึงจาก cache เร็วๆ ได้
+let serverMetricsCache = {};   // { serverName: { metrics, verdict, issues, at } }
+let isCollectingMetrics = false;
+let lastCollectAt = null;
+
+async function collectServerMetrics() {
+  if (isCollectingMetrics) return; // กันรันซ้อน
+  isCollectingMetrics = true;
+  try {
+    for (const srv of PLESK_SERVERS) {
+      try {
+        const diag = await diagnoseServer(srv);
+        if (diag.ok) {
+          serverMetricsCache[srv.name] = {
+            metrics: diag.metrics,
+            verdict: diag.verdict,
+            issues: diag.issues,
+            recommendations: diag.recommendations,
+            at: new Date().toISOString()
+          };
+        }
+      } catch(e) {}
+      await new Promise(r => setTimeout(r, 1500)); // เว้นระยะระหว่าง server
+    }
+    lastCollectAt = new Date().toISOString();
+  } catch(e) { console.log('[Collector] error:', e.message); }
+  finally { isCollectingMetrics = false; }
+}
+
+
+// ===== วินิจฉัยโดเมนเดี่ยว: หาว่าเข้าไม่ได้เพราะอะไร =====
+// เช็ค: DNS resolve, Cloudflare proxy, A record IP, origin SSL, Plesk vhost, firewall
+async function diagnoseDomain(domain) {
+  const d = String(domain).toLowerCase().trim().replace(/^https?:\/\//,'').replace(/\/$/,'');
+  const result = { domain: d, checks: [], verdict: '', summary: '' };
+
+  // 1. DNS resolve — โดเมนชี้ไป IP ไหน?
+  let resolvedIPs = [];
+  try {
+    resolvedIPs = await dnsPromises.resolve4(d);
+    result.checks.push({ name: 'DNS resolve', ok: true, detail: 'ชี้ไป: ' + resolvedIPs.join(', ') });
+  } catch(e) {
+    result.checks.push({ name: 'DNS resolve', ok: false, detail: 'resolve ไม่ได้: ' + e.message + ' (DNS ยังไม่ตั้ง หรือโดเมนหมดอายุ)' });
+    result.verdict = 'dns'; result.summary = 'DNS resolve ไม่ได้ — โดเมนยังไม่ชี้ไปไหนเลย';
+    return result;
+  }
+
+  // 2. เช็คว่า IP เป็น Cloudflare ไหม (CF proxy เปิดอยู่)
+  const cfRanges = ['104.','172.6','172.7','188.114.','162.15','198.41.','190.93.','141.101.','108.162.','173.245.'];
+  const isCF = resolvedIPs.some(ip => cfRanges.some(r => ip.startsWith(r)));
+  result.checks.push({ name: 'Cloudflare proxy', ok: true, detail: isCF ? 'เปิด proxy อยู่ (orange cloud) — IP เป็นของ CF' : 'ไม่ผ่าน CF proxy (grey cloud) — ชี้ตรงไป origin' });
+
+  // 3. หา IP ของ Server ที่โดเมนนี้ควรอยู่
+  const domObj = memoryDomains.find(x => (x.domain||'').toLowerCase() === d);
+  const srv = domObj && domObj.pleskServer ? PLESK_SERVERS.find(s => s.name === domObj.pleskServer) : null;
+
+  if (!srv) {
+    result.checks.push({ name: 'หา Plesk server', ok: false, detail: 'ไม่รู้ว่าโดเมนนี้อยู่ server ไหนในระบบ' });
+  } else {
+    result.checks.push({ name: 'Plesk server', ok: true, detail: 'อยู่ ' + srv.name + ' (' + srv.host + ')' });
+
+    // 4. ถ้าไม่ผ่าน CF เช็คว่า A record ชี้ตรง IP server ไหม
+    if (!isCF && !resolvedIPs.includes(srv.host)) {
+      result.checks.push({ name: 'A record', ok: false, detail: 'ชี้ไป ' + resolvedIPs.join(',') + ' แต่ควรเป็น ' + srv.host });
+      result.verdict = 'wrong-ip'; result.summary = 'A record ชี้ IP ผิด ไม่ใช่ Server';
+    }
+
+    // 5. เช็คผ่าน agent: vhost, SSL, port 443 (ระดับ server + ระดับโดเมนนี้)
+    try {
+      const cmd = [
+        'export PATH=$PATH:/usr/sbin:/usr/local/sbin:/sbin:/usr/bin',
+        'echo "=VHOST="',
+        '[ -d /var/www/vhosts/' + d + ' ] && echo "yes" || echo "no"',
+        'echo "=SSL="',
+        'grep -l "ssl_certificate" /var/www/vhosts/system/' + d + '/conf/*.conf 2>/dev/null | head -1 && echo "has_ssl" || echo "no_ssl"',
+        'echo "=NGINX="',
+        'systemctl is-active nginx 2>/dev/null || echo inactive',
+        'echo "=PORT443_SERVER="',
+        'ss -tlnH 2>/dev/null | grep ":443 " | head -1 | grep -c 443 || echo 0',
+        'echo "=DOMAIN_443="',
+        'grep -rl "listen.*443" /var/www/vhosts/system/' + d + '/conf/ 2>/dev/null | head -1 && echo "yes443" || echo "no443"',
+        'echo "=PLESK_SSL="',
+        'grep -c "ssl" /var/www/vhosts/system/' + d + '/conf/last_nginx.conf 2>/dev/null || echo 0',
+        'echo "=CURL_LOCAL="',
+        'curl -sk -o /dev/null -w "%{http_code}" --resolve ' + d + ':443:127.0.0.1 https://' + d + '/ --max-time 8 2>/dev/null || echo "fail"',
+        'echo "=VHOST_DONE="'
+      ].join('; ');
+      const cmdId = queueCommand(srv.host, cmd);
+      let agentOut = null;
+      for (let i = 0; i < 35; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        if (agentResults[cmdId]) { agentOut = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
+      }
+      if (agentOut) {
+        const sec = (n) => { const m = agentOut.match(new RegExp('=' + n + '=\\s*\\n([\\s\\S]*?)(?:\\n=|$)')); return m ? m[1].trim() : ''; };
+        const vhost = sec('VHOST');
+        const ssl = sec('SSL');
+        const nginx = sec('NGINX');
+        const port443Server = parseInt(sec('PORT443_SERVER')) || 0;
+        const domain443 = sec('DOMAIN_443');
+        const pleskSsl = parseInt(sec('PLESK_SSL')) || 0;
+        const curlLocal = sec('CURL_LOCAL');
+
+        result.checks.push({ name: 'Plesk vhost', ok: vhost.includes('yes'), detail: vhost.includes('yes') ? 'มี vhost บน server' : 'ไม่มี vhost! โดเมนยังไม่ได้ตั้งใน Plesk จริง' });
+        result.checks.push({ name: 'Origin SSL cert', ok: ssl.includes('has_ssl'), detail: ssl.includes('has_ssl') ? 'มี SSL cert ใน config' : 'ไม่มี cert ใน config' });
+        result.checks.push({ name: 'Nginx (server)', ok: nginx.includes('active'), detail: nginx.includes('active') ? 'ทำงานปกติ' : 'nginx ไม่ทำงาน!' });
+        result.checks.push({ name: 'Port 443 (server)', ok: port443Server > 0, detail: port443Server > 0 ? 'server เปิดรับ https อยู่ (โดเมนอื่นใช้ได้)' : 'server ไม่ฟัง 443 เลย' });
+        result.checks.push({ name: 'โดเมนนี้ผูก 443', ok: domain443.includes('yes443'), detail: domain443.includes('yes443') ? 'config โดเมนนี้มี listen 443' : 'config โดเมนนี้ไม่มี listen 443 — โดเมนนี้ไม่ได้เปิด SSL hosting!' });
+        result.checks.push({ name: 'ทดสอบเข้าจริง (curl)', ok: /^(200|301|302|403)$/.test(curlLocal), detail: curlLocal === 'fail' ? 'เข้าไม่ได้แม้จาก localhost' : 'HTTP ' + curlLocal });
+
+        // สรุป verdict — แม่นขึ้น
+        if (!vhost.includes('yes')) { result.verdict = 'no-vhost'; result.summary = 'ไม่มี vhost — โดเมนยังไม่ได้ติดตั้งจริงใน Plesk'; }
+        else if (!nginx.includes('active')) { result.verdict = 'nginx-down'; result.summary = 'nginx ไม่ทำงานบน server นี้'; }
+        else if (port443Server > 0 && !domain443.includes('yes443')) {
+          // server เปิด 443 แต่โดเมนนี้ไม่ได้ผูก = สาเหตุชัด!
+          result.verdict = 'domain-no-ssl-hosting';
+          result.summary = 'server เปิด 443 อยู่ (โดเมนอื่นใช้ได้) แต่โดเมนนี้ยังไม่ได้เปิด "SSL/TLS support" ใน Plesk → nginx เลยไม่ฟัง 443 ให้โดเมนนี้';
+        }
+        else if (!ssl.includes('has_ssl')) { result.verdict = 'no-ssl'; result.summary = 'โดเมนนี้ยังไม่มี SSL cert ผูกใน config'; }
+        else if (!result.verdict) { result.verdict = 'ok-origin'; result.summary = 'origin ดูปกติทุกอย่าง — ปัญหาน่าจะอยู่ที่ Cloudflare หรือ DNS propagation'; }
+      } else {
+        result.checks.push({ name: 'ตรวจผ่าน agent', ok: false, detail: 'agent ตอบไม่ทัน (server อาจแน่น)' });
+        if (!result.verdict) { result.verdict = 'agent-timeout'; result.summary = 'ตรวจ origin ไม่ได้ (agent timeout)'; }
+      }
+    } catch(e) {
+      result.checks.push({ name: 'ตรวจผ่าน agent', ok: false, detail: e.message });
+    }
+  }
+
+  // 6. เช็ค Cloudflare SSL mode (ถ้ามี token + เป็น CF)
+  if (isCF && CF_API_TOKEN) {
+    try {
+      const sslMode = await getCFSSLMode(d);
+      if (sslMode) {
+        const bad = (sslMode === 'full' || sslMode === 'strict');
+        result.checks.push({ name: 'Cloudflare SSL mode', ok: !bad, detail: 'ตั้งเป็น "' + sslMode + '"' + (bad ? ' — ถ้า origin ไม่มี SSL ที่ถูกต้องจะ timeout! ลองเปลี่ยนเป็น Flexible' : '') });
+        if (bad && result.verdict === 'no-ssl') result.summary = 'CF SSL mode = ' + sslMode + ' แต่ origin ไม่มี SSL → timeout (แก้: เปลี่ยน CF เป็น Flexible หรือออก SSL ที่ origin)';
+      }
+    } catch(e) {}
+  }
+
+  return result;
+}
+
+// ดู Cloudflare SSL mode ของ zone
+async function getCFSSLMode(domain) {
+  return new Promise(resolve => {
+    // หา zone id ก่อน
+    const req = https.request({
+      hostname: 'api.cloudflare.com',
+      path: '/client/v4/zones?name=' + encodeURIComponent(domain),
+      headers: { 'Authorization': 'Bearer ' + CF_API_TOKEN, 'Content-Type': 'application/json' }
+    }, res => {
+      let d=''; res.on('data',c=>d+=c);
+      res.on('end',()=>{
+        try {
+          const r = JSON.parse(d);
+          const zoneId = r.result && r.result[0] ? r.result[0].id : null;
+          if (!zoneId) return resolve(null);
+          // ดู SSL setting
+          const req2 = https.request({
+            hostname: 'api.cloudflare.com',
+            path: '/client/v4/zones/' + zoneId + '/settings/ssl',
+            headers: { 'Authorization': 'Bearer ' + CF_API_TOKEN, 'Content-Type': 'application/json' }
+          }, res2 => {
+            let d2=''; res2.on('data',c=>d2+=c);
+            res2.on('end',()=>{ try { const r2=JSON.parse(d2); resolve(r2.result ? r2.result.value : null); } catch { resolve(null); } });
+          });
+          req2.on('error',()=>resolve(null)); req2.end();
+        } catch { resolve(null); }
+      });
+    });
+    req.on('error',()=>resolve(null)); req.end();
+  });
+}
+
+
+// ===== ตรวจลึก nginx (อ่านอย่างเดียว ไม่แตะอะไร) =====
+
+// ===== ดึง nginx error เต็มๆ (raw, อ่านอย่างเดียว) =====
+async function getNginxError(serverName) {
+  const srv = PLESK_SERVERS.find(s => s.name === serverName);
+  if (!srv) return { ok: false, error: 'ไม่พบ server' };
+  // nginx -t เต็มๆ + สถานะ service (ใช้ full path เพราะ agent PATH ไม่มี /usr/sbin)
+  const cmd = 'export PATH=$PATH:/usr/sbin:/usr/local/sbin:/sbin; NGINX=$(command -v nginx || echo /usr/sbin/nginx); echo "===NGINX_T_OUTPUT==="; timeout 20 $NGINX -t 2>&1; echo "===SERVICE_STATUS==="; systemctl status nginx 2>&1 | head -8; echo "===LISTEN==="; ss -tlnH 2>/dev/null | grep -oE ":(80|443) " | sort -u | tr "\\n" " "; echo "===END===";';
+  const cmdId = queueCommand(srv.host, cmd);
+  let out = null;
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (agentResults[cmdId]) { out = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
+  }
+  if (!out) return { ok: false, error: 'agent ตอบไม่ทัน — ลองอีกครั้ง' };
+  return { ok: true, server: serverName, rawOutput: out };
+}
+
+
+// ===== ผู้ช่วย AI วิเคราะห์ error/ปัญหา server =====
+// ผู้ใช้วาง error → Claude วิเคราะห์ + บอกวิธีแก้ (อ่านอย่างเดียว ไม่รันคำสั่งเอง เพื่อความปลอดภัย)
+async function aiAnalyzeError(errorText, context) {
+  if (!process.env.ANTHROPIC_API_KEY) return { ok: false, error: 'ยังไม่ได้ตั้ง ANTHROPIC_API_KEY' };
+
+  const system = 'คุณคือผู้เชี่ยวชาญ Linux server, Plesk, nginx, PHP-FPM, Cloudflare ที่ช่วยดูแลระบบจัดการโดเมน 1500+ โดเมนบน 5 Plesk servers (Ubuntu + Plesk, nginx + Apache, PHP-FPM, อยู่หลัง Cloudflare บางโดเมน). ' +
+    'หน้าที่: วิเคราะห์ error หรือปัญหาที่ผู้ใช้วางมา แล้วบอก (1) สาเหตุที่แท้จริง (2) วิธีแก้เป็นขั้นตอน (3) คำสั่งที่ต้องรัน (ถ้ามี ใส่ใน code block). ' +
+    'สำคัญมาก: ระวังเรื่องความปลอดภัย — ถ้าคำสั่งเสี่ยงทำ server ดับ (เช่น restart nginx/service) ให้เตือนผู้ใช้ก่อน และแนะนำให้เช็ค nginx -t ก่อนเสมอ. ' +
+    'ตอบเป็นภาษาไทย กระชับ ชัดเจน ใช้ขั้นตอน 1-2-3. ถ้าข้อมูลไม่พอให้บอกว่าต้องดูอะไรเพิ่ม. ' +
+    'หมายเหตุสำคัญ: agent ที่รันคำสั่งมี PATH จำกัด ต้องใช้ full path เช่น /usr/sbin/nginx ไม่ใช่แค่ nginx';
+
+  const userMsg = (context ? 'บริบท: ' + context + '\n\n' : '') + 'ช่วยวิเคราะห์ปัญหานี้:\n\n' + errorText;
+
+  const result = await callClaude(system, userMsg, 1500);
+  return result;
+}
+
+async function deepCheckNginx(serverName) {
+  const srv = PLESK_SERVERS.find(s => s.name === serverName);
+  if (!srv) return { ok: false, error: 'ไม่พบ server' };
+
+  const cmd = [
+    'export PATH=$PATH:/usr/sbin:/usr/local/sbin:/sbin',
+    'NGINX=$(command -v nginx || echo /usr/sbin/nginx)',
+    'echo "=NGINX_TEST="',
+    'timeout 15 $NGINX -t 2>&1 | tail -3',
+    'echo "=NGINX_RUNNING="',
+    'systemctl is-active nginx 2>/dev/null || echo inactive',
+    'echo "=NGINX_LISTEN="',
+    'ss -tlnH 2>/dev/null | grep -oE ":(80|443) " | sort -u | tr "\n" " " || echo "none"',
+    'echo "=LAST_ERROR="',
+    'tail -3 /var/log/nginx/error.log 2>/dev/null || echo "no_log"',
+    'echo "=DEEP_DONE="'
+  ].join('; ');
+
+  const cmdId = queueCommand(srv.host, cmd);
+  let out = null;
+  for (let i = 0; i < 60; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    if (agentResults[cmdId]) { out = (agentResults[cmdId].output||'').replace(/~/g,'\n'); delete agentResults[cmdId]; break; }
+  }
+  if (!out) return { ok: false, error: 'agent ตอบไม่ทัน (nginx -t อาจใช้เวลานาน — ลองกดอีกครั้ง)' };
+
+  const sec = (n) => { const m = out.match(new RegExp('=' + n + '=\\s*\\n([\\s\\S]*?)(?:\\n=|$)')); return m ? m[1].trim() : ''; };
+  const nginxTest = sec('NGINX_TEST');
+  const running = sec('NGINX_RUNNING');
+  const listen = sec('NGINX_LISTEN');
+  const lastError = sec('LAST_ERROR');
+
+  const checks = [];
+  const testOk = nginxTest.includes('successful') || nginxTest.includes('test is successful');
+  checks.push({ name: 'nginx -t (config ถูกไหม)', ok: testOk, detail: testOk ? 'config ผ่าน' : 'config มี ERROR: ' + nginxTest.slice(0,250) });
+  checks.push({ name: 'nginx รันอยู่', ok: running.includes('active'), detail: running });
+  checks.push({ name: 'nginx ฟัง port', ok: listen.includes('443'), detail: listen.includes('none') || !listen ? 'ไม่ฟัง 443 เลย' : 'ฟัง: ' + listen });
+  if (lastError && !lastError.includes('no_log')) checks.push({ name: 'error log ล่าสุด', ok: false, detail: lastError.slice(0,250) });
+
+  // วินิจฉัยสาเหตุ + เสนอวิธีแก้
+  let cause = '', fix = '', fixAction = '';
+  if (!testOk) {
+    cause = 'nginx config มี ERROR → reload ไม่ได้ เลยไม่ฟัง 443';
+    fix = 'ต้องแก้ config ที่ error ก่อน (ดูข้อความ error ด้านบน) แล้วค่อย reload';
+    fixAction = 'none'; // ต้องดู error ก่อน ไม่ auto
+  } else if (testOk && !listen.includes('443')) {
+    cause = 'config ผ่าน (nginx -t OK) แต่ nginx ยังไม่ได้โหลด config 443 เข้าไป → แค่ reload ก็น่าจะหาย';
+    fix = 'reload nginx เพื่อให้โหลด config ใหม่ (ปลอดภัยเพราะ config ผ่านแล้ว)';
+    fixAction = 'reload-nginx'; // ปลอดภัย เพราะ nginx -t ผ่านแล้ว
+  } else if (listen.includes('443')) {
+    cause = 'nginx ฟัง 443 อยู่แล้ว — ปัญหาอาจหายแล้ว หรืออยู่ที่ firewall';
+    fix = 'ลองเช็ค firewall (port อาจถูกบล็อกจากภายนอก)';
+    fixAction = 'check-firewall';
+  }
+
+  return { ok: true, server: serverName, checks, cause, fix, fixAction, nginxTestOk: testOk, listening443: listen.includes('443') };
+}
+
+server.listen(PORT, async () => {
+  console.log(`\n╔══════════════════════════════════════════╗`);
+  console.log(`║   DomainIntel + Plesk + Google Sheets    ║`);
+  console.log(`║   http://localhost:${PORT}                 ║`);
+  console.log(`╚══════════════════════════════════════════╝\n`);
+
+  // โหลดข้อมูลจาก Sheets ตอน start
+  await initSheets();
+
+  if (PLESK_SERVERS.length > 0 && memoryDomains.length === 0) {
+    console.log('[Plesk] ไม่มีข้อมูล — sync อัตโนมัติจาก ' + PLESK_SERVERS.length + ' servers...');
+    await syncPleskDomains();
+  }
+
+  setInterval(checkAllDomains, CHECK_INTERVAL_MS);
+  setInterval(checkAllISPBlocks, 60 * 60 * 1000); // ISP block check ทุก 60 นาที
+  setTimeout(() => checkAllISPBlocks().catch(()=>{}), 90 * 1000); // run แรกหลัง start 90 วิ
+  setInterval(snapshotHistory, 60 * 60 * 1000); // เก็บ snapshot สถานะทุก 1 ชม.
+  setInterval(checkWatchList, 60 * 1000); // watchlist: เช็กโดเมนสำคัญทุก 1 นาที
+  setInterval(autoMeasureLoop, 30 * 60 * 1000); // B1: วัดทรัพยากรจริงเครื่องที่มีปัญหา ทุก 30 นาที
+  setTimeout(snapshotHistory, 120 * 1000); // snapshot แรกหลัง start 2 นาที
+  setInterval(() => syncPleskDomains(), PLESK_SYNC_INTERVAL_MS);
+  setInterval(checkServerHealth, CHECK_INTERVAL_MS);
+  setInterval(proactiveMonitor, CHECK_INTERVAL_MS); // Proactive monitor ทุก 5 นาที
+  setInterval(smartStatusCheck, CHECK_INTERVAL_MS * 2); // Smart status check ทุก 10 นาที
+  setInterval(checkSSLRenewal, 6 * 60 * 60 * 1000); // SSL check ทุก 6 ชั่วโมง
+  setInterval(autoInstallSSL, 12 * 60 * 60 * 1000); // Auto SSL install ทุก 12 ชั่วโมง
+  setTimeout(autoInstallSSL, 5 * 60 * 1000); // รัน SSL install ครั้งแรกหลัง 5 นาที
+  setInterval(checkBlacklists, 24 * 60 * 60 * 1000); // Blacklist check ทุกวัน
+  setInterval(sendWeeklyReport, 7 * 24 * 60 * 60 * 1000); // Weekly report
+  setInterval(checkDatabaseBackups, 24 * 60 * 60 * 1000); // Backup check ทุกวัน
+  setInterval(checkDomainExpiry, 12 * 60 * 60 * 1000); // Domain expiry ทุก 12 ชั่วโมง
+  setInterval(checkGSCTrafficDrop, 24 * 60 * 60 * 1000); // GSC drop check ทุกวัน
+  setTimeout(checkGSCTrafficDrop, 30 * 60 * 1000); // รันครั้งแรกหลัง 30 นาที
+  setInterval(checkEmailSpam, 6 * 60 * 60 * 1000); // Email check ทุก 6 ชั่วโมง
+  // Monthly report - disabled
+  setTimeout(checkDomainExpiry, 5 * 60 * 1000); // รันครั้งแรกหลัง 5 นาที
+  setTimeout(checkDatabaseBackups, 15 * 60 * 1000); // รันครั้งแรกหลัง 15 นาที
+  console.log(`[Auto] เช็คโดเมนทุก ${CHECK_INTERVAL_MS/60000} นาที, Sync Plesk ทุก ${PLESK_SYNC_INTERVAL_MS/3600000} ชั่วโมง`);
+  // Auto-start systems
+  setInterval(checkAndCleanDisk, 6 * 60 * 60 * 1000); // Disk check ทุก 6 ชั่วโมง
+  setTimeout(async () => { await applyAllPhpFpmOndemand(); }, 12 * 60 * 1000); // PHP-FPM ondemand หลัง 12 นาที
+  setInterval(applyAllPhpFpmOndemand, 24 * 60 * 60 * 1000); // Re-apply ทุก 24 ชั่วโมง
+  setTimeout(async () => { await installAllApacheWatchdogs(); }, 5 * 60 * 1000); // Watchdog หลัง 5 นาที
+  setTimeout(async () => { await setupAllCloudflareWhitelists(); }, 8 * 60 * 1000); // CF Whitelist หลัง 8 นาที
+  setInterval(setupAllCloudflareWhitelists, 24 * 60 * 60 * 1000);
+
+  setInterval(sendWarningDigest, 30 * 60 * 1000); // Warning digest ทุก 30 นาที
+  // Auto-fix งานปลอดภัยทุก 15 นาที (โดเมน down → กู้, disk เต็ม → cleanup)
+  setInterval(() => { runAutoFixCycle().catch(()=>{}); }, 15 * 60 * 1000);
+  setTimeout(() => { runAutoFixCycle().catch(()=>{}); }, 90 * 1000); // รันครั้งแรกหลัง startup 90 วิ
+  // Deep remediation: วินิจฉัยละเอียดแล้วแก้เองทุก 30 นาที (เฉพาะ server สุขภาพต่ำ + งานปลอดภัย + มี cooldown/เพดาน)
+  setInterval(() => { runDeepRemediation().catch(()=>{}); }, 30 * 60 * 1000);
+  setTimeout(() => { runDeepRemediation().catch(()=>{}); }, 150 * 1000); // ครั้งแรกหลัง startup 2.5 นาที
+  // ตัวเก็บ metrics เบื้องหลังทุก 90 วิ (cache ให้ frontend ดึงเร็วๆ)
+  setInterval(() => { collectServerMetrics().catch(()=>{}); }, 90 * 1000);
+  setTimeout(() => { collectServerMetrics().catch(()=>{}); }, 30 * 1000); // ครั้งแรกหลัง startup 30 วิ
+  // เฟส 3: Diagnostician เสนองานแก้ปัญหาทุก 6 ชม. (ถ้ามี API key) — เข้า approval queue รอเจ้าของอนุมัติ
+  if (process.env.ANTHROPIC_API_KEY) {
+    setInterval(() => { proposeActionsFromAnalysis().catch(()=>{}); }, 6 * 60 * 60 * 1000);
+  }
+
+  // Daily summary ตอนเที่ยงคืน
+  const scheduleDailySummary = () => {
+    const now = new Date();
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    midnight.setDate(midnight.getDate() + 1);
+    setTimeout(() => { sendDailySummary(); scheduleDailySummary(); }, midnight - now);
+  };
+  scheduleDailySummary();
+
+  console.log('[Auto] Proactive Monitor, Smart Status Check, SSL Renewal, Blacklist Monitor เริ่มทำงาน');
+
+  // Auto Sync GSC ทุก 24 ชั่วโมง (ตี 2)
+  const scheduleGSCSync = () => {
+    const now = new Date();
+    const next = new Date();
+    next.setHours(2, 0, 0, 0);
+    if (next <= now) next.setDate(next.getDate() + 1);
+    const ms = next - now;
+    console.log('[GSC] Auto sync ครั้งต่อไป:', next.toLocaleString('th-TH'));
+    setTimeout(async () => {
+      console.log('[GSC] Auto sync เริ่ม...');
+      _gscSites = null;
+      let synced = 0;
+      for (let i = 0; i < memoryDomains.length; i++) {
+        memoryDomains[i] = await syncGSCForDomain(memoryDomains[i]);
+        if (memoryDomains[i].gsc && memoryDomains[i].gsc.inGSC) synced++;
+        if (i > 0 && i % 20 === 0) await new Promise(r => setTimeout(r, 300));
+      }
+      await saveToSheets(memoryDomains);
+      console.log('[GSC] Auto sync เสร็จ:', synced, 'domains');
+      smartAlert('info', '🔄 GSC Auto Sync เสร็จ\n📊 ' + synced + ' โดเมน\n⏱️ ' + new Date().toLocaleString('th-TH'));
+      scheduleGSCSync(); // ตั้งรอบถัดไป
+    }, ms);
+  };
+  scheduleGSCSync();
+});
