@@ -7284,7 +7284,7 @@ function vaultRenderItems(){
       }
       h+='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px;margin-bottom:14px;width:100%;box-sizing:border-box">'+
         '<input value="'+(it.title||'').replace(/"/g,'&quot;')+'" placeholder="หัวข้อ" oninput="window._vaultItems['+i+'].title=this.value" style="width:100%;box-sizing:border-box;background:transparent;border:none;border-bottom:1px solid var(--border,#333);color:inherit;font-weight:700;font-size:16px;margin-bottom:10px;outline:none;padding:4px 0">'+
-        '<textarea placeholder="เนื้อหา (เข้ารหัสก่อนบันทึก)" oninput="window._vaultItems['+i+'].content=this.value" style="width:100%;box-sizing:border-box;background:var(--bg,#0a0a0a);border:1px solid var(--border,#333);border-radius:6px;color:inherit;padding:12px;min-height:160px;resize:vertical;font-family:inherit;font-size:14px;line-height:1.6">'+(it.content||'').replace(/</g,'&lt;')+'</textarea>'+
+        '<textarea placeholder="เนื้อหา (เข้ารหัสก่อนบันทึก)" oninput="window._vaultItems['+i+'].content=this.value;vaultAutoGrow(this)" onfocus="vaultAutoGrow(this)" style="width:100%;box-sizing:border-box;background:var(--bg,#0a0a0a);border:1px solid var(--border,#333);border-radius:6px;color:inherit;padding:12px;min-height:120px;overflow:hidden;resize:none;font-family:inherit;font-size:14px;line-height:1.6">'+(it.content||'').replace(/</g,'&lt;')+'</textarea>'+
         fileChip+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">'+
           '<label class="btn" style="padding:4px 12px;font-size:12px;cursor:pointer;margin:0"><i class="ti ti-upload"></i> '+(it.file&&it.file.name?'เปลี่ยนไฟล์':'แนบไฟล์')+'<input type="file" style="display:none" onchange="vaultAttachFile('+i+',this)"></label>'+
@@ -7296,7 +7296,10 @@ function vaultRenderItems(){
   h+='<button class="btn btn-green" onclick="vaultSave()" style="justify-content:center;padding:12px 24px;font-size:14px"><i class="ti ti-device-floppy"></i> บันทึก (เข้ารหัสทั้งหมด)</button>';
   h+='<div style="font-size:11px;color:var(--text3,#888);margin-top:8px">ข้อความและไฟล์จะถูกเข้ารหัสเมื่อกด "บันทึก" · ไฟล์ต่ออันไม่เกิน 3MB</div>';
   body.innerHTML=h;
+  // ยืดกล่องข้อความให้พอดีเนื้อหา (ไม่ต้องเลื่อน)
+  body.querySelectorAll('textarea').forEach(function(t){ vaultAutoGrow(t); });
 }
+function vaultAutoGrow(t){ t.style.height='auto'; t.style.height=(t.scrollHeight+4)+'px'; }
 function vaultAttachFile(i, input){
   var f=input.files&&input.files[0]; if(!f) return;
   if(f.size>3*1024*1024){ if(typeof toast==='function')toast('ไฟล์ใหญ่เกิน 3MB','error'); input.value=''; return; }
