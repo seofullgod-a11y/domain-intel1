@@ -368,14 +368,14 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <h1 style="margin:0;font-size:22px;font-weight:700">DomainIntel</h1>
       <p style="margin:8px 0 0;color:var(--text3);font-size:13px">SEO Domain Intelligence Dashboard</p>
     </div>
-    <div style="margin-bottom:16px">
-      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Username</label>
-      <input id="login-user" type="text" placeholder="admin" class="form-input" style="width:100%;box-sizing:border-box"
-        onkeydown="if(event.key==='Enter')document.getElementById('login-pass').focus()" />
-    </div>
     <div style="margin-bottom:24px">
       <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Password</label>
       <input id="login-pass" type="password" placeholder="••••••••" class="form-input" style="width:100%;box-sizing:border-box"
+        onkeydown="if(event.key==='Enter')doLogin()" />
+    </div>
+    <div id="login-otp-wrap" style="margin-bottom:24px;display:none">
+      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">รหัส 2FA (6 หลักจากแอป Authenticator)</label>
+      <input id="login-otp" type="text" inputmode="numeric" maxlength="6" placeholder="123456" class="form-input" style="width:100%;box-sizing:border-box;letter-spacing:4px;text-align:center"
         onkeydown="if(event.key==='Enter')doLogin()" />
     </div>
     <button onclick="doLogin()" class="btn btn-green" style="width:100%;padding:12px;font-size:14px;justify-content:center">
@@ -505,6 +505,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       </div>
       <div class="nav-item" onclick="openWpAdmin()">
         <i class="ti ti-lock-open"></i> เปิด/ปิด wp-admin
+      </div>
+      <div class="nav-item" onclick="openVault()">
+        <i class="ti ti-shield-lock"></i> ข้อมูลลับส่วนตัว
       </div>
       <div class="nav-item" onclick="showPage('tasks')">
         <i class="ti ti-layout-kanban"></i> To-Do Board
@@ -1554,6 +1557,22 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 <script>
 // ===== STATE =====
 let API = 'http://localhost:3001';
+// ให้ทุก fetch ส่ง session cookie ไปด้วย (สำหรับ auth ฝั่งเซิร์ฟเวอร์) + เด้ง login เมื่อ session หมดอายุ
+(function(){
+  var _f = window.fetch.bind(window);
+  window.fetch = function(input, init){
+    init = init || {};
+    if (init.credentials === undefined) init.credentials = 'include';
+    return _f(input, init).then(function(res){
+      if (res.status === 401 && typeof input === 'string' && input.indexOf('/api/') >= 0 && input.indexOf('/api/login') < 0 && input.indexOf('/api/auth-status') < 0) {
+        // session หมดอายุ → กลับไปหน้า login
+        var lp = document.getElementById('login-page'), ma = document.getElementById('main-app');
+        if (lp && ma) { lp.style.display = 'flex'; ma.style.display = 'none'; }
+      }
+      return res;
+    });
+  };
+})();
 let allDomains = [];
 let filteredDomains = [];
 let currentPage = 1;
@@ -1564,46 +1583,64 @@ let sortDir = 1;
 
 // ===== INIT =====
 // ===== LOGIN SYSTEM =====
-const LOGIN_CREDENTIALS = [
-  { user: 'admin', pass: '123456za' },
-  { user: 'willam', pass: '123456za' }
-];
+// (รหัสผ่านย้ายไปฝั่งเซิร์ฟเวอร์แล้ว — ตั้งที่ DASHBOARD_PASSWORD ใน Railway ไม่เก็บในหน้าเว็บอีก)
 
 function checkLogin() {
-  return localStorage.getItem('di_logged_in') === 'true' &&
-    Date.now() - parseInt(localStorage.getItem('di_login_time') || '0') < 24 * 60 * 60 * 1000;
+  // เก็บไว้เพื่อความเข้ากันได้ — การตัดสินใจจริงอยู่ที่เซิร์ฟเวอร์ (initApp เช็ค /api/auth-status)
+  return true;
 }
 
-function doLogin() {
-  const user = document.getElementById('login-user').value.trim();
+async function doLogin() {
   const pass = document.getElementById('login-pass').value;
+  const otpEl = document.getElementById('login-otp');
+  const otp = otpEl ? otpEl.value.trim() : '';
   const errEl = document.getElementById('login-error');
-  
-  const match = LOGIN_CREDENTIALS.find(c => c.user === user && c.pass === pass);
-  if (match) {
-    localStorage.setItem('di_logged_in', 'true');
-    localStorage.setItem('di_login_time', Date.now().toString());
-    localStorage.setItem('di_username', user);
-    document.getElementById('login-page').style.display = 'none';
-    document.getElementById('main-app').style.display = 'flex';
-    errEl.style.display = 'none';
-    initApp();
-  } else {
+  errEl.style.display = 'none';
+  try {
+    const apiBase = window._authApiBase || window.location.origin;
+    const r = await fetch(apiBase + '/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ password: pass, otp: otp })
+    });
+    const d = await r.json();
+    if (d.success) {
+      document.getElementById('login-page').style.display = 'none';
+      document.getElementById('main-app').style.display = 'flex';
+      errEl.style.display = 'none';
+      initApp();
+      return;
+    }
+    // ต้องใส่ OTP
+    if (d.needOtp) {
+      document.getElementById('login-otp-wrap').style.display = 'block';
+      if (otpEl) otpEl.focus();
+      errEl.style.display = 'block';
+      errEl.textContent = otp ? ('❌ ' + (d.error || 'รหัส 2FA ไม่ถูกต้อง')) : '🔐 ใส่รหัส 6 หลักจากแอป Authenticator';
+      return;
+    }
     errEl.style.display = 'block';
-    errEl.textContent = '❌ Username หรือ Password ไม่ถูกต้อง';
+    errEl.textContent = '❌ ' + (d.error || 'เข้าสู่ระบบไม่สำเร็จ');
     document.getElementById('login-pass').value = '';
     document.getElementById('login-pass').focus();
+  } catch (e) {
+    errEl.style.display = 'block';
+    errEl.textContent = '❌ ต่อเซิร์ฟเวอร์ไม่ได้: ' + e.message;
   }
 }
 
-function doLogout() {
+async function doLogout() {
+  try {
+    const apiBase = window._authApiBase || window.location.origin;
+    await fetch(apiBase + '/api/logout', { method: 'POST', credentials: 'include' });
+  } catch (e) {}
+  // ล้างของเดิมที่อาจค้าง
   localStorage.removeItem('di_logged_in');
   localStorage.removeItem('di_login_time');
-  localStorage.removeItem('di_username');
   document.getElementById('main-app').style.display = 'none';
   document.getElementById('login-page').style.display = 'flex';
-  document.getElementById('login-user').value = '';
   document.getElementById('login-pass').value = '';
+  var o = document.getElementById('login-otp'); if (o) o.value = '';
 }
 
 async function initApp() {
@@ -1658,14 +1695,25 @@ async function refreshProblemBadge() {
 }
 
 document.addEventListener('DOMContentLoaded', async () => {
-  if (checkLogin()) {
+  // ถามเซิร์ฟเวอร์ว่าต้อง login ไหม + มี session อยู่แล้วไหม
+  var needLogin = true;
+  try {
+    var apiBase = localStorage.getItem('api_url') || window.location.origin;
+    window._authApiBase = apiBase;
+    var r = await fetch(apiBase + '/api/auth-status', { credentials: 'include' });
+    var d = await r.json();
+    // ถ้าเซิร์ฟเวอร์ไม่ได้เปิด auth (ยังไม่ตั้งรหัส) หรือ login อยู่แล้ว → เข้าได้เลย
+    if (!d.authEnabled || d.loggedIn) needLogin = false;
+  } catch (e) { needLogin = false; /* ต่อเซิร์ฟเวอร์ไม่ได้ ปล่อยให้ initApp จัดการ */ }
+
+  if (!needLogin) {
     document.getElementById('login-page').style.display = 'none';
     document.getElementById('main-app').style.display = 'flex';
     initApp();
   } else {
     document.getElementById('login-page').style.display = 'flex';
     document.getElementById('main-app').style.display = 'none';
-    setTimeout(() => document.getElementById('login-user').focus(), 100);
+    setTimeout(() => document.getElementById('login-pass').focus(), 100);
   }
 });
 
@@ -7136,5 +7184,126 @@ async function cfRowSetCf(domain){
   document.getElementById('wp-search').value=domain;
   await cfDomain(true);
   setTimeout(function(){ cfLoadStatus(); },1500);
+}
+</script>
+<script>
+// ===== PRIVATE VAULT PAGE (added feature) =====
+window._vaultPass = null;   // เก็บรหัสไว้ในหน่วยความจำหน้าเว็บชั่วคราว (ไม่เก็บถาวร)
+window._vaultItems = [];
+function vaultEnsurePage(){
+  if(document.getElementById('page-vault')) return;
+  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
+  var div=document.createElement('div'); div.id='page-vault'; div.style.display='none';
+  div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='14px'; div.style.overflow='auto';
+  div.innerHTML=
+    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-shield-lock"></i> ข้อมูลลับส่วนตัว</h2>'+
+    '<div style="font-size:12px;color:var(--text3,#888)">เข้ารหัส AES-256 ด้วยรหัสของคุณ — เซิร์ฟเวอร์ไม่เก็บรหัส ต่อให้ใครเข้าถึงไฟล์ก็อ่านไม่ออก</div></div>'+
+    '<div id="vault-body"></div>';
+  c.appendChild(div);
+}
+function openVault(){ vaultEnsurePage(); showPage('vault');
+  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openVault()') n.classList.add('active'); });
+  vaultRender();
+}
+async function vaultRender(){
+  var body=document.getElementById('vault-body'); if(!body) return;
+  // ยังปลดล็อกอยู่ → โชว์รายการ
+  if(window._vaultPass){ vaultRenderItems(); return; }
+  // เช็คว่าตั้งรหัสหรือยัง
+  var st={initialized:false,persistent:false};
+  try{ var r=await fetch(API+'/api/vault/status'); st=await r.json(); }catch(e){}
+  if(!st.initialized){
+    body.innerHTML=
+      '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:18px;max-width:460px">'+
+      '<div style="font-weight:700;margin-bottom:4px">ตั้งรหัสตู้เซฟครั้งแรก</div>'+
+      '<div style="font-size:12px;color:#e3b93b;margin-bottom:12px">⚠️ ถ้าลืมรหัสนี้ ข้อมูลจะกู้คืนไม่ได้เลย (นี่คือความปลอดภัยของการเข้ารหัสจริง) — จดเก็บที่ปลอดภัย</div>'+
+      (st.persistent?'':'<div style="font-size:12px;color:#e39a3b;margin-bottom:12px">📌 ตอนนี้เก็บใน /tmp = หายเมื่อ redeploy · ถ้าต้องการเก็บถาวร ตั้ง Railway Volume แล้วใส่ env VAULT_DIR</div>')+
+      '<input id="v-init1" type="password" placeholder="ตั้งรหัสตู้เซฟ (6+ ตัว)" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:8px">'+
+      '<input id="v-init2" type="password" placeholder="พิมพ์รหัสอีกครั้ง" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:12px" onkeydown="if(event.key===\'Enter\')vaultInit()">'+
+      '<button class="btn btn-green" onclick="vaultInit()" style="width:100%;justify-content:center">ตั้งรหัส + เปิดตู้เซฟ</button>'+
+      '<div id="v-err" style="color:#e24b4a;font-size:12px;margin-top:8px;display:none"></div></div>';
+    return;
+  }
+  // มีตู้แล้ว → ให้ปลดล็อก
+  body.innerHTML=
+    '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:18px;max-width:420px">'+
+    '<div style="font-weight:700;margin-bottom:12px">🔒 ปลดล็อกตู้เซฟ</div>'+
+    '<input id="v-unlock" type="password" placeholder="ใส่รหัสตู้เซฟ" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:12px" onkeydown="if(event.key===\'Enter\')vaultUnlock()">'+
+    '<button class="btn btn-green" onclick="vaultUnlock()" style="width:100%;justify-content:center">ปลดล็อก</button>'+
+    '<div id="v-err" style="color:#e24b4a;font-size:12px;margin-top:8px;display:none"></div></div>';
+  setTimeout(function(){var e=document.getElementById('v-unlock');if(e)e.focus();},100);
+}
+function vErr(m){ var e=document.getElementById('v-err'); if(e){ e.style.display='block'; e.textContent='❌ '+m; } }
+async function vaultInit(){
+  var p1=document.getElementById('v-init1').value, p2=document.getElementById('v-init2').value;
+  if(p1.length<6){ vErr('รหัสต้องยาวอย่างน้อย 6 ตัว'); return; }
+  if(p1!==p2){ vErr('รหัสทั้งสองช่องไม่ตรงกัน'); return; }
+  try{
+    var r=await fetch(API+'/api/vault/init',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:p1})});
+    var d=await r.json();
+    if(!d.success){ vErr(d.error||'ตั้งรหัสไม่สำเร็จ'); return; }
+    window._vaultPass=p1; window._vaultItems=[];
+    if(typeof toast==='function')toast('ตั้งรหัสตู้เซฟแล้ว','success');
+    vaultRenderItems();
+  }catch(e){ vErr(e.message); }
+}
+async function vaultUnlock(){
+  var p=document.getElementById('v-unlock').value;
+  if(!p){ vErr('ใส่รหัสก่อน'); return; }
+  try{
+    var r=await fetch(API+'/api/vault/unlock',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:p})});
+    var d=await r.json();
+    if(!d.success){ vErr(d.error||'ปลดล็อกไม่สำเร็จ'); return; }
+    window._vaultPass=p; window._vaultItems=d.items||[];
+    vaultRenderItems();
+  }catch(e){ vErr(e.message); }
+}
+function vaultLock(){ window._vaultPass=null; window._vaultItems=[]; vaultRender(); if(typeof toast==='function')toast('ล็อกตู้เซฟแล้ว','info'); }
+function vaultRenderItems(){
+  var body=document.getElementById('vault-body'); if(!body) return;
+  var h='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;flex-wrap:wrap;gap:8px">'+
+    '<div style="font-size:13px;color:var(--green,#2ecc71)">🔓 ปลดล็อกแล้ว · '+window._vaultItems.length+' รายการ</div>'+
+    '<div style="display:flex;gap:8px">'+
+      '<button class="btn" onclick="vaultAddItem()"><i class="ti ti-plus"></i> เพิ่มรายการ</button>'+
+      '<button class="btn" onclick="vaultChangePass()">เปลี่ยนรหัส</button>'+
+      '<button class="btn" onclick="vaultLock()"><i class="ti ti-lock"></i> ล็อก</button>'+
+    '</div></div>';
+  if(!window._vaultItems.length){
+    h+='<div style="color:var(--text3,#888);padding:20px;text-align:center">ยังไม่มีข้อมูล — กด "เพิ่มรายการ"</div>';
+  } else {
+    window._vaultItems.forEach(function(it,i){
+      h+='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:12px;margin-bottom:10px">'+
+        '<input value="'+(it.title||'').replace(/"/g,'&quot;')+'" placeholder="หัวข้อ" oninput="window._vaultItems['+i+'].title=this.value" style="width:100%;box-sizing:border-box;background:transparent;border:none;color:inherit;font-weight:700;font-size:14px;margin-bottom:6px;outline:none">'+
+        '<textarea placeholder="เนื้อหา (เข้ารหัสก่อนบันทึก)" oninput="window._vaultItems['+i+'].content=this.value" style="width:100%;box-sizing:border-box;background:var(--bg,#0a0a0a);border:1px solid var(--border,#333);border-radius:6px;color:inherit;padding:8px;min-height:70px;resize:vertical;font-family:inherit">'+(it.content||'').replace(/</g,'&lt;')+'</textarea>'+
+        '<div style="text-align:right;margin-top:6px"><button class="btn" style="padding:2px 8px;font-size:11px;color:#e24b4a" onclick="vaultDeleteItem('+i+')">ลบ</button></div>'+
+      '</div>';
+    });
+  }
+  h+='<button class="btn btn-green" onclick="vaultSave()" style="justify-content:center;padding:10px 20px"><i class="ti ti-device-floppy"></i> บันทึก (เข้ารหัส)</button>';
+  h+='<div style="font-size:11px;color:var(--text3,#888);margin-top:8px">การเปลี่ยนแปลงจะถูกเข้ารหัสและบันทึกเมื่อกด "บันทึก" เท่านั้น</div>';
+  body.innerHTML=h;
+}
+function vaultAddItem(){ window._vaultItems.push({id:Date.now()+''+Math.floor(Math.random()*1000),title:'',content:''}); vaultRenderItems(); }
+function vaultDeleteItem(i){ if(confirm('ลบรายการนี้?')){ window._vaultItems.splice(i,1); vaultRenderItems(); } }
+async function vaultSave(){
+  if(!window._vaultPass){ vaultRender(); return; }
+  try{
+    var r=await fetch(API+'/api/vault/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({passphrase:window._vaultPass,items:window._vaultItems})});
+    var d=await r.json();
+    if(!d.success){ if(typeof toast==='function')toast('บันทึกไม่ได้: '+(d.error||'?'),'error'); return; }
+    if(typeof toast==='function')toast('บันทึกแล้ว (เข้ารหัส '+d.count+' รายการ)','success');
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+async function vaultChangePass(){
+  var oldp=prompt('รหัสเดิม:'); if(!oldp) return;
+  var newp=prompt('รหัสใหม่ (6+ ตัว):'); if(!newp) return;
+  if(newp.length<6){ if(typeof toast==='function')toast('รหัสใหม่สั้นเกิน','error'); return; }
+  try{
+    var r=await fetch(API+'/api/vault/change-pass',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({oldPassphrase:oldp,newPassphrase:newp})});
+    var d=await r.json();
+    if(!d.success){ if(typeof toast==='function')toast(d.error||'เปลี่ยนไม่ได้','error'); return; }
+    window._vaultPass=newp;
+    if(typeof toast==='function')toast('เปลี่ยนรหัสแล้ว','success');
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
 }
 </script>
