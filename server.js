@@ -2805,7 +2805,17 @@ async function handleRequest(req, res) {
   if (req.method === 'GET' && url === '/api/dns/audit-status') {
     const counts = {};
     Object.keys(dnsAudit.buckets || {}).forEach(k => counts[k] = dnsAudit.buckets[k].length);
-    json(res, { success: true, running: dnsAudit.running, total: dnsAudit.total, done: dnsAudit.done, counts, buckets: dnsAudit.buckets, oldIp: dnsAudit.oldIp, newIp: dnsAudit.newIp });
+    const ipGroups = {};
+    Object.keys(dnsAudit.buckets || {}).forEach(k => {
+      (dnsAudit.buckets[k] || []).forEach(item => {
+        (item.ips || []).forEach(ip => {
+          if (!ipGroups[ip]) ipGroups[ip] = { count: 0, domains: [] };
+          ipGroups[ip].count++;
+          if (ipGroups[ip].domains.length < 800) ipGroups[ip].domains.push(item.domain);
+        });
+      });
+    });
+    json(res, { success: true, running: dnsAudit.running, total: dnsAudit.total, done: dnsAudit.done, counts, ipGroups, buckets: dnsAudit.buckets, oldIp: dnsAudit.oldIp, newIp: dnsAudit.newIp });
     return;
   }
 
