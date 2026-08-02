@@ -7503,7 +7503,7 @@ function dnsRenderAudit(d){
       '<div style="font-size:22px;font-weight:700;color:'+color+'">'+(n||0)+'</div>'+
       '<div style="font-size:12px;color:var(--text3,#888)">'+icon+' '+label+'</div></div>';
   }
-  window._dnsAuditBuckets=d.buckets||{};
+  window._dnsAuditBuckets=d.buckets||{}; window._dnsIpGroups=d.ipGroups||{};
   var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px;margin-bottom:14px">'+
     '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
       '<b>สถานะการเปลี่ยน IP</b>'+
@@ -7516,8 +7516,32 @@ function dnsRenderAudit(d){
       card('#6ab0f3','🔵','ชี้ IP อื่น',c['other-ip'],'other-ip')+
     '</div>'+
     '<div style="font-size:11px;color:var(--text3,#888);margin-top:8px">⚪ ไม่เจอในบัญชีนี้ = น่าจะอยู่ Cloudflare อีกบัญชี (เอา API มาเชื่อมเพิ่มทีหลังได้) · กดที่การ์ดเพื่อดูรายชื่อ</div>'+
-    '<div id="dns-bucket-list" style="margin-top:10px"></div></div>';
+    '<div id="dns-ipgroups" style="margin-top:14px"></div>'+'<div id="dns-bucket-list" style="margin-top:10px"></div></div>';
   el.innerHTML=h;
+  dnsRenderIpGroups(d.newIp, d.oldIp);
+}
+function dnsRenderIpGroups(newIp, oldIp){
+  var box=document.getElementById('dns-ipgroups'); if(!box) return;
+  var g=window._dnsIpGroups||{};
+  var ips=Object.keys(g).sort(function(a,b){return g[b].count-g[a].count;});
+  if(!ips.length){ box.innerHTML=''; return; }
+  var known={}; known[newIp]='Server ปลายทาง (ใหม่)'; known[oldIp]='Server ต้นทาง (เก่า)';
+  var h='<div style="font-weight:700;font-size:14px;margin-bottom:8px">แยกตาม IP ปลายทาง (แต่ละเซิร์ฟเวอร์มีกี่โดเมน)</div><div style="display:flex;flex-direction:column;gap:6px">';
+  ips.forEach(function(ip){
+    var isNew=ip===newIp, isOld=ip===oldIp;
+    var color=isNew?'#2ecc71':(isOld?'#e3b93b':'#6ab0f3');
+    var tag=known[ip]?(' — '+known[ip]):''; var badge=isNew?'🟢':(isOld?'🟡':'🔵');
+    h+='<div style="background:var(--bg,#0a0a0a);border:1px solid '+color+'44;border-radius:8px;padding:10px;cursor:pointer" onclick="dnsShowIp(\''+ip+'\')"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-family:monospace;font-weight:700;color:'+color+'">'+badge+' '+ip+'</span><span style="font-size:12px;color:var(--text3,#888)">'+tag+'</span></div><div style="font-size:18px;font-weight:700;color:'+color+'">'+g[ip].count+' <span style="font-size:12px;color:var(--text3,#888)">โดเมน</span></div></div></div>';
+  });
+  h+='</div><div id="dns-ip-list" style="margin-top:8px"></div>';
+  box.innerHTML=h;
+}
+function dnsShowIp(ip){
+  var box=document.getElementById('dns-ip-list'); if(!box) return;
+  var g=(window._dnsIpGroups||{})[ip]; if(!g) return;
+  var copyList=(g.domains||[]).join('\n');
+  var h='<div style="font-weight:600;font-size:13px;margin:6px 0">โดเมนที่ชี้ '+ip+' ('+g.count+')</div><div style="max-height:280px;overflow:auto;font-size:12px">'+(g.domains||[]).slice(0,800).map(function(dm){return '<div style="padding:2px 0;border-bottom:1px solid var(--border,#2a2a2a)">'+dm+'</div>';}).join('')+'</div><div style="margin-top:8px"><button class="btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('+JSON.stringify(copyList)+');this.textContent=\'คัดลอกแล้ว\'">คัดลอกรายชื่อ</button></div>';
+  box.innerHTML=h;
 }
 function dnsShowBucket(key){
   var box=document.getElementById('dns-bucket-list'); if(!box) return;
