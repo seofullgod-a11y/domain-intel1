@@ -1193,7 +1193,8 @@ const CF_TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
 const CF_TAG = '[auto-waf]';
 let cfBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, failures: [] };
 let dnsScan = { running: false, total: 0, done: 0, matches: [] };
-let dnsRepoint = { running: false, total: 0, done: 0, changed: 0, failed: 0, failures: [] }; // ป้ายระบุ rule ที่ระบบสร้าง (ไม่ยุ่งกับ rule ที่ผู้ใช้ตั้งเอง)
+let dnsRepoint = { running: false, total: 0, done: 0, changed: 0, failed: 0, failures: [] };
+let dnsAudit = { running: false, total: 0, done: 0, buckets: {} }; // ป้ายระบุ rule ที่ระบบสร้าง (ไม่ยุ่งกับ rule ที่ผู้ใช้ตั้งเอง)
 function cfRules() {
   return [
     { description: CF_TAG + ' challenge wp-login', expression: '(http.request.uri.path contains "/wp-login.php")', action: 'managed_challenge' },
@@ -1319,6 +1320,28 @@ async function cfScanDomainIp(domain, oldIp) {
     return { domain, hasZone: true, zone: zone.name, error: e.message, records: [] };
   }
 }
+// ตรวจสถานะโดเมน: ชี้ IP ใหม่แล้ว / ยังชี้ IP เก่า / ไม่เจอใน CF account นี้ (น่าจะอยู่ account อื่น)
+async function cfAuditDomain(domain, oldIp, newIp) {
+  let zone;
+  try { zone = await cfFindZone(domain); }
+  catch (e) { return { domain, status: 'error', error: e.message }; }
+  if (!zone) return { domain, status: 'not-in-account' }; // ไม่เจอ zone = อยู่ CF account อื่น หรือไม่มีใน CF
+  try {
+    const recs = await cfGetARecords(zone.id);
+    if (!recs.length) return { domain, status: 'no-a-record', zone: zone.name };
+    const hasOld = recs.some(r => r.content === oldIp);
+    const hasNew = recs.some(r => r.content === newIp);
+    let status;
+    if (hasOld && hasNew) status = 'mixed';       // มีทั้งเก่าและใหม่ (บางส่วนเปลี่ยนแล้ว)
+    else if (hasOld) status = 'pending';          // ยังชี้ IP เก่า = ยังไม่เปลี่ยน
+    else if (hasNew) status = 'done';             // ชี้ IP ใหม่แล้ว
+    else status = 'other-ip';                     // ชี้ IP อื่น (ไม่ใช่เก่าหรือใหม่)
+    return { domain, status, zone: zone.name, ips: [...new Set(recs.map(r => r.content))] };
+  } catch (e) {
+    return { domain, status: 'error', zone: zone.name, error: e.message };
+  }
+}
+
 // เปลี่ยน A record ที่ชี้ oldIp → newIp (เฉพาะ record ที่ตรง oldIp เท่านั้น)
 async function cfRepointDomain(domain, oldIp, newIp) {
   const zone = await cfFindZone(domain);
@@ -2744,6 +2767,45 @@ async function handleRequest(req, res) {
     const list = [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
     cfScanAll(list).catch(() => { cfScan.running = false; });
     json(res, { success: true, started: true, total: list.length });
+    return;
+  }
+
+  // DNS audit — เช็คว่าโดเมนไหนเปลี่ยนแล้ว/ยังไม่เปลี่ยน/ไม่อยู่ใน account นี้ (background)
+  if (req.method === 'POST' && url === '/api/dns/audit') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (dnsAudit.running) { json(res, { success: false, error: 'กำลังตรวจอยู่แล้ว' }); return; }
+    const oldIp = String(body.oldIp || '').trim();
+    const newIp = String(body.newIp || '').trim();
+    if (!isValidIp(oldIp) || !isValidIp(newIp)) { json(res, { success: false, error: 'IP ไม่ถูกต้อง' }); return; }
+    let domains = Array.isArray(body.domains) && body.domains.length
+      ? body.domains.map(x => String(x).trim().toLowerCase()).filter(validDomainName)
+      : [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
+    dnsAudit = { running: true, oldIp, newIp, total: domains.length, done: 0,
+      buckets: { done: [], pending: [], mixed: [], 'not-in-account': [], 'other-ip': [], 'no-a-record': [], error: [] },
+      startedAt: Date.now() };
+    (async () => {
+      for (const dom of domains) {
+        try {
+          const r = await cfAuditDomain(dom, oldIp, newIp);
+          const b = dnsAudit.buckets[r.status] || (dnsAudit.buckets[r.status] = []);
+          b.push({ domain: dom, zone: r.zone, ips: r.ips, error: r.error });
+        } catch (e) {
+          dnsAudit.buckets.error.push({ domain: dom, error: e.message });
+        }
+        dnsAudit.done++;
+        await new Promise(r => setTimeout(r, 180));
+      }
+      dnsAudit.running = false; dnsAudit.finishedAt = Date.now();
+    })().catch(() => { dnsAudit.running = false; });
+    json(res, { success: true, started: true, total: domains.length });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/dns/audit-status') {
+    const counts = {};
+    Object.keys(dnsAudit.buckets || {}).forEach(k => counts[k] = dnsAudit.buckets[k].length);
+    json(res, { success: true, running: dnsAudit.running, total: dnsAudit.total, done: dnsAudit.done, counts, buckets: dnsAudit.buckets, oldIp: dnsAudit.oldIp, newIp: dnsAudit.newIp });
     return;
   }
 
