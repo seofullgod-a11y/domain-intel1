@@ -7368,9 +7368,9 @@ function dnsEnsurePage(){
           '<input id="dns-newip" placeholder="เช่น 178.128.x.x" style="padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit;width:180px"></div>'+
         '<button class="btn" onclick="dnsScan()"><i class="ti ti-radar"></i> ค้นหาโดเมนที่ใช้ IP เก่า</button>'+
       '</div>'+
-      '<div id="dns-scan-progress" style="font-size:12px;color:var(--text3,#888);margin-top:10px"></div>'+
+      '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+'<button class="btn" onclick="dnsAudit()"><i class="ti ti-checklist"></i> ตรวจสถานะทุกโดเมน (เปลี่ยนแล้ว/ยัง/ไม่เจอ)</button></div>'+'<div id="dns-scan-progress" style="font-size:12px;color:var(--text3,#888);margin-top:10px"></div>'+
     '</div>'+
-    '<div id="dns-results"></div>';
+    '<div id="dns-audit"></div>'+'<div id="dns-results"></div>';
   c.appendChild(div);
 }
 function openDnsIp(){ dnsEnsurePage(); showPage('dnsip');
@@ -7464,5 +7464,95 @@ function dnsPollRepoint(){
     }catch(e){}
   }
   tick(); _dnsRepointPoll=setInterval(tick,1500);
+}
+</script>
+<script>
+// ===== DNS AUDIT (added feature) — ตรวจว่าโดเมนไหนเปลี่ยนแล้ว/ยัง/ไม่เจอในบัญชี CF นี้ =====
+var _dnsAuditPoll=null;
+async function dnsAudit(){
+  var oldIp=(document.getElementById('dns-oldip').value||'').trim();
+  var newIp=(document.getElementById('dns-newip').value||'').trim();
+  if(!/^\d{1,3}(\.\d{1,3}){3}$/.test(oldIp)||!/^\d{1,3}(\.\d{1,3}){3}$/.test(newIp)){ if(typeof toast==='function')toast('ใส่ IP เก่าและใหม่ให้ครบ','error'); return; }
+  if(!wpNeedKey()) return;
+  try{
+    var r=await fetch(API+'/api/dns/audit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:window._wpKey,oldIp:oldIp,newIp:newIp})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast(d.error||'ตรวจไม่ได้','error'); return; }
+    if(typeof toast==='function')toast('เริ่มตรวจ '+d.total+' โดเมน...','info');
+    dnsPollAudit();
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+function dnsPollAudit(){
+  if(_dnsAuditPoll) clearInterval(_dnsAuditPoll);
+  async function tick(){
+    try{
+      var r=await fetch(API+'/api/dns/audit-status'); var d=await r.json();
+      dnsRenderAudit(d);
+      if(!d.running){ clearInterval(_dnsAuditPoll); _dnsAuditPoll=null; }
+    }catch(e){}
+  }
+  tick(); _dnsAuditPoll=setInterval(tick,1500);
+}
+function dnsRenderAudit(d){
+  var el=document.getElementById('dns-audit'); if(!el) return;
+  var c=d.counts||{};
+  var pct=d.total?Math.round(d.done/d.total*100):0;
+  function card(color,icon,label,n,key){
+    return '<div style="flex:1;min-width:150px;background:var(--bg,#0a0a0a);border:1px solid '+color+'44;border-radius:8px;padding:10px;cursor:pointer" onclick="dnsShowBucket(\''+key+'\')">'+
+      '<div style="font-size:22px;font-weight:700;color:'+color+'">'+(n||0)+'</div>'+
+      '<div style="font-size:12px;color:var(--text3,#888)">'+icon+' '+label+'</div></div>';
+  }
+  window._dnsAuditBuckets=d.buckets||{};
+  var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px;margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<b>สถานะการเปลี่ยน IP</b>'+
+      '<span style="font-size:12px;color:var(--text3,#888)">ตรวจ '+d.done+'/'+d.total+' ('+pct+'%)'+(d.running?' ...':' ✅ เสร็จ')+'</span></div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      card('#2ecc71','🟢','เปลี่ยนเป็น IP ใหม่แล้ว',c.done,'done')+
+      card('#e3b93b','🟡','ยังชี้ IP เก่า (ต้องเปลี่ยน)',c.pending,'pending')+
+      card('#f58220','🟠','มีทั้งเก่า+ใหม่ (ปนกัน)',c.mixed,'mixed')+
+      card('#888','⚪','ไม่เจอในบัญชี CF นี้',c['not-in-account'],'not-in-account')+
+      card('#6ab0f3','🔵','ชี้ IP อื่น',c['other-ip'],'other-ip')+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--text3,#888);margin-top:8px">⚪ ไม่เจอในบัญชีนี้ = น่าจะอยู่ Cloudflare อีกบัญชี (เอา API มาเชื่อมเพิ่มทีหลังได้) · กดที่การ์ดเพื่อดูรายชื่อ</div>'+
+    '<div id="dns-bucket-list" style="margin-top:10px"></div></div>';
+  el.innerHTML=h;
+}
+function dnsShowBucket(key){
+  var box=document.getElementById('dns-bucket-list'); if(!box) return;
+  var items=(window._dnsAuditBuckets||{})[key]||[];
+  var labels={done:'เปลี่ยนแล้ว 🟢',pending:'ยังชี้ IP เก่า 🟡',mixed:'ปนกัน 🟠','not-in-account':'ไม่เจอในบัญชีนี้ ⚪','other-ip':'ชี้ IP อื่น 🔵'};
+  if(!items.length){ box.innerHTML='<div style="color:var(--text3,#888);font-size:12px">ไม่มีโดเมนในหมวดนี้</div>'; return; }
+  var h='<div style="font-weight:600;font-size:13px;margin-bottom:6px">'+(labels[key]||key)+' ('+items.length+')</div>';
+  h+='<div style="max-height:300px;overflow:auto;font-size:12px">'+
+    items.slice(0,600).map(function(x){
+      var ipnote=x.ips?' <span style="color:var(--text3,#888)">('+x.ips.join(', ')+')</span>':'';
+      var err=x.error?' <span style="color:#e24b4a">'+x.error+'</span>':'';
+      return '<div style="padding:3px 0;border-bottom:1px solid var(--border,#2a2a2a)">'+x.domain+ipnote+err+'</div>';
+    }).join('')+'</div>';
+  if(key==='pending'){
+    h+='<button class="btn btn-green" style="margin-top:8px" onclick="dnsRepointPending()"><i class="ti ti-arrows-exchange"></i> เปลี่ยนเฉพาะที่ยังค้าง '+items.length+' โดเมน</button>';
+  }
+  var copyList=items.map(function(x){return x.domain;}).join('\n');
+  h+='<div style="margin-top:8px"><button class="btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('+JSON.stringify(copyList)+');this.textContent=\'คัดลอกแล้ว\'">คัดลอกรายชื่อ</button></div>';
+  box.innerHTML=h;
+}
+async function dnsRepointPending(){
+  var oldIp=(document.getElementById('dns-oldip').value||'').trim();
+  var newIp=(document.getElementById('dns-newip').value||'').trim();
+  var items=(window._dnsAuditBuckets||{}).pending||[];
+  if(!items.length) return;
+  if(!wpNeedKey()) return;
+  var doms=items.map(function(x){return x.domain;});
+  if(!confirm('เปลี่ยน '+doms.length+' โดเมนที่ยังชี้ IP เก่า ('+oldIp+' → '+newIp+') ?')) return;
+  try{
+    var r=await fetch(API+'/api/dns/repoint',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({key:window._wpKey,oldIp:oldIp,newIp:newIp,domains:doms})});
+    var d=await r.json();
+    if(!d.success){ if(typeof toast==='function')toast(d.error||'ทำไม่ได้','error'); return; }
+    if(typeof toast==='function')toast('เริ่มเปลี่ยน '+d.total+' โดเมน...','info');
+    if(typeof dnsPollRepoint==='function') dnsPollRepoint();
+    setTimeout(function(){ dnsAudit(); }, 3000);
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
 }
 </script>
