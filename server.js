@@ -1191,7 +1191,9 @@ async function runOnServer(serverName, command) {
 const CF_API = 'https://api.cloudflare.com/client/v4';
 const CF_TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
 const CF_TAG = '[auto-waf]';
-let cfBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, failures: [] }; // ป้ายระบุ rule ที่ระบบสร้าง (ไม่ยุ่งกับ rule ที่ผู้ใช้ตั้งเอง)
+let cfBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, failures: [] };
+let dnsScan = { running: false, total: 0, done: 0, matches: [] };
+let dnsRepoint = { running: false, total: 0, done: 0, changed: 0, failed: 0, failures: [] }; // ป้ายระบุ rule ที่ระบบสร้าง (ไม่ยุ่งกับ rule ที่ผู้ใช้ตั้งเอง)
 function cfRules() {
   return [
     { description: CF_TAG + ' challenge wp-login', expression: '(http.request.uri.path contains "/wp-login.php")', action: 'managed_challenge' },
@@ -1282,6 +1284,63 @@ async function cfScanAll(domains) {
   }
   saveCfStatus();
   cfScan.running = false;
+}
+
+// ===== DNS IP REPOINT (added feature) — เปลี่ยน A record จาก IP เก่า → IP ใหม่ ผ่าน Cloudflare =====
+function isValidIp(ip) {
+  return typeof ip === 'string' && /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(ip) &&
+    ip.split('.').every(o => +o >= 0 && +o <= 255);
+}
+// ดึง A record ทั้งหมดของ zone (เฉพาะ type A)
+async function cfGetARecords(zoneId) {
+  const out = [];
+  let page = 1;
+  while (page <= 10) {
+    const j = await cfApi('/zones/' + zoneId + '/dns_records?type=A&per_page=100&page=' + page);
+    const recs = j.result || [];
+    recs.forEach(r => out.push(r));
+    const ti = (j.result_info || {});
+    if (!ti.total_pages || page >= ti.total_pages) break;
+    page++;
+  }
+  return out;
+}
+// สแกน 1 โดเมน: หา A record ที่ชี้ oldIp (ถ้า oldIp ว่าง = คืนทุก A record)
+async function cfScanDomainIp(domain, oldIp) {
+  const zone = await cfFindZone(domain);
+  if (!zone) return { domain, hasZone: false, records: [] };
+  try {
+    const recs = await cfGetARecords(zone.id);
+    const matched = recs
+      .filter(r => !oldIp || r.content === oldIp)
+      .map(r => ({ id: r.id, name: r.name, content: r.content, proxied: r.proxied, ttl: r.ttl }));
+    return { domain, hasZone: true, zone: zone.name, zoneId: zone.id, records: matched, allCount: recs.length };
+  } catch (e) {
+    return { domain, hasZone: true, zone: zone.name, error: e.message, records: [] };
+  }
+}
+// เปลี่ยน A record ที่ชี้ oldIp → newIp (เฉพาะ record ที่ตรง oldIp เท่านั้น)
+async function cfRepointDomain(domain, oldIp, newIp) {
+  const zone = await cfFindZone(domain);
+  if (!zone) return { domain, ok: false, error: 'ไม่พบ zone ใน Cloudflare' };
+  try {
+    const recs = await cfGetARecords(zone.id);
+    const targets = recs.filter(r => r.content === oldIp);
+    if (!targets.length) return { domain, ok: true, changed: 0, note: 'ไม่มี A record ที่ชี้ ' + oldIp };
+    let changed = 0;
+    const details = [];
+    for (const r of targets) {
+      // PATCH เปลี่ยนเฉพาะ content (IP) — คง proxied/ttl/name เดิมไว้
+      await cfApi('/zones/' + zone.id + '/dns_records/' + r.id, {
+        method: 'PATCH', body: { content: newIp }
+      });
+      changed++;
+      details.push({ name: r.name, from: oldIp, to: newIp, proxied: r.proxied });
+    }
+    return { domain, ok: true, zone: zone.name, changed, details };
+  } catch (e) {
+    return { domain, ok: false, error: e.message };
+  }
 }
 
 // ใส่ rule (merge ไม่ลบของเดิม) หรือถอด rule ของระบบออก
@@ -2685,6 +2744,77 @@ async function handleRequest(req, res) {
     const list = [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
     cfScanAll(list).catch(() => { cfScan.running = false; });
     json(res, { success: true, started: true, total: list.length });
+    return;
+  }
+
+  // DNS IP repoint API (added feature)
+  // สแกนหาโดเมนที่ A record ชี้ IP เก่า (background) — ต้องมี key
+  if (req.method === 'POST' && url === '/api/dns/scan') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (dnsScan.running) { json(res, { success: false, error: 'กำลังสแกนอยู่แล้ว' }); return; }
+    const oldIp = String(body.oldIp || '').trim();
+    if (!isValidIp(oldIp)) { json(res, { success: false, error: 'IP เก่าไม่ถูกต้อง' }); return; }
+    let domains = Array.isArray(body.domains) && body.domains.length
+      ? body.domains.map(x => String(x).trim().toLowerCase()).filter(validDomainName)
+      : [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
+    dnsScan = { running: true, oldIp, total: domains.length, done: 0, matches: [], startedAt: Date.now() };
+    (async () => {
+      for (const dom of domains) {
+        try {
+          const r = await cfScanDomainIp(dom, oldIp);
+          if (r.hasZone && r.records && r.records.length) {
+            dnsScan.matches.push({ domain: dom, zone: r.zone, records: r.records.map(x => ({ name: x.name, content: x.content, proxied: x.proxied })) });
+          }
+        } catch (e) {}
+        dnsScan.done++;
+        await new Promise(r => setTimeout(r, 180));
+      }
+      dnsScan.running = false; dnsScan.finishedAt = Date.now();
+    })().catch(() => { dnsScan.running = false; });
+    json(res, { success: true, started: true, total: domains.length });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/dns/scan-status') {
+    json(res, { success: true, ...dnsScan });
+    return;
+  }
+  // เปลี่ยน IP เก่า → ใหม่ ทุกโดเมนที่ตรง (background) — ต้องมี key
+  if (req.method === 'POST' && url === '/api/dns/repoint') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (dnsRepoint.running) { json(res, { success: false, error: 'กำลังทำงานอยู่แล้ว' }); return; }
+    const oldIp = String(body.oldIp || '').trim();
+    const newIp = String(body.newIp || '').trim();
+    if (!isValidIp(oldIp) || !isValidIp(newIp)) { json(res, { success: false, error: 'IP ไม่ถูกต้อง' }); return; }
+    if (oldIp === newIp) { json(res, { success: false, error: 'IP เก่ากับใหม่เหมือนกัน' }); return; }
+    // รายชื่อ: จาก body.domains (ที่เลือกจากผลสแกน) ถ้าไม่ส่งมา = ทุกโดเมน
+    let domains = Array.isArray(body.domains) && body.domains.length
+      ? body.domains.map(x => String(x).trim().toLowerCase()).filter(validDomainName)
+      : [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
+    dnsRepoint = { running: true, oldIp, newIp, total: domains.length, done: 0, changed: 0, failed: 0, failures: [], startedAt: Date.now() };
+    (async () => {
+      for (const dom of domains) {
+        try {
+          const r = await cfRepointDomain(dom, oldIp, newIp);
+          if (r.ok) { dnsRepoint.changed += (r.changed || 0); }
+          else { dnsRepoint.failed++; if (dnsRepoint.failures.length < 100) dnsRepoint.failures.push({ domain: dom, error: r.error }); }
+        } catch (e) {
+          dnsRepoint.failed++; if (dnsRepoint.failures.length < 100) dnsRepoint.failures.push({ domain: dom, error: e.message });
+        }
+        dnsRepoint.done++;
+        await new Promise(r => setTimeout(r, 200));
+      }
+      dnsRepoint.running = false; dnsRepoint.finishedAt = Date.now();
+      try { logEvent('info', 'เปลี่ยน DNS IP ' + oldIp + ' → ' + newIp + ' : ' + dnsRepoint.changed + ' record'); } catch (e) {}
+    })().catch(() => { dnsRepoint.running = false; });
+    json(res, { success: true, started: true, total: domains.length });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/dns/repoint-status') {
+    json(res, { success: true, ...dnsRepoint });
     return;
   }
 
