@@ -1190,6 +1190,14 @@ async function runOnServer(serverName, command) {
 // ===== CLOUDFLARE MANAGED CHALLENGE (added feature) — ตั้ง WAF กัน wp-login ผ่าน CF API =====
 const CF_API = 'https://api.cloudflare.com/client/v4';
 const CF_TOKEN = process.env.CLOUDFLARE_API_TOKEN || '';
+// รองรับหลาย Cloudflare account: CLOUDFLARE_API_TOKEN (ไอดีเดิม) + CLOUDFLARE_API_TOKENS (ลิสต์ คั่นด้วย , หรือ ;)
+const CF_TOKENS = (function () {
+  const list = [];
+  if (CF_TOKEN) list.push(CF_TOKEN);
+  const extra = process.env.CLOUDFLARE_API_TOKENS || '';
+  extra.split(/[,;\s]+/).map(s => s.trim()).filter(Boolean).forEach(t => { if (!list.includes(t)) list.push(t); });
+  return list;
+})();
 const CF_TAG = '[auto-waf]';
 let cfBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, failures: [] };
 let dnsScan = { running: false, total: 0, done: 0, matches: [] };
@@ -1201,13 +1209,14 @@ function cfRules() {
     { description: CF_TAG + ' block xmlrpc', expression: '(http.request.uri.path contains "/xmlrpc.php")', action: 'block' }
   ];
 }
-function cfApi(path, opts) {
+function cfApi(path, opts, token) {
   opts = opts || {};
+  const useToken = token || CF_TOKENS[0] || CF_TOKEN;
   return new Promise((resolve, reject) => {
     let u;
     try { u = new URL(CF_API + path); } catch (e) { return reject(new Error('URL ไม่ถูกต้อง')); }
     const payload = opts.body ? JSON.stringify(opts.body) : null;
-    const headers = { 'Authorization': 'Bearer ' + CF_TOKEN, 'Content-Type': 'application/json' };
+    const headers = { 'Authorization': 'Bearer ' + useToken, 'Content-Type': 'application/json' };
     if (payload) headers['Content-Length'] = Buffer.byteLength(payload);
     const req = https.request(u, { method: opts.method || 'GET', headers, timeout: 15000 }, (res) => {
       let data = '';
@@ -1231,20 +1240,27 @@ function cfApi(path, opts) {
 // หา zone id จากชื่อโดเมน (รองรับ subdomain — ตัดเหลือ root)
 async function cfFindZone(domain) {
   const root = domain.replace(/^www\./, '');
-  let j = await cfApi('/zones?name=' + encodeURIComponent(root));
-  if (j.result && j.result.length) return j.result[0];
-  // ลองตัด subdomain ทีละชั้น (a.b.co.th -> b.co.th ...)
+  const cands = [root];
   const parts = root.split('.');
-  for (let i = 1; i < parts.length - 1; i++) {
-    const cand = parts.slice(i).join('.');
-    j = await cfApi('/zones?name=' + encodeURIComponent(cand));
-    if (j.result && j.result.length) return j.result[0];
+  for (let i = 1; i < parts.length - 1; i++) cands.push(parts.slice(i).join('.'));
+  // วนหาทุก Cloudflare account (token) จนกว่าจะเจอ zone
+  for (const token of (CF_TOKENS.length ? CF_TOKENS : [CF_TOKEN])) {
+    for (const cand of cands) {
+      let j;
+      try { j = await cfApi('/zones?name=' + encodeURIComponent(cand), {}, token); }
+      catch (e) { continue; } // token นี้ใช้ไม่ได้/หมดสิทธิ์ ลอง token ถัดไป
+      if (j.result && j.result.length) {
+        const zone = j.result[0];
+        zone._token = token; // จำว่า zone นี้อยู่ account ไหน
+        return zone;
+      }
+    }
   }
   return null;
 }
-async function cfGetEntrypoint(zoneId) {
+async function cfGetEntrypoint(zoneId, token) {
   try {
-    const j = await cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_firewall_custom/entrypoint');
+    const j = await cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_firewall_custom/entrypoint', {}, token);
     return j.result.rules || [];
   } catch (e) {
     if (/could not find|does not exist|10\d{3}/i.test(e.message)) return [];
@@ -1265,7 +1281,7 @@ async function cfCheckDomain(domain) {
   if (!zone) { const s = { hasZone: false, hasRule: false, zone: null, at: Date.now() }; cfStatusCache[domain] = s; return s; }
   let hasRule = false;
   try {
-    const rules = await cfGetEntrypoint(zone.id);
+    const rules = await cfGetEntrypoint(zone.id, zone._token);
     const ours = new Set(cfRules().map(r => r.description));
     hasRule = rules.some(r => ours.has(r.description));
   } catch (e) {}
@@ -1293,11 +1309,11 @@ function isValidIp(ip) {
     ip.split('.').every(o => +o >= 0 && +o <= 255);
 }
 // ดึง A record ทั้งหมดของ zone (เฉพาะ type A)
-async function cfGetARecords(zoneId) {
+async function cfGetARecords(zoneId, token) {
   const out = [];
   let page = 1;
   while (page <= 10) {
-    const j = await cfApi('/zones/' + zoneId + '/dns_records?type=A&per_page=100&page=' + page);
+    const j = await cfApi('/zones/' + zoneId + '/dns_records?type=A&per_page=100&page=' + page, {}, token);
     const recs = j.result || [];
     recs.forEach(r => out.push(r));
     const ti = (j.result_info || {});
@@ -1311,7 +1327,7 @@ async function cfScanDomainIp(domain, oldIp) {
   const zone = await cfFindZone(domain);
   if (!zone) return { domain, hasZone: false, records: [] };
   try {
-    const recs = await cfGetARecords(zone.id);
+    const recs = await cfGetARecords(zone.id, zone._token);
     const matched = recs
       .filter(r => !oldIp || r.content === oldIp)
       .map(r => ({ id: r.id, name: r.name, content: r.content, proxied: r.proxied, ttl: r.ttl }));
@@ -1327,7 +1343,7 @@ async function cfAuditDomain(domain, oldIp, newIp) {
   catch (e) { return { domain, status: 'error', error: e.message }; }
   if (!zone) return { domain, status: 'not-in-account' }; // ไม่เจอ zone = อยู่ CF account อื่น หรือไม่มีใน CF
   try {
-    const recs = await cfGetARecords(zone.id);
+    const recs = await cfGetARecords(zone.id, zone._token);
     if (!recs.length) return { domain, status: 'no-a-record', zone: zone.name };
     const hasOld = recs.some(r => r.content === oldIp);
     const hasNew = recs.some(r => r.content === newIp);
@@ -1347,7 +1363,7 @@ async function cfRepointDomain(domain, oldIp, newIp) {
   const zone = await cfFindZone(domain);
   if (!zone) return { domain, ok: false, error: 'ไม่พบ zone ใน Cloudflare' };
   try {
-    const recs = await cfGetARecords(zone.id);
+    const recs = await cfGetARecords(zone.id, zone._token);
     const targets = recs.filter(r => r.content === oldIp);
     if (!targets.length) return { domain, ok: true, changed: 0, note: 'ไม่มี A record ที่ชี้ ' + oldIp };
     let changed = 0;
@@ -1356,7 +1372,7 @@ async function cfRepointDomain(domain, oldIp, newIp) {
       // PATCH เปลี่ยนเฉพาะ content (IP) — คง proxied/ttl/name เดิมไว้
       await cfApi('/zones/' + zone.id + '/dns_records/' + r.id, {
         method: 'PATCH', body: { content: newIp }
-      });
+      }, zone._token);
       changed++;
       details.push({ name: r.name, from: oldIp, to: newIp, proxied: r.proxied });
     }
@@ -2762,7 +2778,7 @@ async function handleRequest(req, res) {
   if (req.method === 'POST' && url === '/api/cloudflare/scan') {
     const body = await parseBody(req);
     if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
-    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
     if (cfScan.running) { json(res, { success: false, error: 'กำลังสแกนอยู่แล้ว' }); return; }
     const list = [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
     cfScanAll(list).catch(() => { cfScan.running = false; });
@@ -2774,7 +2790,7 @@ async function handleRequest(req, res) {
   if (req.method === 'POST' && url === '/api/dns/audit') {
     const body = await parseBody(req);
     if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
-    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
     if (dnsAudit.running) { json(res, { success: false, error: 'กำลังตรวจอยู่แล้ว' }); return; }
     const oldIp = String(body.oldIp || '').trim();
     const newIp = String(body.newIp || '').trim();
@@ -2824,7 +2840,7 @@ async function handleRequest(req, res) {
   if (req.method === 'POST' && url === '/api/dns/scan') {
     const body = await parseBody(req);
     if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
-    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
     if (dnsScan.running) { json(res, { success: false, error: 'กำลังสแกนอยู่แล้ว' }); return; }
     const oldIp = String(body.oldIp || '').trim();
     if (!isValidIp(oldIp)) { json(res, { success: false, error: 'IP เก่าไม่ถูกต้อง' }); return; }
@@ -2856,7 +2872,7 @@ async function handleRequest(req, res) {
   if (req.method === 'POST' && url === '/api/dns/repoint') {
     const body = await parseBody(req);
     if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
-    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
     if (dnsRepoint.running) { json(res, { success: false, error: 'กำลังทำงานอยู่แล้ว' }); return; }
     const oldIp = String(body.oldIp || '').trim();
     const newIp = String(body.newIp || '').trim();
@@ -2892,14 +2908,14 @@ async function handleRequest(req, res) {
 
   // Cloudflare Managed Challenge API (added feature)
   if (req.method === 'GET' && url === '/api/cloudflare/config') {
-    json(res, { success: true, tokenSet: !!CF_TOKEN });
+    json(res, { success: true, tokenSet: !!CF_TOKENS.length, accounts: CF_TOKENS.length });
     return;
   }
   // ตั้ง/ถอด CF ทีละโดเมน (ต้องมี key)
   if (req.method === 'POST' && url === '/api/cloudflare/domain') {
     const body = await parseBody(req);
     if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
-    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
     const domain = String(body.domain || '').trim().toLowerCase();
     const enable = !!body.enable;
     if (!validDomainName(domain)) { json(res, { success: false, error: 'ชื่อโดเมนไม่ถูกต้อง' }); return; }
@@ -2912,7 +2928,7 @@ async function handleRequest(req, res) {
   if (req.method === 'POST' && url === '/api/cloudflare/bulk') {
     const body = await parseBody(req);
     if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
-    if (!CF_TOKEN) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
     if (cfBulk.running) { json(res, { success: false, error: 'กำลังทำงานอยู่แล้ว — ดูความคืบหน้าที่หน้าจอ' }); return; }
     const enable = !!body.enable;
     // รายชื่อโดเมน: จาก body.domains ถ้าส่งมา ไม่งั้นทุกโดเมนใน memory
