@@ -1267,9 +1267,9 @@ async function cfGetEntrypoint(zoneId, token) {
     throw e;
   }
 }
-async function cfPutRules(zoneId, rules) {
+async function cfPutRules(zoneId, rules, token) {
   return cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_firewall_custom/entrypoint',
-    { method: 'PUT', body: { rules } });
+    { method: 'PUT', body: { rules } }, token);
 }
 // cache สถานะ CF ต่อโดเมน — กันยิง CF ซ้ำทุกครั้ง (เก็บ /tmp, refresh ได้)
 const CF_STATUS_FILE = path.join('/tmp', 'domainintel-cfstatus.json');
@@ -1387,7 +1387,7 @@ async function cfApplyDomain(domain, enable) {
   const zone = await cfFindZone(domain);
   if (!zone) return { domain, ok: false, error: 'ไม่พบ zone นี้ในบัญชี Cloudflare' };
   try {
-    const existing = await cfGetEntrypoint(zone.id);
+    const existing = await cfGetEntrypoint(zone.id, zone._token);
     const ours = new Set(cfRules().map(r => r.description));
     const kept = existing.filter(r => !ours.has(r.description)); // rule ของผู้ใช้ เก็บไว้
     let merged;
@@ -1398,7 +1398,7 @@ async function cfApplyDomain(domain, enable) {
     } else {
       merged = kept; // ถอดเฉพาะของเรา
     }
-    await cfPutRules(zone.id, merged);
+    await cfPutRules(zone.id, merged, zone._token);
     cfStatusCache[domain] = { hasZone: true, hasRule: enable, zone: zone.name, at: Date.now() };
     return { domain, ok: true, zone: zone.name, enabled: enable };
   } catch (e) {
