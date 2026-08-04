@@ -7368,7 +7368,7 @@ function dnsEnsurePage(){
           '<input id="dns-newip" placeholder="เช่น 178.128.x.x" style="padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit;width:180px"></div>'+
         '<button class="btn" onclick="dnsScan()"><i class="ti ti-radar"></i> ค้นหาโดเมนที่ใช้ IP เก่า</button>'+
       '</div>'+
-      '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+'<button class="btn" onclick="dnsAudit()"><i class="ti ti-checklist"></i> ตรวจสถานะทุกโดเมน (เปลี่ยนแล้ว/ยัง/ไม่เจอ)</button></div>'+'<div style="margin-top:12px;padding:12px;border:1px solid var(--border,#2a2a2a);border-radius:10px;background:var(--bg2,#111)">'+'<div style="font-weight:600;margin-bottom:6px">เปลี่ยน IP เฉพาะโดเมนในลิสต์ (วางรายชื่อ)</div>'+'<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">วางรายชื่อโดเมน 1 บรรทัดต่อ 1 โดเมน — ระบบเปลี่ยนเฉพาะที่ชี้ IP เก่า → IP ใหม่ (ตามช่องด้านบน) · คั่นด้วยขึ้นบรรทัด/comma/เว้นวรรค</div>'+'<textarea id="dns-list" rows="6" oninput="dnsListCount()" placeholder="123wows.com&#10;13satan-vip.com&#10;1688upx.asia" style="width:100%;box-sizing:border-box;padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit;font-family:monospace;font-size:13px"></textarea>'+'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">'+'<button class="btn btn-green" onclick="dnsRepointList()"><i class="ti ti-arrows-exchange"></i> เปลี่ยน IP เฉพาะโดเมนในลิสต์</button>'+'<span id="dns-list-count" style="font-size:12px;color:var(--text3,#888)"></span></div></div>'+'<div id="dns-scan-progress" style="font-size:12px;color:var(--text3,#888);margin-top:10px"></div>'+
+      '<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+'<button class="btn" onclick="dnsAudit()"><i class="ti ti-checklist"></i> ตรวจสถานะทุกโดเมน (เปลี่ยนแล้ว/ยัง/ไม่เจอ)</button></div>'+'<div style="margin-top:12px;padding:12px;border:1px solid var(--border,#2a2a2a);border-radius:10px;background:var(--bg2,#111)">'+'<div style="font-weight:600;margin-bottom:6px">เปลี่ยน IP เฉพาะโดเมนในลิสต์ (วางรายชื่อ)</div>'+'<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">วางรายชื่อโดเมน 1 บรรทัดต่อ 1 โดเมน — ระบบเปลี่ยนเฉพาะที่ชี้ IP เก่า → IP ใหม่ (ตามช่องด้านบน) · คั่นด้วยขึ้นบรรทัด/comma/เว้นวรรค</div>'+'<textarea id="dns-list" rows="6" oninput="dnsListCount()" placeholder="123wows.com&#10;13satan-vip.com&#10;1688upx.asia" style="width:100%;box-sizing:border-box;padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit;font-family:monospace;font-size:13px"></textarea>'+'<div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;align-items:center">'+'<button class="btn btn-green" onclick="dnsRepointList()"><i class="ti ti-arrows-exchange"></i> เปลี่ยน IP เฉพาะโดเมนในลิสต์</button>'+'<span id="dns-list-count" style="font-size:12px;color:var(--text3,#888)"></span></div>'+'<div id="dns-list-progress" style="font-size:12px;color:var(--text3,#888);margin-top:10px"></div></div>'+'<div id="dns-scan-progress" style="font-size:12px;color:var(--text3,#888);margin-top:10px"></div>'+
     '</div>'+
     '<div id="dns-audit"></div>'+'<div id="dns-results"></div>';
   c.appendChild(div);
@@ -7403,7 +7403,7 @@ async function dnsRepointList(){
     if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
     if(!d.success){ if(typeof toast==='function')toast(d.error||'เปลี่ยนไม่ได้','error'); return; }
     if(typeof toast==='function')toast('เริ่มเปลี่ยน '+d.total+' โดเมนในลิสต์...','info');
-    if(typeof dnsPollRepoint==='function') dnsPollRepoint();
+    if(typeof dnsPollRepoint==='function') dnsPollRepoint('dns-list-progress');
   }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
 }
 async function dnsScan(){
@@ -7476,9 +7476,9 @@ async function dnsRepoint(){
     dnsPollRepoint();
   }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
 }
-function dnsPollRepoint(){
+function dnsPollRepoint(boxId){
   if(_dnsRepointPoll) clearInterval(_dnsRepointPoll);
-  var box=document.getElementById('dns-repoint-progress');
+  var box=document.getElementById(boxId||'dns-repoint-progress');
   async function tick(){
     try{
       var r=await fetch(API+'/api/dns/repoint-status'); var d=await r.json();
