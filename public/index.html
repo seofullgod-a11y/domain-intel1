@@ -2141,6 +2141,7 @@ function renderDomainTable() {
               <div class="action-group">
                 <button class="action-btn" title="ดูรายละเอียด" onclick="viewDetail('${d.domain}')"><i class="ti ti-eye"></i></button>
                 <button class="action-btn" title="เช็คสถานะ" onclick="checkOne('${d.domain}')"><i class="ti ti-refresh"></i></button>
+                <button class="action-btn" title="ดูรูปหน้าเว็บ" onclick="previewSite('${d.domain}')"><i class="ti ti-photo"></i></button>
                 ${(d.status === 'down' || (d.pleskId && !d.pleskActive)) ? `<button class="action-btn" title="Auto-fix (Unsuspend Plesk + Pause CF)" onclick="autoFixDomain('${d.domain}')" style="color:var(--amber);border-color:rgba(245,158,11,0.5);background:var(--amber-dim)"><i class="ti ti-wand"></i></button>` : ''}
                 <button class="action-btn" title="Sync GSC" onclick="syncGSCOne('${d.domain}')"><i class="ti ti-brand-google"></i></button>
                 <button class="action-btn danger" title="ลบ" onclick="deleteDomain('${d.domain}')"><i class="ti ti-trash"></i></button>
@@ -6709,6 +6710,43 @@ function renderInc(){
   h+='</table>';
   body.innerHTML=h;
 }
+function incUptimeBar(incs){
+  // แถบ 30 วันย้อนหลังแบบ UptimeRobot — เขียว=ปกติ แดง=ดับ เหลือง=warn
+  var DAYS=30, now=Date.now(), dayMs=86400000;
+  var days=[];
+  for(var i=DAYS-1;i>=0;i--){
+    var dayStart=now-(i*dayMs), dayEnd=dayStart+dayMs;
+    var downMin=0, warnMin=0;
+    incs.forEach(function(inc){
+      var s=new Date(inc.startAt).getTime();
+      var e=inc.endAt?new Date(inc.endAt).getTime():now;
+      var ov=Math.max(0, Math.min(e,dayEnd)-Math.max(s,dayStart));
+      if(ov>0){ if(inc.kind==='warn') warnMin+=ov/60000; else downMin+=ov/60000; }
+    });
+    var state = downMin>1 ? 'down' : (warnMin>1 ? 'warn' : 'up');
+    var label = new Date(dayStart).toLocaleDateString('th-TH',{day:'numeric',month:'short'});
+    var tip = label+' — '+(state==='down'?('ดับ '+Math.round(downMin)+' นาที'):state==='warn'?('warn '+Math.round(warnMin)+' นาที'):'ปกติ');
+    days.push({state:state, tip:tip});
+  }
+  // สรุป uptime% 30 วัน
+  var totalMin=DAYS*24*60, badMin=0;
+  incs.forEach(function(inc){
+    var s=new Date(inc.startAt).getTime(), e=inc.endAt?new Date(inc.endAt).getTime():now;
+    var ov=Math.max(0, Math.min(e,now)-Math.max(s,now-DAYS*dayMs));
+    if(ov>0) badMin+=ov/60000;
+  });
+  var uptimePct=Math.max(0, (100-(badMin/totalMin*100))).toFixed(2);
+  var color={up:'#2ecc71',down:'#e24b4a',warn:'#e3b93b'};
+  var bars=days.map(function(x){
+    return '<div title="'+x.tip+'" style="flex:1;height:34px;background:'+color[x.state]+';border-radius:2px;min-width:3px;cursor:default"></div>';
+  }).join('');
+  return '<div style="margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3,#888);margin-bottom:4px">'+
+      '<span>30 วันล่าสุด</span><span style="color:'+(uptimePct>=99?'#2ecc71':uptimePct>=95?'#e3b93b':'#e24b4a')+';font-weight:700">Uptime '+uptimePct+'%</span></div>'+
+    '<div style="display:flex;gap:2px">'+bars+'</div>'+
+    '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3,#888);margin-top:3px"><span>30 วันก่อน</span><span>วันนี้</span></div>'+
+    '</div>';
+}
 async function incDetail(dom){
   var body=document.getElementById('inc-body'); body.innerHTML='กำลังโหลดประวัติ '+dom+'...';
   try{
@@ -6717,6 +6755,7 @@ async function incDetail(dom){
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
       '<div><b style="font-size:15px">'+d.domain+'</b> <span style="color:var(--text3,#888);font-size:12px">· เครื่อง: '+(d.server||'ไม่ทราบ')+' · ตอนนี้: '+(d.currentStatus||'?')+'</span></div>'+
       '<button class="btn" style="padding:2px 10px;font-size:12px" onclick="renderInc()">← กลับ</button></div>';
+    h+=incUptimeBar(d.incidents||[]);
     if(!(d.incidents||[]).length){ h+='<div style="color:var(--text3,#888)">ยังไม่มีประวัติดับ</div>'; }
     else{
       h+='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
@@ -7608,5 +7647,34 @@ async function dnsRepointPending(){
     if(typeof dnsPollRepoint==='function') dnsPollRepoint();
     setTimeout(function(){ dnsAudit(); }, 3000);
   }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+</script>
+<script>
+// ===== SITE PREVIEW (added feature) — ดูรูปหน้าเว็บ (แคปตอนกดดู) =====
+function previewSite(domain){
+  var old=document.getElementById('site-preview-modal'); if(old) old.remove();
+  var m=document.createElement('div');
+  m.id='site-preview-modal';
+  m.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:99999;display:flex;align-items:center;justify-content:center;padding:20px';
+  m.onclick=function(e){ if(e.target===m) m.remove(); };
+  var ts=Date.now();
+  m.innerHTML=
+    '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:12px;max-width:680px;width:100%;max-height:90vh;overflow:auto;padding:16px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+        '<div style="font-weight:700">'+domain+'</div>'+
+        '<button onclick="document.getElementById(\'site-preview-modal\').remove()" style="background:none;border:none;color:var(--text2,#888);font-size:22px;cursor:pointer;line-height:1">&times;</button>'+
+      '</div>'+
+      '<div id="site-preview-body" style="min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text3,#888);font-size:13px">กำลังแคปรูปหน้าเว็บ... (อาจใช้เวลา 5-15 วิ)</div>'+
+      '<div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">'+
+        '<a href="https://'+domain+'" target="_blank" class="btn"><i class="ti ti-external-link"></i> เปิดเว็บจริง</a>'+
+        '<button class="btn" onclick="previewSite(\''+domain+'\')"><i class="ti ti-refresh"></i> แคปใหม่</button>'+
+      '</div>'+
+    '</div>';
+  document.body.appendChild(m);
+  var img=new Image();
+  img.style.cssText='max-width:100%;border-radius:8px;border:1px solid var(--border,#2a2a2a)';
+  img.onload=function(){ var b=document.getElementById('site-preview-body'); if(b){ b.innerHTML=''; b.style.display='block'; b.appendChild(img); } };
+  img.onerror=function(){ var b=document.getElementById('site-preview-body'); if(b) b.innerHTML='<div style="color:#e24b4a;text-align:center">แคปรูปไม่ได้<br><span style="font-size:11px;color:var(--text3,#888)">เว็บอาจล่ม เข้าไม่ได้ หรือ service แคปรูปไม่ตอบ</span></div>'; };
+  img.src=API+'/api/screenshot?domain='+encodeURIComponent(domain)+'&w=640&t='+ts;
 }
 </script>
