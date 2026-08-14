@@ -42,7 +42,7 @@ try {
   console.error('[Sheets] ไม่สามารถ parse GOOGLE_SERVICE_ACCOUNT ได้');
 }
 
-const CHECK_INTERVAL_MS = 5 * 60 * 1000; // เช็คทุก 5 นาที
+const CHECK_INTERVAL_MS = 3 * 60 * 1000; // เช็คทุก 3 นาที
 const PLESK_SYNC_INTERVAL_MS = 1 * 60 * 60 * 1000; // Sync Plesk ทุก 1 ชั่วโมง
 const CF_DOWN_CODES = new Set([521, 522, 523, 524, 525, 526, 530]);
 const CF_WARN_CODES = new Set([520, 527, 528, 529]);
@@ -2021,6 +2021,22 @@ async function handleRequest(req, res) {
   if (req.method === 'POST' && url === '/api/check-all') {
     checkAllDomains().catch(console.error);
     json(res, { success: true, message: 'กำลังเช็คทุกโดเมน...' });
+    return;
+  }
+
+  // Screenshot พรีวิวเว็บ — redirect ไป service แคปรูป (เบา: ไม่ต้องลง browser บน server)
+  // ลองหลาย provider เผื่อบางตัวล่ม · แคปตอนกดดูเท่านั้น ไม่ใช่ทุกเว็บทุกครั้ง
+  if (req.method === 'GET' && url.startsWith('/api/screenshot')) {
+    const u = new URL(req.url, 'http://x');
+    const dom = String(u.searchParams.get('domain') || '').trim().toLowerCase();
+    if (!dom || !validDomainName(dom)) { json(res, { success: false, error: 'โดเมนไม่ถูกต้อง' }, 400); return; }
+    const w = Math.min(1200, Math.max(200, parseInt(u.searchParams.get('w')) || 600));
+    // redirect ให้เบราว์เซอร์โหลดรูปตรงจาก provider (เร็ว + ไม่กิน bandwidth server)
+    // thum.io ไม่ต้อง key; ถ้าองค์กรมี key ของ provider อื่นใส่ SCREENSHOT_URL ได้
+    const tmpl = process.env.SCREENSHOT_URL || 'https://image.thum.io/get/width/{w}/noanimate/https://{domain}';
+    const target = tmpl.replace('{w}', w).replace('{domain}', encodeURIComponent(dom)).replace('{domain_raw}', dom);
+    res.writeHead(302, { 'Location': target, 'Cache-Control': 'no-store' });
+    res.end();
     return;
   }
 
