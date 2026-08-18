@@ -2096,6 +2096,75 @@ async function handleRequest(req, res) {
     return;
   }
 
+  // Keyword Check เว็บนอก (added feature) — DataForSEO: ดึง keyword ที่เว็บใดก็ได้ติดอันดับ + search volume แท้
+  if (req.method === 'GET' && url.startsWith('/api/keywords-ext')) {
+    const u = new URL(req.url, 'http://x');
+    let dom = String(u.searchParams.get('domain') || '').trim().toLowerCase();
+    dom = dom.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+    if (!dom || !validDomainName(dom)) { json(res, { success: false, error: 'โดเมนไม่ถูกต้อง' }, 400); return; }
+    const login = process.env.DATAFORSEO_LOGIN, pass = process.env.DATAFORSEO_PASSWORD;
+    if (!login || !pass) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD ใน Railway' }); return; }
+    const payload = JSON.stringify([{ target: dom, location_code: 2764, language_code: 'th', limit: 200, order_by: ['keyword_data.keyword_info.search_volume,desc'] }]);
+    const auth = 'Basic ' + Buffer.from(login + ':' + pass).toString('base64');
+    const dfReq = https.request({
+      hostname: 'api.dataforseo.com',
+      path: '/v3/dataforseo_labs/google/keywords_for_site/live',
+      method: 'POST',
+      headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+      timeout: 30000
+    }, dres => {
+      let data = ''; dres.on('data', c => data += c);
+      dres.on('end', () => {
+        try {
+          const j = JSON.parse(data);
+          if (j.status_code !== 20000) { json(res, { success: false, error: 'DataForSEO: ' + (j.status_message || j.status_code) }); return; }
+          const items = ((j.tasks || [])[0]?.result || [])[0]?.items || [];
+          const keywords = items.map(it => {
+            const ki = it.keyword_data?.keyword_info || {};
+            const se = it.ranked_serp_element?.serp_item || {};
+            return {
+              keyword: it.keyword_data?.keyword || it.keyword,
+              volume: ki.search_volume || 0,
+              cpc: ki.cpc || 0,
+              competition: ki.competition_level || '-',
+              position: se.rank_absolute || se.rank_group || 0
+            };
+          }).filter(k => k.keyword);
+          json(res, { success: true, domain: dom, source: 'dataforseo', location: 'Thailand',
+            keywordCount: keywords.length,
+            totalVolume: keywords.reduce((s,k) => s + (k.volume||0), 0),
+            keywords });
+        } catch (e) { json(res, { success: false, error: 'parse error: ' + e.message }); }
+      });
+    });
+    dfReq.on('timeout', () => { dfReq.destroy(); json(res, { success: false, error: 'DataForSEO timeout' }); });
+    dfReq.on('error', e => json(res, { success: false, error: e.message }));
+    dfReq.write(payload); dfReq.end();
+    return;
+  }
+
+  // Keyword Check (added feature) — วางโดเมน → ดึง keyword ที่ติดอันดับจาก GSC + impressions (แทน vol)
+  if (req.method === 'GET' && url.startsWith('/api/keywords')) {
+    const u = new URL(req.url, 'http://x');
+    let dom = String(u.searchParams.get('domain') || '').trim().toLowerCase();
+    dom = dom.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+    const days = Math.min(90, Math.max(7, parseInt(u.searchParams.get('days')) || 28));
+    if (!dom || !validDomainName(dom)) { json(res, { success: false, error: 'โดเมนไม่ถูกต้อง' }, 400); return; }
+    const token = await refreshGSCToken();
+    if (!token) { json(res, { success: false, error: 'GSC ยังไม่พร้อม (เช็ค GSC_REFRESH_TOKEN)' }); return; }
+    const sites = await getGSCSiteList(token);
+    const cands = ['sc-domain:' + dom, 'https://' + dom, 'https://www.' + dom, 'http://' + dom];
+    const site = cands.find(c => sites.includes(c.toLowerCase()));
+    if (!site) { json(res, { success: false, notInGsc: true, error: 'โดเมนนี้ไม่อยู่ใน Google Search Console ของบัญชีที่เชื่อม', sitesCount: sites.length }); return; }
+    try {
+      const r = await fetchGSCPeriod(token, site, days);
+      json(res, { success: true, domain: dom, site, days,
+        totalClicks: r.clicks, totalImpressions: r.impressions, avgPosition: r.avgPosition,
+        keywordCount: r.keywordCount, keywords: r.keywords });
+    } catch (e) { json(res, { success: false, error: e.message }); }
+    return;
+  }
+
   if (req.method === 'GET' && url === '/api/gsc/debug') {
     (async () => {
       const token = await refreshGSCToken();
