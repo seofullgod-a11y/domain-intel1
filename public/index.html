@@ -503,6 +503,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="openIncidents()">
         <i class="ti ti-alert-triangle"></i> ประวัติดับ (Incidents)
       </div>
+      <div class="nav-item" onclick="openKeywords()">
+        <i class="ti ti-search"></i> เช็ค Keyword
+      </div>
       <div class="nav-item" onclick="openWpAdmin()">
         <i class="ti ti-lock-open"></i> เปิด/ปิด wp-admin
       </div>
@@ -7676,5 +7679,129 @@ function previewSite(domain){
   img.onload=function(){ var b=document.getElementById('site-preview-body'); if(b){ b.innerHTML=''; b.style.display='block'; b.appendChild(img); } };
   img.onerror=function(){ var b=document.getElementById('site-preview-body'); if(b) b.innerHTML='<div style="color:#e24b4a;text-align:center">แคปรูปไม่ได้<br><span style="font-size:11px;color:var(--text3,#888)">เว็บอาจล่ม เข้าไม่ได้ หรือ service แคปรูปไม่ตอบ</span></div>'; };
   img.src=API+'/api/screenshot?domain='+encodeURIComponent(domain)+'&w=640&t='+ts;
+}
+</script>
+
+<script>
+// ===== KEYWORD CHECK (added feature) — วางโดเมน → ดึง keyword ที่ติดอันดับจาก GSC =====
+function ensureKwPage(){
+  if(document.getElementById('page-keywords')) return;
+  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
+  var div=document.createElement('div'); div.id='page-keywords'; div.style.display='none';
+  div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
+  div.innerHTML=
+    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-search"></i> เช็ค Keyword ที่เว็บติดอันดับ</h2>'+
+    '<div style="font-size:12px;color:var(--text3,#888)">วางโดเมน (หรือ URL) → ดึง keyword ที่เว็บติดอันดับจริงจาก Google Search Console + ยอด impressions (แทน search volume) · ต้องเป็นโดเมนที่อยู่ใน GSC ของบัญชีที่เชื่อม</div></div>'+
+    '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px">'+'<div style="display:flex;gap:8px;flex-wrap:wrap">'+'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="kwmode" value="gsc" checked onchange="kwSetMode()"> เว็บของฉัน (GSC ฟรี)</label>'+'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="kwmode" value="ext" onchange="kwSetMode()"> เว็บใดก็ได้ (DataForSEO เสียเงิน)</label>'+'</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+        '<input id="kw-domain" placeholder="เช่น next55-th.com หรือ https://next55-th.com" style="flex:1;min-width:240px;padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit" onkeydown="if(event.key===\'Enter\')kwCheck()">'+
+        '<select id="kw-days" style="padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit">'+
+          '<option value="7">7 วัน</option><option value="28" selected>28 วัน</option><option value="90">90 วัน</option></select>'+
+        '<button class="btn btn-green" onclick="kwCheck()"><i class="ti ti-search"></i> เช็ค Keyword</button>'+
+      '</div>'+
+      '<div id="kw-mode-note" style="font-size:11px;color:var(--text3,#888)">💡 impressions = จำนวนครั้งที่เว็บโผล่ในผลค้นหา (ใกล้เคียง search volume) · เฉพาะเว็บใน GSC ของคุณ</div>'+
+    '</div>'+
+    '<div id="kw-result"></div>';
+  c.appendChild(div);
+}
+function openKeywords(){
+  ensureKwPage(); showPage('keywords');
+  document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); if((n.getAttribute('onclick')||'')==='openKeywords()') n.classList.add('active'); });
+}
+function kwGetMode(){ var el=document.querySelector('input[name="kwmode"]:checked'); return el?el.value:'gsc'; }
+function kwSetMode(){
+  var ext=kwGetMode()==='ext';
+  var daysEl=document.getElementById('kw-days'); if(daysEl) daysEl.style.display=ext?'none':'';
+  var note=document.getElementById('kw-mode-note');
+  if(note) note.innerHTML=ext
+    ? '🌐 เว็บใดก็ได้ — ดึง keyword + <b>search volume แท้</b> จาก DataForSEO (location ไทย) · มีค่าใช้จ่ายต่อการค้นหา'
+    : '💡 impressions = จำนวนครั้งที่เว็บโผล่ในผลค้นหา (ใกล้เคียง search volume) · เฉพาะเว็บใน GSC ของคุณ';
+}
+async function kwCheck(){
+  var dom=(document.getElementById('kw-domain').value||'').trim();
+  var days=(document.getElementById('kw-days')||{}).value||'28';
+  if(!dom){ if(typeof toast==='function')toast('ใส่โดเมนก่อน','error'); return; }
+  var mode=kwGetMode();
+  var box=document.getElementById('kw-result');
+  box.innerHTML='<div style="padding:20px;text-align:center;color:var(--text3,#888)">'+(mode==='ext'?'กำลังดึง keyword + volume จาก DataForSEO...':'กำลังดึง keyword จาก Google Search Console...')+'</div>';
+  try{
+    var ep=mode==='ext' ? (API+'/api/keywords-ext?domain='+encodeURIComponent(dom)) : (API+'/api/keywords?domain='+encodeURIComponent(dom)+'&days='+days);
+    var r=await fetch(ep);
+    var d=await r.json();
+    if(!d.success){
+      var msg=d.notInGsc?('โดเมนนี้ไม่อยู่ใน Google Search Console (มี '+(d.sitesCount||0)+' เว็บในบัญชีที่เชื่อม)<br><span style="font-size:12px">ต้องเพิ่มเว็บนี้ใน GSC ก่อน ถึงจะดึง keyword ได้'):d.error;
+      box.innerHTML='<div style="background:var(--bg2,#111);border:1px solid #e24b4a44;border-radius:10px;padding:16px;color:#e3b93b">'+msg+'</span></div>';
+      return;
+    }
+    kwRender(d);
+  }catch(e){ box.innerHTML='<div style="color:#e24b4a;padding:16px">โหลดไม่ได้: '+e.message+'</div>'; }
+}
+function kwRender(d){
+  var box=document.getElementById('kw-result');
+  var isExt = d.source==='dataforseo';
+  var kws=(d.keywords||[]).slice();
+  if(isExt) kws.sort(function(a,b){return (b.volume||0)-(a.volume||0);});
+  else kws.sort(function(a,b){return b.impressions-a.impressions;});
+  var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px">'+
+    '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">';
+  if(isExt){
+    h+= kwStat(d.keywordCount,'keyword ที่ติดอันดับ','#3b82f6')+
+        kwStat((d.totalVolume||0).toLocaleString(),'search volume รวม','#2ecc71')+
+        kwStat('ไทย','location','#a78bfa');
+  }else{
+    h+= kwStat(d.keywordCount,'keyword ที่ติดอันดับ','#3b82f6')+
+        kwStat(d.totalImpressions.toLocaleString(),'impressions รวม','#2ecc71')+
+        kwStat(d.totalClicks.toLocaleString(),'clicks รวม','#e3b93b')+
+        kwStat(d.avgPosition,'อันดับเฉลี่ย','#a78bfa');
+  }
+  h+='</div>'+
+    '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">'+d.domain+(isExt?' · DataForSEO (ไทย) · เรียงตาม volume':(' · '+d.days+' วันล่าสุด · เรียงตาม impressions'))+'</div>';
+  if(!kws.length){ h+='<div style="color:var(--text3,#888)">ยังไม่มีข้อมูล keyword</div>'; }
+  else{
+    var copyList=kws.map(function(k){return k.keyword;}).join('\n');
+    h+='<div style="overflow:auto;max-height:60vh"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+      '<tr style="text-align:left;color:var(--text3,#888);position:sticky;top:0;background:var(--bg2,#111)">'+
+        '<th style="padding:7px">#</th><th style="padding:7px">Keyword</th>';
+    if(isExt){
+      h+='<th style="padding:7px;text-align:right">Volume</th>'+
+         '<th style="padding:7px;text-align:right">CPC</th>'+
+         '<th style="padding:7px;text-align:right">Competition</th>'+
+         '<th style="padding:7px;text-align:right">อันดับ</th></tr>';
+      kws.forEach(function(k,i){
+        var posColor=k.position&&k.position<=3?'#2ecc71':k.position&&k.position<=10?'#e3b93b':'#e24b4a';
+        h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
+          '<td style="padding:7px;color:var(--text3,#888)">'+(i+1)+'</td>'+
+          '<td style="padding:7px;font-weight:500">'+k.keyword+'</td>'+
+          '<td style="padding:7px;text-align:right">'+(k.volume||0).toLocaleString()+'</td>'+
+          '<td style="padding:7px;text-align:right;color:var(--text3,#888)">$'+(k.cpc||0).toFixed(2)+'</td>'+
+          '<td style="padding:7px;text-align:right;color:var(--text3,#888)">'+(k.competition||'-')+'</td>'+
+          '<td style="padding:7px;text-align:right;color:'+posColor+';font-weight:600">'+(k.position||'-')+'</td></tr>';
+      });
+    }else{
+      h+='<th style="padding:7px;text-align:right">Impressions<br><span style="font-size:10px">(~vol)</span></th>'+
+         '<th style="padding:7px;text-align:right">Clicks</th>'+
+         '<th style="padding:7px;text-align:right">CTR</th>'+
+         '<th style="padding:7px;text-align:right">อันดับ</th></tr>';
+      kws.forEach(function(k,i){
+        var ctr=k.impressions?((k.clicks/k.impressions*100).toFixed(1)+'%'):'-';
+        var posColor=k.position<=3?'#2ecc71':k.position<=10?'#e3b93b':'#e24b4a';
+        h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
+          '<td style="padding:7px;color:var(--text3,#888)">'+(i+1)+'</td>'+
+          '<td style="padding:7px;font-weight:500">'+k.keyword+'</td>'+
+          '<td style="padding:7px;text-align:right">'+k.impressions.toLocaleString()+'</td>'+
+          '<td style="padding:7px;text-align:right">'+k.clicks.toLocaleString()+'</td>'+
+          '<td style="padding:7px;text-align:right;color:var(--text3,#888)">'+ctr+'</td>'+
+          '<td style="padding:7px;text-align:right;color:'+posColor+';font-weight:600">'+k.position+'</td></tr>';
+      });
+    }
+    h+='</table></div>'+
+      '<div style="margin-top:10px"><button class="btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('+JSON.stringify(copyList)+');this.textContent=\'คัดลอกแล้ว\'">คัดลอก keyword ทั้งหมด</button></div>';
+  }
+  h+='</div>'; box.innerHTML=h;
+}
+function kwStat(val,label,color){
+  return '<div style="flex:1;min-width:120px;background:var(--bg,#0a0a0a);border:1px solid '+color+'44;border-radius:8px;padding:10px">'+
+    '<div style="font-size:22px;font-weight:700;color:'+color+'">'+val+'</div>'+
+    '<div style="font-size:11px;color:var(--text3,#888)">'+label+'</div></div>';
 }
 </script>
