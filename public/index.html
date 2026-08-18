@@ -354,6 +354,14 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   50%{width:50%;margin-left:30%}
   100%{width:10%;margin-left:90%}
 }
+
+/* favorites star (added feature) */
+.nav-item { position: relative; }
+.nav-fav-star { position:absolute; right:8px; top:50%; transform:translateY(-50%); cursor:pointer; opacity:0; font-size:13px; color:var(--text3,#888); transition:opacity .12s,color .12s; z-index:2; padding:2px; }
+.nav-item:hover .nav-fav-star { opacity:0.5; }
+.nav-fav-star:hover { opacity:1 !important; color:#f5c518; }
+.nav-fav-star.faved { opacity:1; color:#f5c518; }
+.nav-fav-section .nav-fav-star.faved { color:#f5c518; }
 </style>
 </head>
 <body>
@@ -416,7 +424,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         <div class="logo-ver">v2.0 · SEO Intelligence</div>
       </div>
     </div>
-    <nav class="nav">
+    <nav class="nav" id="main-nav">
       <div class="nav-section">// OVERVIEW</div>
       <div class="nav-item active" onclick="showPage('command')">
         <i class="ti ti-layout-grid"></i> ศูนย์บัญชาการ <span id="nav-command-badge" class="nav-badge" style="display:none"></span>
@@ -7669,7 +7677,7 @@ function ensureKwPage(){
   div.innerHTML=
     '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-search"></i> เช็ค Keyword ที่เว็บติดอันดับ</h2>'+
     '<div style="font-size:12px;color:var(--text3,#888)">วางโดเมน (หรือ URL) → ดึง keyword ที่เว็บติดอันดับจริงจาก Google Search Console + ยอด impressions (แทน search volume) · ต้องเป็นโดเมนที่อยู่ใน GSC ของบัญชีที่เชื่อม</div></div>'+
-    '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px">'+'<div style="display:flex;gap:8px;flex-wrap:wrap">'+'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="kwmode" value="gsc" checked onchange="kwSetMode()"> เว็บของฉัน (GSC ฟรี)</label>'+'<label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:13px"><input type="radio" name="kwmode" value="ext" onchange="kwSetMode()"> เว็บใดก็ได้ (DataForSEO เสียเงิน)</label>'+'</div>'+
+    '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px">'+'<input type="hidden" id="kwmode-val" value="gsc">'+'<div style="display:flex;gap:0;border:1px solid var(--border,#333);border-radius:10px;overflow:hidden">'+'<button id="kwtab-gsc" onclick="kwPickMode(\'gsc\')" style="flex:1;padding:12px 10px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:var(--green,#22c55e);color:#fff;transition:all .15s">'+'<i class="ti ti-brand-google"></i> เช็คจาก GSC<br><span style="font-size:10px;font-weight:400;opacity:.85">เว็บของฉัน · ฟรี</span></button>'+'<button id="kwtab-ext" onclick="kwPickMode(\'ext\')" style="flex:1;padding:12px 10px;border:none;cursor:pointer;font-size:13px;font-weight:600;background:transparent;color:var(--text2,#888);transition:all .15s">'+'<i class="ti ti-world-search"></i> เช็คจาก DataForSEO<br><span style="font-size:10px;font-weight:400;opacity:.85">เว็บใดก็ได้ · เสียเงิน</span></button>'+'</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
         '<input id="kw-domain" placeholder="เช่น next55-th.com หรือ https://next55-th.com" style="flex:1;min-width:240px;padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit" onkeydown="if(event.key===\'Enter\')kwCheck()">'+
         '<select id="kw-days" style="padding:9px;border-radius:8px;border:1px solid var(--border,#333);background:var(--bg,#0a0a0a);color:inherit">'+
@@ -7685,7 +7693,16 @@ function openKeywords(){
   ensureKwPage(); showPage('kwcheck');
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); if((n.getAttribute('onclick')||'')==='openKeywords()') n.classList.add('active'); });
 }
-function kwGetMode(){ var el=document.querySelector('input[name="kwmode"]:checked'); return el?el.value:'gsc'; }
+function kwGetMode(){ var el=document.getElementById('kwmode-val'); return el?el.value:'gsc'; }
+function kwPickMode(m){
+  var v=document.getElementById('kwmode-val'); if(v) v.value=m;
+  var g=document.getElementById('kwtab-gsc'), e=document.getElementById('kwtab-ext');
+  if(g&&e){
+    if(m==='gsc'){ g.style.background='var(--green,#22c55e)'; g.style.color='#fff'; e.style.background='transparent'; e.style.color='var(--text2,#888)'; }
+    else { e.style.background='var(--blue,#3b82f6)'; e.style.color='#fff'; g.style.background='transparent'; g.style.color='var(--text2,#888)'; }
+  }
+  kwSetMode();
+}
 function kwSetMode(){
   var ext=kwGetMode()==='ext';
   var daysEl=document.getElementById('kw-days'); if(daysEl) daysEl.style.display=ext?'none':'';
@@ -7786,4 +7803,88 @@ function kwStat(val,label,color){
     '<div style="font-size:22px;font-weight:700;color:'+color+'">'+val+'</div>'+
     '<div style="font-size:11px;color:var(--text3,#888)">'+label+'</div></div>';
 }
+</script>
+<script>
+// ===== NAV FAVORITES (added feature) — ติ๊กดาวเมนู → รวมกลุ่ม "รายการโปรด" ด้านบน =====
+(function(){
+  function favKey(item){
+    // ใช้ onclick เป็น key (unique ต่อเมนู) + ตัด quote ออกให้ปลอดภัย
+    return (item.getAttribute('onclick')||'').trim();
+  }
+  function itemLabel(item){
+    // ดึงข้อความเมนู (ตัด badge/ไอคอนออก)
+    var clone=item.cloneNode(true);
+    clone.querySelectorAll('.nav-badge,.nav-fav-star').forEach(function(e){e.remove();});
+    return clone.textContent.trim();
+  }
+  function itemIcon(item){
+    var ic=item.querySelector('i'); return ic?ic.className:'ti ti-star';
+  }
+  function getFavs(){ try{ return JSON.parse(localStorage.getItem('di_nav_favs')||'[]'); }catch(e){ return []; } }
+  function setFavs(a){ localStorage.setItem('di_nav_favs', JSON.stringify(a)); }
+  function isFav(key){ return getFavs().indexOf(key)>=0; }
+  function toggleFav(key){
+    var f=getFavs(); var i=f.indexOf(key);
+    if(i>=0) f.splice(i,1); else f.push(key);
+    setFavs(f); renderFavs(); syncStars();
+  }
+  function syncStars(){
+    document.querySelectorAll('#main-nav .nav-item').forEach(function(item){
+      if(item.closest('.nav-fav-section')) return; // ข้ามตัว clone ในกลุ่มโปรด
+      var star=item.querySelector('.nav-fav-star');
+      if(star) star.classList.toggle('faved', isFav(favKey(item)));
+    });
+  }
+  function addStars(){
+    document.querySelectorAll('#main-nav .nav-item').forEach(function(item){
+      if(item.closest('.nav-fav-section')) return;
+      if(item.querySelector('.nav-fav-star')) return;
+      var key=favKey(item); if(!key) return;
+      var star=document.createElement('span');
+      star.className='nav-fav-star'; star.innerHTML='<i class="ti ti-star"></i>';
+      star.title='เพิ่ม/เอาออกจากรายการโปรด';
+      star.onclick=function(e){ e.stopPropagation(); toggleFav(key); };
+      item.appendChild(star);
+    });
+    syncStars();
+  }
+  function renderFavs(){
+    var nav=document.getElementById('main-nav'); if(!nav) return;
+    var old=nav.querySelector('.nav-fav-section'); if(old) old.remove();
+    var oldHdr=nav.querySelector('.nav-fav-header'); if(oldHdr) oldHdr.remove();
+    var favs=getFavs(); if(!favs.length) return;
+    // header
+    var hdr=document.createElement('div');
+    hdr.className='nav-section nav-fav-header'; hdr.textContent='⭐ รายการโปรด';
+    // section container
+    var sec=document.createElement('div'); sec.className='nav-fav-section';
+    favs.forEach(function(key){
+      // หา nav-item ต้นฉบับที่ตรง key
+      var orig=Array.prototype.find.call(nav.querySelectorAll('.nav-item'), function(it){
+        return !it.closest('.nav-fav-section') && favKey(it)===key;
+      });
+      if(!orig) return;
+      var clone=document.createElement('div');
+      clone.className='nav-item';
+      clone.setAttribute('onclick', key);
+      clone.innerHTML='<i class="'+itemIcon(orig)+'"></i> '+itemLabel(orig);
+      // ดาวเต็ม(กดเอาออก)
+      var star=document.createElement('span');
+      star.className='nav-fav-star faved'; star.innerHTML='<i class="ti ti-star"></i>';
+      star.title='เอาออกจากรายการโปรด';
+      star.onclick=function(e){ e.stopPropagation(); toggleFav(key); };
+      clone.appendChild(star);
+      sec.appendChild(clone);
+    });
+    // แทรกบนสุด (ก่อน nav-section แรก)
+    nav.insertBefore(sec, nav.firstChild);
+    nav.insertBefore(hdr, sec);
+  }
+  function init(){
+    if(!document.getElementById('main-nav')) return setTimeout(init,300);
+    addStars(); renderFavs();
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
+  else init();
+})();
 </script>
