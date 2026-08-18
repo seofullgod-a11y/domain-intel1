@@ -2104,42 +2104,81 @@ async function handleRequest(req, res) {
     if (!dom || !validDomainName(dom)) { json(res, { success: false, error: 'โดเมนไม่ถูกต้อง' }, 400); return; }
     const login = process.env.DATAFORSEO_LOGIN, pass = process.env.DATAFORSEO_PASSWORD;
     if (!login || !pass) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD ใน Railway' }); return; }
-    const payload = JSON.stringify([{ target: dom, location_code: 2764, language_code: 'th', limit: 200, order_by: ['keyword_data.keyword_info.search_volume,desc'] }]);
     const auth = 'Basic ' + Buffer.from(login + ':' + pass).toString('base64');
-    const dfReq = https.request({
-      hostname: 'api.dataforseo.com',
-      path: '/v3/dataforseo_labs/google/keywords_for_site/live',
-      method: 'POST',
-      headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
-      timeout: 30000
-    }, dres => {
-      let data = ''; dres.on('data', c => data += c);
-      dres.on('end', () => {
-        try {
-          const j = JSON.parse(data);
-          if (j.status_code !== 20000) { json(res, { success: false, error: 'DataForSEO: ' + (j.status_message || j.status_code) }); return; }
-          const items = ((j.tasks || [])[0]?.result || [])[0]?.items || [];
-          const keywords = items.map(it => {
-            const ki = it.keyword_data?.keyword_info || {};
-            const se = it.ranked_serp_element?.serp_item || {};
-            return {
-              keyword: it.keyword_data?.keyword || it.keyword,
-              volume: ki.search_volume || 0,
-              cpc: ki.cpc || 0,
-              competition: ki.competition_level || '-',
-              position: se.rank_absolute || se.rank_group || 0
-            };
-          }).filter(k => k.keyword);
-          json(res, { success: true, domain: dom, source: 'dataforseo', location: 'Thailand',
-            keywordCount: keywords.length,
-            totalVolume: keywords.reduce((s,k) => s + (k.volume||0), 0),
-            keywords });
-        } catch (e) { json(res, { success: false, error: 'parse error: ' + e.message }); }
+    const debug = u.searchParams.get('debug') === '1';
+
+    // เรียก DataForSEO endpoint หนึ่งตัว → คืน keywords[] (หรือ null ถ้าพลาด)
+    function callDFS(apiPath, payloadObj) {
+      return new Promise(resolve => {
+        const payload = JSON.stringify([payloadObj]);
+        const dfReq = https.request({
+          hostname: 'api.dataforseo.com', path: apiPath, method: 'POST',
+          headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+          timeout: 30000
+        }, dres => {
+          let data = ''; dres.on('data', c => data += c);
+          dres.on('end', () => {
+            try {
+              const j = JSON.parse(data);
+              const task0 = (j.tasks || [])[0] || {};
+              const result0 = (task0.result || [])[0] || {};
+              const items = result0.items || [];
+              resolve({
+                ok: j.status_code === 20000 && (!task0.status_code || task0.status_code === 20000),
+                statusMsg: j.status_message, taskMsg: task0.status_message,
+                totalCount: result0.total_count, itemsLen: items.length,
+                items, firstItem: items[0] || null, resultKeys: Object.keys(result0)
+              });
+            } catch (e) { resolve({ ok: false, error: e.message }); }
+          });
+        });
+        dfReq.on('timeout', () => { dfReq.destroy(); resolve({ ok: false, error: 'timeout' }); });
+        dfReq.on('error', e => resolve({ ok: false, error: e.message }));
+        dfReq.write(payload); dfReq.end();
       });
-    });
-    dfReq.on('timeout', () => { dfReq.destroy(); json(res, { success: false, error: 'DataForSEO timeout' }); });
-    dfReq.on('error', e => json(res, { success: false, error: e.message }));
-    dfReq.write(payload); dfReq.end();
+    }
+
+    // แปลง item → keyword object (รองรับทั้ง ranked_keywords และ keywords_for_site)
+    function mapItem(it) {
+      const ki = it.keyword_data?.keyword_info || {};
+      const se = it.ranked_serp_element?.serp_item || {};
+      return {
+        keyword: it.keyword_data?.keyword || it.keyword || '',
+        volume: ki.search_volume || 0,
+        cpc: ki.cpc || 0,
+        competition: ki.competition_level || '-',
+        position: se.rank_absolute || se.rank_group || 0
+      };
+    }
+
+    (async () => {
+      const diag = [];
+      // 1) ranked_keywords — ครอบคลุมสุด (keyword ที่ domain/subdomain/page ใดก็ตามติดอันดับ)
+      let r = await callDFS('/v3/dataforseo_labs/google/ranked_keywords/live',
+        { target: dom, location_code: 2764, language_code: 'th', limit: 200,
+          order_by: ['keyword_data.keyword_info.search_volume,desc'] });
+      diag.push({ endpoint: 'ranked_keywords', ok: r.ok, totalCount: r.totalCount, itemsLen: r.itemsLen, taskMsg: r.taskMsg });
+
+      // 2) fallback: keywords_for_site (ถ้า ranked ว่าง)
+      if (r.ok && r.itemsLen === 0) {
+        let r2 = await callDFS('/v3/dataforseo_labs/google/keywords_for_site/live',
+          { target: dom, location_code: 2764, language_code: 'th', limit: 200,
+            order_by: ['keyword_info.search_volume,desc'] });
+        diag.push({ endpoint: 'keywords_for_site', ok: r2.ok, totalCount: r2.totalCount, itemsLen: r2.itemsLen, taskMsg: r2.taskMsg });
+        if (r2.ok && r2.itemsLen > 0) r = r2;
+      }
+
+      if (debug) { json(res, { success: true, debug: true, domain: dom, tried: diag, firstItem: r.firstItem, resultKeys: r.resultKeys }); return; }
+
+      if (!r.ok) { json(res, { success: false, error: 'DataForSEO: ' + (r.taskMsg || r.statusMsg || r.error || 'error') }); return; }
+
+      const keywords = (r.items || []).map(mapItem).filter(k => k.keyword);
+      json(res, { success: true, domain: dom, source: 'dataforseo', location: 'Thailand',
+        keywordCount: keywords.length,
+        totalVolume: keywords.reduce((s,k) => s + (k.volume||0), 0),
+        noData: keywords.length === 0,
+        keywords });
+    })();
     return;
   }
 
