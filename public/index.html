@@ -7736,11 +7736,25 @@ async function kwCheck(){
     kwRender(d);
   }catch(e){ box.innerHTML='<div style="color:#e24b4a;padding:16px">โหลดไม่ได้: '+e.message+'</div>'; }
 }
+function kwRerender(){ if(window._kwLast) kwRender(window._kwLast); }
 function kwRender(d){
+  window._kwLast=d;
   var box=document.getElementById('kw-result');
   var isExt = d.source==='dataforseo';
   var kws=(d.keywords||[]).slice();
-  if(isExt) kws.sort(function(a,b){return (b.volume||0)-(a.volume||0);});
+  if(isExt){
+    if(window._kwSort==='volume'){
+      kws.sort(function(a,b){return (b.volume||0)-(a.volume||0);});
+    } else {
+      // default: อันดับดีสุดก่อน (position น้อย=ดี · 0 หรือไม่มี = ท้ายสุด) เสมอกัน→volume มากก่อน
+      kws.sort(function(a,b){
+        var pa=a.position&&a.position>0?a.position:9999;
+        var pb=b.position&&b.position>0?b.position:9999;
+        if(pa!==pb) return pa-pb;
+        return (b.volume||0)-(a.volume||0);
+      });
+    }
+  }
   else kws.sort(function(a,b){return b.impressions-a.impressions;});
   var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px">'+
     '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">';
@@ -7755,7 +7769,7 @@ function kwRender(d){
         kwStat(d.avgPosition,'อันดับเฉลี่ย','#a78bfa');
   }
   h+='</div>'+
-    '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">'+d.domain+(isExt?' · DataForSEO (ไทย) · เรียงตาม volume':(' · '+d.days+' วันล่าสุด · เรียงตาม impressions'))+'</div>';
+    (isExt ? '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'+'<span style="font-size:12px;color:var(--text3,#888)">'+d.domain+' · DataForSEO (ไทย) · เรียงตาม:</span>'+'<button class="btn" style="padding:2px 10px;font-size:11px;'+(window._kwSort!=='volume'?'background:var(--blue,#3b82f6);color:#fff;border-color:var(--blue,#3b82f6)':'')+'" onclick="window._kwSort=\'position\';kwRerender()">อันดับดีสุด</button>'+'<button class="btn" style="padding:2px 10px;font-size:11px;'+(window._kwSort==='volume'?'background:var(--blue,#3b82f6);color:#fff;border-color:var(--blue,#3b82f6)':'')+'" onclick="window._kwSort=\'volume\';kwRerender()">Volume สูงสุด</button>'+'</div>' : '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">'+d.domain+' · '+d.days+' วันล่าสุด · เรียงตาม impressions</div>');
   if(!kws.length){ h+= isExt ? '<div style="color:var(--text3,#888);padding:8px 0;line-height:1.7">ยังไม่มีข้อมูล keyword สำหรับเว็บนี้ใน DataForSEO<br><span style="font-size:12px">อาจเพราะ: เว็บใหม่ที่ Google ยังไม่จัดอันดับ · traffic น้อยมาก · หรือยังไม่ติด keyword ภาษาไทยที่มี search volume — DataForSEO ดึงได้เฉพาะเว็บที่ Google จัดอันดับแล้วเท่านั้น</span></div>' : '<div style="color:var(--text3,#888)">ยังไม่มีข้อมูล keyword (เว็บอาจยังใหม่ หรือยังไม่ติดอันดับ)</div>'; }
   else{
     var copyList=kws.map(function(k){return k.keyword;}).join('\n');
