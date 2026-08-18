@@ -2097,6 +2097,91 @@ async function handleRequest(req, res) {
   }
 
   // Keyword Check เว็บนอก (added feature) — DataForSEO: ดึง keyword ที่เว็บใดก็ได้ติดอันดับ + search volume แท้
+  // Keyword History (added feature) — keyword ที่เว็บ "เคยติดแล้วหลุด" (is_lost) + ภาพรวมย้อนหลัง
+  if (req.method === 'GET' && url.startsWith('/api/keywords-history')) {
+    const u = new URL(req.url, 'http://x');
+    let dom = String(u.searchParams.get('domain') || '').trim().toLowerCase();
+    dom = dom.replace(/^https?:\/\//, '').replace(/\/.*$/, '').replace(/^www\./, '');
+    if (!dom || !validDomainName(dom)) { json(res, { success: false, error: 'โดเมนไม่ถูกต้อง' }, 400); return; }
+    const login = process.env.DATAFORSEO_LOGIN, pass = process.env.DATAFORSEO_PASSWORD;
+    if (!login || !pass) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD ใน Railway' }); return; }
+    const auth = 'Basic ' + Buffer.from(login + ':' + pass).toString('base64');
+    const debug = u.searchParams.get('debug') === '1';
+
+    function dfsPost(apiPath, payloadObj) {
+      return new Promise(resolve => {
+        const payload = JSON.stringify([payloadObj]);
+        const rq = https.request({
+          hostname: 'api.dataforseo.com', path: apiPath, method: 'POST',
+          headers: { 'Authorization': auth, 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(payload) },
+          timeout: 30000
+        }, dr => { let data=''; dr.on('data',c=>data+=c); dr.on('end',()=>{ try{ resolve(JSON.parse(data)); }catch(e){ resolve({ _err: e.message }); } }); });
+        rq.on('timeout', () => { rq.destroy(); resolve({ _err: 'timeout' }); });
+        rq.on('error', e => resolve({ _err: e.message }));
+        rq.write(payload); rq.end();
+      });
+    }
+
+    (async () => {
+      // 1) keyword ที่เพิ่งหลุด — ranked_keywords + filter is_lost=true
+      //    ใน ranked_keywords แต่ละ item มี ranked_serp_element.serp_item.rank_changes.is_lost
+      const lostResp = await dfsPost('/v3/dataforseo_labs/google/ranked_keywords/live', {
+        target: dom, location_code: 2764, language_code: 'th', limit: 200,
+        historical_serp_mode: 'lost',
+        filters: [['ranked_serp_element.serp_item.rank_changes.is_lost', '=', true]],
+        order_by: ['keyword_data.keyword_info.search_volume,desc']
+      });
+
+      // 2) ภาพรวมย้อนหลัง — historical_rank_overview
+      const histResp = await dfsPost('/v3/dataforseo_labs/google/historical_rank_overview/live', {
+        target: dom, location_code: 2764, language_code: 'th'
+      });
+
+      if (debug) {
+        json(res, { success: true, debug: true, domain: dom,
+          lost_status: (lostResp.tasks||[])[0]?.status_message,
+          lost_first: ((lostResp.tasks||[])[0]?.result||[])[0]?.items?.[0] || null,
+          lost_count: ((lostResp.tasks||[])[0]?.result||[])[0]?.items?.length || 0,
+          hist_status: (histResp.tasks||[])[0]?.status_message,
+          hist_first: ((histResp.tasks||[])[0]?.result||[])[0]?.items?.[0] || null,
+          hist_keys: Object.keys(((histResp.tasks||[])[0]?.result||[])[0] || {})
+        });
+        return;
+      }
+
+      // parse lost keywords
+      const lostItems = ((lostResp.tasks||[])[0]?.result||[])[0]?.items || [];
+      const lostKeywords = lostItems.map(it => {
+        const ki = it.keyword_data?.keyword_info || {};
+        const se = it.ranked_serp_element?.serp_item || {};
+        const rc = se.rank_changes || {};
+        return {
+          keyword: it.keyword_data?.keyword || '',
+          volume: ki.search_volume || 0,
+          cpc: ki.cpc || 0,
+          previousPosition: rc.previous_rank_absolute || se.rank_absolute || 0,
+          isLost: rc.is_lost || false
+        };
+      }).filter(k => k.keyword);
+
+      // parse historical overview (รายเดือน)
+      const histItems = ((histResp.tasks||[])[0]?.result||[])[0]?.items || [];
+      const history = histItems.map(it => {
+        const m = it.metrics?.organic || {};
+        return {
+          year: it.year, month: it.month,
+          count: m.count || 0, etv: Math.round(m.etv || 0),
+          pos_1: m.pos_1 || 0, pos_2_3: m.pos_2_3 || 0, pos_4_10: m.pos_4_10 || 0
+        };
+      });
+
+      json(res, { success: true, domain: dom, source: 'dataforseo',
+        lostKeywords, lostCount: lostKeywords.length,
+        history, historyMonths: history.length });
+    })();
+    return;
+  }
+
   if (req.method === 'GET' && url.startsWith('/api/keywords-ext')) {
     const u = new URL(req.url, 'http://x');
     let dom = String(u.searchParams.get('domain') || '').trim().toLowerCase();
