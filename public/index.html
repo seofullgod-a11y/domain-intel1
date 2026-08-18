@@ -386,7 +386,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
   </div>
 </div>
 
-<div id="matrix-rain" style="position:fixed;inset:0;overflow:hidden;pointer-events:none;opacity:0.03;z-index:0"></div>
 <div id="global-loading" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9998;align-items:center;justify-content:center;flex-direction:column;gap:16px">
   <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;padding:28px 36px;text-align:center;min-width:280px">
     <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:12px">
@@ -455,7 +454,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="showPage('traffic')">
         <i class="ti ti-chart-line"></i> Traffic & GSC
       </div>
-      <div class="nav-item" onclick="showPage('keywords')">
+      <div class="nav-item" onclick="openKeywords()">
         <i class="ti ti-award"></i> Keyword Rankings
       </div>
       <div class="nav-section">// TOOLS</div>
@@ -3901,28 +3900,6 @@ document.querySelectorAll('.nav-item').forEach(item => {
 });
 </script>
 
-<script id="matrix-rain-init">
-// Matrix rain background
-(function() {
-  const bg = document.getElementById('matrix-rain');
-  if (!bg) return;
-  const chars = '01アイウエオカキクケコ{}[]<>=>;:#$%&*!?/\\';
-  const style = document.createElement('style');
-  style.textContent = '@keyframes mfall{0%{transform:translateY(-100%);opacity:0}5%{opacity:1}90%{opacity:0.15}100%{transform:translateY(110vh);opacity:0}}';
-  document.head.appendChild(style);
-  for (let i = 0; i < 22; i++) {
-    const c = document.createElement('div');
-    c.style.cssText = 'position:absolute;font-size:9px;color:#22d07a;line-height:14px;letter-spacing:3px;white-space:pre;animation:mfall linear infinite;font-family:monospace';
-    c.style.left = (i * 4.8) + '%';
-    c.style.animationDuration = (4 + Math.random() * 5) + 's';
-    c.style.animationDelay = (-Math.random() * 7) + 's';
-    let s = '';
-    for (let j = 0; j < 50; j++) s += chars[Math.floor(Math.random() * chars.length)] + '\n';
-    c.textContent = s;
-    bg.appendChild(c);
-  }
-})();
-</script>
 <script>
 // ===== DARK/LIGHT MODE TOGGLE =====
 function toggleTheme() {
@@ -7685,9 +7662,9 @@ function previewSite(domain){
 <script>
 // ===== KEYWORD CHECK (added feature) — วางโดเมน → ดึง keyword ที่ติดอันดับจาก GSC =====
 function ensureKwPage(){
-  if(document.getElementById('page-keywords')) return;
+  if(document.getElementById('page-kwcheck')) return;
   var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
-  var div=document.createElement('div'); div.id='page-keywords'; div.style.display='none';
+  var div=document.createElement('div'); div.id='page-kwcheck'; div.style.display='none';
   div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='12px'; div.style.overflow='auto';
   div.innerHTML=
     '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-search"></i> เช็ค Keyword ที่เว็บติดอันดับ</h2>'+
@@ -7705,7 +7682,7 @@ function ensureKwPage(){
   c.appendChild(div);
 }
 function openKeywords(){
-  ensureKwPage(); showPage('keywords');
+  ensureKwPage(); showPage('kwcheck');
   document.querySelectorAll('.nav-item').forEach(function(n){ n.classList.remove('active'); if((n.getAttribute('onclick')||'')==='openKeywords()') n.classList.add('active'); });
 }
 function kwGetMode(){ var el=document.querySelector('input[name="kwmode"]:checked'); return el?el.value:'gsc'; }
