@@ -7717,8 +7717,13 @@ function kwSetMode(){
     ? '🌐 เว็บใดก็ได้ — ดึง keyword + <b>search volume แท้</b> จาก DataForSEO (location ไทย) · มีค่าใช้จ่ายต่อการค้นหา'
     : '💡 impressions = จำนวนครั้งที่เว็บโผล่ในผลค้นหา (ใกล้เคียง search volume) · เฉพาะเว็บใน GSC ของคุณ';
 }
+function kwCleanDomain(s){
+  s=String(s||'').trim().toLowerCase();
+  s=s.replace(/^https?:\/\//,'').replace(/^www\./,'').replace(/\/.*$/,'').replace(/\s+/g,'');
+  return s;
+}
 async function kwCheck(){
-  var dom=(document.getElementById('kw-domain').value||'').trim();
+  var dom=kwCleanDomain(document.getElementById('kw-domain').value);
   var days=(document.getElementById('kw-days')||{}).value||'28';
   if(!dom){ if(typeof toast==='function')toast('ใส่โดเมนก่อน','error'); return; }
   var mode=kwGetMode();
@@ -7729,7 +7734,7 @@ async function kwCheck(){
     var r=await fetch(ep);
     var d=await r.json();
     if(!d.success){
-      var msg=d.notInGsc?('โดเมนนี้ไม่อยู่ใน Google Search Console (มี '+(d.sitesCount||0)+' เว็บในบัญชีที่เชื่อม)<br><span style="font-size:12px">ต้องเพิ่มเว็บนี้ใน GSC ก่อน ถึงจะดึง keyword ได้'):d.error;
+      var msg=d.notInGsc?('โดเมนนี้ไม่อยู่ใน Google Search Console (มี '+(d.sitesCount||0)+' เว็บในบัญชีที่เชื่อม)<br><span style="font-size:12px">เว็บของคุณต้องเพิ่มใน GSC ก่อน — หรือสลับไปโหมด "เว็บใดก็ได้ (DataForSEO)" เพื่อเช็คเว็บนอกโดยไม่ต้อง GSC'):d.error;
       box.innerHTML='<div style="background:var(--bg2,#111);border:1px solid #e24b4a44;border-radius:10px;padding:16px;color:#e3b93b">'+msg+'</span></div>';
       return;
     }
