@@ -8042,6 +8042,21 @@ function ccEnsurePage(){
       '<div id="cc-bulk-progress" style="margin-top:10px;font-size:12px"></div>'+
     '</div>'+
 
+    // ── การ์ด 4: หา zone ที่ค้าง Pause ──
+    '<div style="'+CARD+';border-color:rgba(226,75,74,0.3)">'+
+      '<div style="font-weight:600;margin-bottom:6px">4️⃣ หา zone ที่ค้าง Pause (ทั้งบัญชี Cloudflare)</div>'+
+      '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px;line-height:1.8">'+
+        'zone ที่ถูก Pause = <b style="color:#e24b4a">Cloudflare ไม่ทำงานเลย</b> — traffic วิ่งผ่านเซิร์ฟเวอร์ตรงๆ ทั้งหมด<br>'+
+        'มักเกิดจาก auto-fix ตอนเจอ error 521-524 แล้วปลดไม่สำเร็จ (redeploy ทับ) → ค้างเงียบๆ โดยไม่มีใครรู้</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+        '<button class="btn" style="padding:8px 14px;font-size:13px" onclick="ccPauseScan()"><i class="ti ti-radar"></i> สแกนทุก zone</button>'+
+        '<button class="btn" style="padding:8px 14px;font-size:13px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.35)" onclick="ccResumeAll()">▶️ ปลด Pause ทั้งหมด</button>'+
+        '<span id="cc-scan-info" style="font-size:12px;color:var(--text3,#888)"></span>'+
+      '</div>'+
+      '<div id="cc-scan-progress" style="margin-top:10px;font-size:12px"></div>'+
+      '<div id="cc-scan-result" style="margin-top:8px"></div>'+
+    '</div>'+
+
     // ── หมายเหตุ ──
     '<div style="'+CARD+';border-color:rgba(245,130,32,0.25)">'+
       '<div style="font-weight:600;margin-bottom:6px;color:#f58220">⚠️ อ่านก่อนใช้</div>'+
@@ -8324,6 +8339,124 @@ async function ccBulk(enable){
     if(typeof toast==='function')toast('เริ่มทำ '+d.total+' โดเมน...','info');
     ccPollBulk();
   }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+
+// ===== สแกน / ปลด zone ที่ค้าง Pause =====
+var _ccScanPoll=null, _ccResumePoll=null;
+window._ccPausedRows=[];
+
+async function ccPauseScan(){
+  if(typeof wpNeedKey==='function'){ if(!wpNeedKey()) return; }
+  try{
+    var r=await fetch(API+'/api/cfpause/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast(d.error||'เริ่มไม่ได้','error'); return; }
+    if(typeof toast==='function')toast('เริ่มสแกนทุก zone...','info');
+    ccPollScan();
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+
+function ccPollScan(){
+  if(_ccScanPoll) clearInterval(_ccScanPoll);
+  var box=document.getElementById('cc-scan-progress');
+  async function tick(){
+    try{
+      var r=await fetch(API+'/api/cfpause/scan-status'); var d=await r.json();
+      if(box) box.innerHTML = d.running
+        ? ('กำลังดึง zone... '+(d.zones||0)+' zone (หน้า '+(d.pages||0)+')')
+        : (d.finishedAt?('สแกนเสร็จ ✅ ทั้งหมด '+(d.zones||0)+' zone'):'ยังไม่เคยสแกน');
+      if(!d.running){
+        clearInterval(_ccScanPoll); _ccScanPoll=null;
+        window._ccPausedRows=d.paused||[];
+        ccRenderScan(d);
+      }
+    }catch(e){}
+  }
+  tick(); _ccScanPoll=setInterval(tick,1500);
+}
+
+function ccRenderScan(d){
+  var el=document.getElementById('cc-scan-result'); if(!el) return;
+  var info=document.getElementById('cc-scan-info');
+  if(d.error){ el.innerHTML='<div style="color:#e24b4a;font-size:13px">สแกนไม่สำเร็จ: '+d.error+'</div>'; return; }
+  var paused=d.paused||[], na=d.notActive||[];
+  if(info) info.textContent='(ทั้งหมด '+(d.zones||0)+' zone · จดไว้รอปลด '+(d.registry||0)+')';
+  var h='';
+  if(!paused.length){
+    h+='<div style="color:var(--green,#2ecc71);font-size:13px;font-weight:600">✅ ไม่มี zone ไหนค้าง Pause — Cloudflare ทำงานครบทุกตัว</div>';
+  }
+  if(paused.length){
+    h+='<div style="color:#e24b4a;font-weight:600;font-size:13px;margin-bottom:6px">🛑 พบ '+paused.length+' zone ที่ถูก Pause อยู่ (CF ไม่ทำงาน)</div>'+
+      '<div style="max-height:280px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:5px 8px">โดเมน</th><th style="padding:5px 8px">สถานะ</th>'+
+      '<th style="padding:5px 8px">ค้างมา</th><th style="padding:5px 8px">บัญชี</th><th style="padding:5px 8px"></th></tr>'+
+      paused.map(function(p){
+        return '<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
+          '<td style="padding:5px 8px;font-weight:600">'+p.domain+'</td>'+
+          '<td style="padding:5px 8px;color:var(--text3,#888)">'+(p.status||'-')+'</td>'+
+          '<td style="padding:5px 8px;color:'+(p.stuckMin>60?'#e24b4a':'var(--text3,#888)')+'">'+
+            (p.stuckMin!==null&&p.stuckMin!==undefined?(p.stuckMin>=60?(Math.round(p.stuckMin/60)+' ชม.'):(p.stuckMin+' นาที')):'ไม่ทราบ')+'</td>'+
+          '<td style="padding:5px 8px;color:var(--text3,#888);font-size:11px">'+(p.token||'-')+'</td>'+
+          '<td style="padding:5px 8px"><button class="btn" style="padding:2px 10px;font-size:11px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="ccResumeOne(\''+p.domain+'\')">ปลด</button></td></tr>';
+      }).join('')+'</table></div>';
+  }
+  if(na.length){
+    h+='<div style="color:#e3b93b;font-size:12px;margin-top:10px">⚠️ อีก '+na.length+' zone สถานะยังไม่ active: '+
+      na.slice(0,25).map(function(x){return x.domain+' ('+x.status+')';}).join(', ')+(na.length>25?' …':'')+'</div>';
+  }
+  el.innerHTML=h;
+}
+
+async function ccResumeOne(domain){
+  if(typeof wpNeedKey==='function'){ if(!wpNeedKey()) return; }
+  try{
+    var r=await fetch(API+'/api/cfcache/unpause',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,domain:domain})});
+    var d=await r.json();
+    if(!d.success){ if(typeof toast==='function')toast('ปลด '+domain+' ไม่ได้: '+(d.error||'?'),'error'); return; }
+    if(typeof toast==='function')toast('▶️ ปลด '+domain+' แล้ว','success');
+    ccPauseScan();
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+
+async function ccResumeAll(){
+  var rows=window._ccPausedRows||[];
+  if(!rows.length){ if(typeof toast==='function')toast('ยังไม่มีผลสแกน — กด "สแกนทุก zone" ก่อน','error'); return; }
+  if(typeof wpNeedKey==='function'){ if(!wpNeedKey()) return; }
+  if(!confirm('ปลด Pause ให้ '+rows.length+' zone?\n\nCloudflare จะกลับมาทำงาน (proxy + cache + WAF) ทุกตัว\nใช้เวลาประมาณ '+Math.ceil(rows.length*0.3/60)+' นาที')) return;
+  try{
+    var r=await fetch(API+'/api/cfpause/resume',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,domains:rows.map(function(x){return x.domain;})})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast(d.error||'เริ่มไม่ได้','error'); return; }
+    if(typeof toast==='function')toast('เริ่มปลด '+d.total+' zone...','info');
+    ccPollResume();
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+
+function ccPollResume(){
+  if(_ccResumePoll) clearInterval(_ccResumePoll);
+  var box=document.getElementById('cc-scan-progress');
+  async function tick(){
+    try{
+      var r=await fetch(API+'/api/cfpause/resume-status'); var d=await r.json();
+      if(!box) return;
+      var pct=d.total?Math.round(d.done/d.total*100):0;
+      var bar='<div style="background:#222;border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#2ecc71;height:100%;width:'+pct+'%;transition:width .3s"></div></div>';
+      var fails='';
+      if(d.failures&&d.failures.length){
+        fails='<div style="margin-top:6px;color:#e24b4a">ปลดไม่ได้ ('+d.failed+'):</div>'+
+          '<div style="max-height:140px;overflow:auto;font-size:11px;color:var(--text3,#888)">'+
+          d.failures.map(function(f){return '• '+f.domain+': '+f.error;}).join('<br>')+'</div>';
+      }
+      box.innerHTML=bar+'ปลดไป '+d.done+'/'+d.total+' — สำเร็จ '+d.ok+' · ล้มเหลว '+d.failed+(d.running?' (กำลังทำ...)':' ✅ เสร็จแล้ว')+fails;
+      if(!d.running){ clearInterval(_ccResumePoll); _ccResumePoll=null; setTimeout(ccPauseScan,1500); }
+    }catch(e){}
+  }
+  tick(); _ccResumePoll=setInterval(tick,1500);
 }
 
 function ccPollBulk(){
