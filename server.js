@@ -1406,6 +1406,199 @@ async function cfApplyDomain(domain, enable) {
   }
 }
 
+// ===== CLOUDFLARE CACHE RULE (added feature) — ให้ CF cache รูป/static แทน origin =====
+// เป้าหมาย: ลด bandwidth ขาออกของเซิร์ฟเวอร์ (เคสไฟล์ GIF โดนโหลดล้านครั้ง)
+// ทำ 2 อย่าง: (1) เปิด proxy เมฆส้ม ให้ record ที่ควรผ่าน CF  (2) ใส่ Cache Rule ที่ phase http_request_cache_settings
+// ป้าย [auto-cache] = rule ที่ระบบสร้าง — rule อื่นที่ผู้ใช้ตั้งเองจะไม่ถูกแตะ
+const CF_CACHE_TAG = '[auto-cache]';
+const CF_CACHE_EXTS_DEFAULT = ['gif', 'jpg', 'jpeg', 'png', 'webp', 'avif', 'svg', 'ico', 'bmp',
+  'css', 'js', 'mjs', 'woff', 'woff2', 'ttf', 'otf', 'eot', 'mp4', 'webm', 'pdf'];
+// subdomain ที่ "ห้าม" เปิดเมฆส้มเด็ดขาด (proxy แล้วเมล/FTP/panel พัง)
+const CF_NEVER_PROXY = ['mail', 'smtp', 'imap', 'pop', 'pop3', 'webmail', 'mx', 'mx1', 'mx2',
+  'ftp', 'sftp', 'ssh', 'cpanel', 'whm', 'plesk', 'webdisk', 'ns', 'ns1', 'ns2', 'ns3', 'vpn',
+  'direct', 'origin', 'cpcalendars', 'cpcontacts', 'autodiscover', 'autoconfig', 'dkim', '_domainkey'];
+
+function cfCacheExts(exts) {
+  const list = (Array.isArray(exts) && exts.length ? exts : CF_CACHE_EXTS_DEFAULT)
+    .map(e => String(e).toLowerCase().replace(/[^a-z0-9]/g, '')).filter(Boolean);
+  return [...new Set(list)].slice(0, 40);
+}
+// ใช้ ends_with() ไม่ใช้ regex "matches" — เพราะ regex ใช้ได้เฉพาะแพลน Business ขึ้นไป
+// noLower=true = ไม่ใช้ lower() (เผื่อบางแพลน/บาง phase ไม่รองรับ transformation function)
+function cfCacheExpression(exts, noLower) {
+  const list = cfCacheExts(exts);
+  const f = noLower ? 'http.request.uri.path' : 'lower(http.request.uri.path)';
+  if (!list.length) return '(ends_with(' + f + ', ".gif"))';
+  return '(' + list.map(e => 'ends_with(' + f + ', ".' + e + '")').join(' or ') + ')';
+}
+function cfCacheRule(opts) {
+  opts = opts || {};
+  const edgeDays = Math.max(1, Math.min(365, parseInt(opts.edgeDays, 10) || 30));
+  const browserDays = Math.max(1, Math.min(365, parseInt(opts.browserDays, 10) || 365));
+  return {
+    description: CF_CACHE_TAG + ' cache static assets',
+    expression: cfCacheExpression(opts.exts, opts.noLower),
+    action: 'set_cache_settings',
+    action_parameters: {
+      cache: true,
+      edge_ttl: { mode: 'override_origin', default: edgeDays * 86400 },
+      browser_ttl: { mode: 'override_origin', default: browserDays * 86400 },
+      cache_key: { ignore_query_strings_order: true }
+    },
+    enabled: true
+  };
+}
+// ตัด field read-only ออกก่อน PUT กลับ (id/version/last_updated ทำให้ CF ตอบ 400)
+function cfSanitizeRule(r) {
+  const out = {
+    action: r.action,
+    expression: r.expression,
+    description: r.description || '',
+    enabled: r.enabled !== false
+  };
+  if (r.action_parameters) out.action_parameters = r.action_parameters;
+  if (r.logging) out.logging = r.logging;
+  if (r.ref) out.ref = r.ref;
+  return out;
+}
+async function cfCacheGetRules(zoneId, token) {
+  try {
+    const j = await cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_cache_settings/entrypoint', {}, token);
+    return (j.result && j.result.rules) || [];
+  } catch (e) {
+    // ยังไม่เคยมี cache ruleset ในโซนนี้ = ถือว่าว่าง (ไม่ใช่ error)
+    if (/could not find|does not exist|not found|10\d{3}/i.test(e.message)) return [];
+    throw e;
+  }
+}
+async function cfCachePutRules(zoneId, rules, token) {
+  return cfApi('/zones/' + zoneId + '/rulesets/phases/http_request_cache_settings/entrypoint',
+    { method: 'PUT', body: { rules } }, token);
+}
+// ดึง record ที่ proxy ได้ (A / AAAA / CNAME)
+async function cfGetProxiableRecords(zoneId, token) {
+  const out = [];
+  for (const t of ['A', 'AAAA', 'CNAME']) {
+    let page = 1;
+    while (page <= 10) {
+      let j;
+      try { j = await cfApi('/zones/' + zoneId + '/dns_records?type=' + t + '&per_page=100&page=' + page, {}, token); }
+      catch (e) { break; }
+      (j.result || []).forEach(r => out.push(r));
+      const ti = j.result_info || {};
+      if (!ti.total_pages || page >= ti.total_pages) break;
+      page++;
+    }
+  }
+  return out;
+}
+// ตัดสินใจว่า record นี้ควรเปิดเมฆส้มไหม — mode 'root' (ค่าเริ่มต้น: @ กับ www เท่านั้น) หรือ 'all'
+function cfShouldProxy(rec, zoneName, mode) {
+  const name = String(rec.name || '').toLowerCase();
+  const zn = String(zoneName || '').toLowerCase();
+  const label = (name === zn) ? '@' : name.replace(new RegExp('\\.' + zn.replace(/\./g, '\\.') + '$'), '');
+  if (label !== '@') {
+    const first = label.split('.')[0];
+    if (CF_NEVER_PROXY.indexOf(first) !== -1) return false; // กันเมล/panel พัง
+    if (first === '*') return false;                        // wildcard ไม่แตะ
+  }
+  if (mode === 'all') return true;
+  return label === '@' || label === 'www';
+}
+// เช็คสถานะ cache ของ 1 โดเมน (อ่านอย่างเดียว ไม่แก้อะไร)
+async function cfCacheCheckDomain(domain) {
+  const zone = await cfFindZone(domain);
+  if (!zone) return { domain, hasZone: false };
+  const out = { domain, hasZone: true, zone: zone.name, zoneId: zone.id };
+  try {
+    const recs = await cfGetProxiableRecords(zone.id, zone._token);
+    const main = recs.filter(r => cfShouldProxy(r, zone.name, 'root'));
+    out.records = recs.map(r => ({ name: r.name, type: r.type, content: r.content, proxied: !!r.proxied }));
+    out.mainProxied = main.length > 0 && main.every(r => r.proxied);
+    out.mainCount = main.length;
+    out.mainProxiedCount = main.filter(r => r.proxied).length;
+  } catch (e) { out.recError = e.message; }
+  try {
+    const rules = await cfCacheGetRules(zone.id, zone._token);
+    out.cacheRules = rules.length;
+    out.hasCacheRule = rules.some(r => String(r.description || '').indexOf(CF_CACHE_TAG) !== -1);
+  } catch (e) { out.ruleError = e.message; }
+  return out;
+}
+// ลงมือทำจริง: เปิด proxy + ใส่ Cache Rule
+async function cfCacheApplyDomain(domain, opts) {
+  opts = opts || {};
+  const doProxy = opts.proxy !== false;
+  const doRule = opts.rule !== false;
+  const enable = opts.enable !== false; // false = ถอด rule ของระบบออก
+  const zone = await cfFindZone(domain);
+  if (!zone) return { domain, ok: false, error: 'ไม่พบ zone นี้ในบัญชี Cloudflare (อาจอยู่ account อื่น — เพิ่ม token ใน CLOUDFLARE_API_TOKENS)' };
+  const out = { domain, ok: true, zone: zone.name, proxied: [], skipped: [], ruleEnabled: null };
+  try {
+    if (doProxy && enable) {
+      const recs = await cfGetProxiableRecords(zone.id, zone._token);
+      for (const r of recs) {
+        if (!cfShouldProxy(r, zone.name, opts.proxyMode)) { out.skipped.push({ name: r.name, why: 'ข้าม (mail/subdomain/wildcard)' }); continue; }
+        if (r.proxied) { out.skipped.push({ name: r.name, why: 'เปิดเมฆส้มอยู่แล้ว' }); continue; }
+        try {
+          await cfApi('/zones/' + zone.id + '/dns_records/' + r.id, { method: 'PATCH', body: { proxied: true } }, zone._token);
+          out.proxied.push(r.name);
+          await new Promise(r2 => setTimeout(r2, 120));
+        } catch (e) { out.skipped.push({ name: r.name, why: 'เปิดไม่ได้: ' + e.message }); }
+      }
+    }
+    if (doRule) {
+      const existing = await cfCacheGetRules(zone.id, zone._token);
+      const kept = existing
+        .filter(r => String(r.description || '').indexOf(CF_CACHE_TAG) === -1)
+        .map(cfSanitizeRule);
+      const merged = enable ? [cfCacheRule(opts), ...kept] : kept;
+      try {
+        await cfCachePutRules(zone.id, merged, zone._token);
+      } catch (e1) {
+        // เผื่อ CF ไม่รับ lower() หรือ expression ยาวเกิน → ลองใหม่แบบเรียบง่าย (ไม่ใช้ lower)
+        if (enable && /expression|syntax|filter|not supported|unavailable/i.test(e1.message)) {
+          const simple = [cfCacheRule(Object.assign({}, opts, { noLower: true })), ...kept];
+          await cfCachePutRules(zone.id, simple, zone._token);
+          out.fallback = 'ใช้ expression แบบไม่มี lower() (นามสกุลตัวพิมพ์ใหญ่จะไม่ถูก cache)';
+        } else { throw e1; }
+      }
+      out.ruleEnabled = enable;
+      out.keptRules = kept.length;
+    }
+    return out;
+  } catch (e) {
+    return { domain, ok: false, zone: zone.name, error: e.message, proxied: out.proxied, skipped: out.skipped };
+  }
+}
+let cfCacheBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, proxied: 0, failures: [] };
+// ยิง GET จริงเพื่อดู header — ใช้พิสูจน์ว่า cache ทำงานแล้ว (cf-cache-status: HIT)
+function cfCacheProbe(targetUrl) {
+  return new Promise((resolve) => {
+    let u;
+    try { u = new URL(targetUrl); } catch (e) { return resolve({ ok: false, error: 'URL ไม่ถูกต้อง' }); }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return resolve({ ok: false, error: 'รองรับ http/https เท่านั้น' });
+    const mod = u.protocol === 'https:' ? https : http;
+    const req = mod.request(u, { method: 'GET', timeout: 15000, headers: { 'User-Agent': 'DomainIntel-CacheProbe/1.0' } }, (res) => {
+      const h = res.headers || {};
+      res.destroy(); // ไม่ต้องโหลด body (กันดูด bandwidth เอง)
+      resolve({
+        ok: true, status: res.statusCode,
+        cfCacheStatus: h['cf-cache-status'] || null,
+        cacheControl: h['cache-control'] || null,
+        age: h['age'] || null,
+        server: h['server'] || null,
+        cfRay: h['cf-ray'] || null,
+        contentLength: h['content-length'] || null,
+        contentType: h['content-type'] || null
+      });
+    });
+    req.on('error', e => resolve({ ok: false, error: e.message }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, error: 'timeout' }); });
+    req.end();
+  });
+}
+
 // ===== WP-ADMIN TOGGLE (added feature) — เปิด/ปิด wp-login รายโดเมน จากแดชบอร์ด =====
 // ปลอดภัย: ทุกคำสั่งจะ apachectl configtest ก่อน reload — ถ้า config ผิด rollback อัตโนมัติ
 // source of truth = ไฟล์ .wpadmin-open.list บนเครื่อง (ระบบอ่านของเดิมก่อนแก้ ไม่ลืมเว็บที่เปิดไว้)
@@ -2033,8 +2226,15 @@ async function handleRequest(req, res) {
     const w = Math.min(1200, Math.max(200, parseInt(u.searchParams.get('w')) || 600));
     // redirect ให้เบราว์เซอร์โหลดรูปตรงจาก provider (เร็ว + ไม่กิน bandwidth server)
     // thum.io ไม่ต้อง key; ถ้าองค์กรมี key ของ provider อื่นใส่ SCREENSHOT_URL ได้
-    const tmpl = process.env.SCREENSHOT_URL || 'https://image.thum.io/get/width/{w}/noanimate/https://{domain}';
-    const target = tmpl.replace('{w}', w).replace('{domain}', encodeURIComponent(dom)).replace('{domain_raw}', dom);
+    let tmpl = process.env.SCREENSHOT_URL || 'https://image.thum.io/get/width/{w}/noanimate/https://{domain}';
+    tmpl = tmpl.trim().replace(/[\r\n\t]/g, '');
+    let target = tmpl.replace('{w}', String(w)).replace('{domain}', encodeURIComponent(dom)).replace('{domain_raw}', dom);
+    target = target.replace(/[^\x20-\x7E]/g, '').replace(/[\r\n]/g, '').trim();
+    let okTarget = false;
+    try { const tu = new URL(target); okTarget = (tu.protocol === 'http:' || tu.protocol === 'https:'); } catch (e) { okTarget = false; }
+    if (!okTarget) {
+      target = 'https://image.thum.io/get/width/' + w + '/noanimate/https://' + encodeURIComponent(dom);
+    }
     res.writeHead(302, { 'Location': target, 'Cache-Control': 'no-store' });
     res.end();
     return;
@@ -3164,6 +3364,110 @@ async function handleRequest(req, res) {
   }
   if (req.method === 'GET' && url === '/api/cloudflare/bulk-status') {
     json(res, { success: true, ...cfBulk });
+    return;
+  }
+
+  // ===== CLOUDFLARE CACHE RULE API (added feature) =====
+  // เช็คสถานะ cache ของโดเมน (อ่านอย่างเดียว — ไม่ต้องใช้ key)
+  if (req.method === 'GET' && url === '/api/cfcache/status') {
+    const q = rawUrl.split('?')[1] || '';
+    const domain = decodeURIComponent((q.split('domain=')[1] || '').split('&')[0] || '').trim().toLowerCase();
+    if (!validDomainName(domain)) { json(res, { success: false, error: 'ชื่อโดเมนไม่ถูกต้อง' }); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    try {
+      const r = await cfCacheCheckDomain(domain);
+      json(res, { success: true, ...r });
+    } catch (e) { json(res, { success: false, error: e.message }); }
+    return;
+  }
+  // ตั้ง/ถอด Cache Rule + เปิดเมฆส้ม ทีละโดเมน (ต้องมี key)
+  if (req.method === 'POST' && url === '/api/cfcache/apply') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
+    const domain = String(body.domain || '').trim().toLowerCase();
+    if (!validDomainName(domain)) { json(res, { success: false, error: 'ชื่อโดเมนไม่ถูกต้อง' }); return; }
+    const opts = {
+      proxy: body.proxy !== false,
+      proxyMode: body.proxyMode === 'all' ? 'all' : 'root',
+      rule: body.rule !== false,
+      enable: body.enable !== false,
+      edgeDays: body.edgeDays,
+      browserDays: body.browserDays,
+      exts: body.exts
+    };
+    const r = await cfCacheApplyDomain(domain, opts);
+    try {
+      logEvent('info', 'CF Cache ' + (opts.enable ? 'เปิด' : 'ถอด') + ': ' + domain +
+        (r.ok ? (' สำเร็จ (proxy ' + (r.proxied || []).length + ' record)') : (' ล้มเหลว — ' + r.error)));
+    } catch (e) {}
+    json(res, { success: r.ok, ...r });
+    return;
+  }
+  // ตั้ง Cache Rule หลายโดเมนรวดเดียว (background) — ต้องมี key
+  if (req.method === 'POST' && url === '/api/cfcache/bulk') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN ใน Railway' }); return; }
+    if (cfCacheBulk.running) { json(res, { success: false, error: 'กำลังทำงานอยู่แล้ว — ดูความคืบหน้าที่หน้าจอ' }); return; }
+    const opts = {
+      proxy: body.proxy !== false,
+      proxyMode: body.proxyMode === 'all' ? 'all' : 'root',
+      rule: body.rule !== false,
+      enable: body.enable !== false,
+      edgeDays: body.edgeDays,
+      browserDays: body.browserDays,
+      exts: body.exts
+    };
+    const domains = Array.isArray(body.domains) && body.domains.length
+      ? [...new Set(body.domains.map(x => String(x).trim().toLowerCase()).filter(validDomainName))]
+      : [...new Set(memoryDomains.map(d => d.domain).filter(validDomainName))];
+    if (!domains.length) { json(res, { success: false, error: 'ไม่มีโดเมนให้ทำ' }); return; }
+    cfCacheBulk = { running: true, enable: opts.enable, total: domains.length, done: 0, ok: 0, failed: 0, proxied: 0, failures: [], results: [], startedAt: Date.now(), finishedAt: null };
+    (async () => {
+      for (const dom of domains) {
+        try {
+          const r = await cfCacheApplyDomain(dom, opts);
+          if (r.ok) {
+            cfCacheBulk.ok++;
+            cfCacheBulk.proxied += (r.proxied || []).length;
+            if (cfCacheBulk.results.length < 500) cfCacheBulk.results.push({ domain: dom, zone: r.zone, proxied: (r.proxied || []).length, rule: r.ruleEnabled });
+          } else {
+            cfCacheBulk.failed++;
+            if (cfCacheBulk.failures.length < 150) cfCacheBulk.failures.push({ domain: dom, error: r.error });
+          }
+        } catch (e) {
+          cfCacheBulk.failed++;
+          if (cfCacheBulk.failures.length < 150) cfCacheBulk.failures.push({ domain: dom, error: e.message });
+        }
+        cfCacheBulk.done++;
+        await new Promise(r => setTimeout(r, 300)); // กัน CF rate limit (1200 req / 5 นาที)
+      }
+      cfCacheBulk.running = false; cfCacheBulk.finishedAt = Date.now();
+      try { logEvent('info', 'CF Cache bulk เสร็จ — สำเร็จ ' + cfCacheBulk.ok + ' · ล้มเหลว ' + cfCacheBulk.failed); } catch (e) {}
+    })().catch(() => { cfCacheBulk.running = false; cfCacheBulk.finishedAt = Date.now(); });
+    json(res, { success: true, started: true, total: domains.length });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/cfcache/bulk-status') {
+    json(res, { success: true, ...cfCacheBulk });
+    return;
+  }
+  // พิสูจน์ผล: ยิง GET จริงแล้วอ่าน header cf-cache-status / cache-control
+  if (req.method === 'GET' && url === '/api/cfcache/probe') {
+    const q = rawUrl.split('?')[1] || '';
+    let target = decodeURIComponent((q.split('url=')[1] || '').split('&')[0] || '').trim();
+    if (!target) { json(res, { success: false, error: 'ต้องระบุ url' }); return; }
+    if (!/^https?:\/\//i.test(target)) target = 'https://' + target;
+    let host = '';
+    try { host = new URL(target).hostname.toLowerCase(); } catch (e) {}
+    if (!validDomainName(host)) { json(res, { success: false, error: 'URL ไม่ถูกต้อง' }); return; }
+    const first = await cfCacheProbe(target);
+    if (!first.ok) { json(res, { success: false, error: first.error }); return; }
+    // ยิงซ้ำอีกครั้ง — ครั้งแรกมักได้ MISS แล้วครั้งที่สองควรเป็น HIT
+    await new Promise(r => setTimeout(r, 1200));
+    const second = await cfCacheProbe(target);
+    json(res, { success: true, url: target, first, second: second.ok ? second : null });
     return;
   }
 
