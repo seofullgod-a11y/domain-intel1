@@ -1551,11 +1551,60 @@ function cfShouldProxy(rec, zoneName, mode) {
   if (mode === 'all') return true;
   return label === '@' || label === 'www';
 }
+// ---- เช็ค DNS จริงบนอินเทอร์เน็ต (ไม่เชื่อแค่ที่ CF บอก) ----
+// ช่วง IP ของ Cloudflare (IPv4) — ใช้ดูว่าโดเมนวิ่งผ่าน CF จริงหรือชี้ origin ตรง
+const CF_IP_RANGES = ['173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+  '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20', '197.234.240.0/22',
+  '198.41.128.0/17', '162.158.0.0/15', '104.16.0.0/13', '104.24.0.0/14', '172.64.0.0/13', '131.0.72.0/22'];
+function ipToLong(ip) {
+  const p = String(ip).split('.');
+  if (p.length !== 4) return null;
+  let n = 0;
+  for (const o of p) { const v = parseInt(o, 10); if (isNaN(v) || v < 0 || v > 255) return null; n = (n * 256) + v; }
+  return n;
+}
+function isCloudflareIp(ip) {
+  const n = ipToLong(ip);
+  if (n === null) return false;
+  for (const cidr of CF_IP_RANGES) {
+    const [base, bitsRaw] = cidr.split('/');
+    const bits = parseInt(bitsRaw, 10);
+    const b = ipToLong(base);
+    if (b === null) continue;
+    const mask = bits === 0 ? 0 : (Math.pow(2, 32) - Math.pow(2, 32 - bits));
+    if (Math.floor(n / Math.pow(2, 32 - bits)) === Math.floor(b / Math.pow(2, 32 - bits))) return true;
+    void mask;
+  }
+  return false;
+}
+// ถาม resolver สาธารณะโดยตรง (เลี่ยง cache ของเครื่อง) ว่าโดเมนนี้ชี้ที่ไหน / NS เป็นใคร
+async function cfLiveDnsCheck(domain) {
+  const out = { ns: [], nsIsCloudflare: null, ips: [], viaCloudflare: null, error: null };
+  try {
+    const dnsm = require('dns');
+    const R = new dnsm.promises.Resolver();
+    try { R.setServers(['1.1.1.1', '8.8.8.8']); } catch (e) {}
+    const root = String(domain || '').replace(/^www\./, '');
+    try {
+      out.ns = (await R.resolveNs(root)).map(x => String(x).toLowerCase());
+      out.nsIsCloudflare = out.ns.length > 0 && out.ns.every(n => /\.ns\.cloudflare\.com\.?$/.test(n));
+    } catch (e) { out.nsError = e.code || e.message; }
+    try {
+      out.ips = await R.resolve4(domain);
+      out.viaCloudflare = out.ips.length > 0 && out.ips.some(isCloudflareIp);
+    } catch (e) { out.ipError = e.code || e.message; }
+  } catch (e) { out.error = e.message; }
+  return out;
+}
 // เช็คสถานะ cache ของ 1 โดเมน (อ่านอย่างเดียว ไม่แก้อะไร)
 async function cfCacheCheckDomain(domain) {
+  const live = await cfLiveDnsCheck(domain);
   const zone = await cfFindZone(domain);
-  if (!zone) return { domain, hasZone: false };
-  const out = { domain, hasZone: true, zone: zone.name, zoneId: zone.id };
+  if (!zone) return { domain, hasZone: false, live };
+  const out = { domain, hasZone: true, zone: zone.name, zoneId: zone.id, live,
+    zoneStatus: zone.status || null,           // active / pending / moved / deactivated
+    zonePaused: !!zone.paused,                 // "Pause Cloudflare on Site" (ระบบ auto-fix เคยสั่งได้)
+    cfNameServers: zone.name_servers || [] };
   try {
     const recs = await cfGetProxiableRecords(zone.id, zone._token);
     const main = recs.filter(r => cfShouldProxy(r, zone.name, 'root'));
@@ -1587,6 +1636,21 @@ async function cfCacheApplyDomain(domain, opts) {
     const out = { domain, ok: true, zone: zone.name, token: cfTokenName(zone._token), proxied: [], skipped: [], ruleEnabled: null };
     let authFail = false;
     try {
+      // ---- 0) ถ้า zone ถูก Pause อยู่ ต้องปลดก่อน ไม่งั้นเมฆส้ม/Cache Rule ไม่มีผลเลย ----
+      if (zone.paused && enable) {
+        try {
+          await cfApi('/zones/' + zone.id, { method: 'PATCH', body: { paused: false } }, zone._token);
+          out.unpaused = true;
+        } catch (e) {
+          out.unpauseError = cfIsAuthError(e.message)
+            ? (e.message + ' — ปลด Pause ไม่ได้ ต้องเพิ่มสิทธิ์ "Zone → Zone → Edit" ให้ token ' +
+               'หรือกดปลดเองที่ Cloudflare → Overview → Advanced Actions → Resume Cloudflare on Site')
+            : e.message;
+        }
+      }
+      if (zone.status && zone.status !== 'active') {
+        out.zoneWarning = 'สถานะ zone = ' + zone.status + ' (ยังไม่ active — CF จะยังไม่ทำงานเต็มที่)';
+      }
       // ---- 1) เปิดเมฆส้ม ----
       if (doProxy && enable) {
         const recs = await cfGetProxiableRecords(zone.id, zone._token);
@@ -3578,6 +3642,31 @@ async function handleRequest(req, res) {
   }
   if (req.method === 'GET' && url === '/api/cfcache/bulk-status') {
     json(res, { success: true, ...cfCacheBulk });
+    return;
+  }
+  // ปลด Pause ให้ zone (เคสที่ auto-fix เคย pause ไว้แล้วค้าง)
+  if (req.method === 'POST' && url === '/api/cfcache/unpause') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    const domain = String(body.domain || '').trim().toLowerCase();
+    if (!validDomainName(domain)) { json(res, { success: false, error: 'ชื่อโดเมนไม่ถูกต้อง' }); return; }
+    const zones = await cfFindZoneAll(domain);
+    if (!zones.length) { json(res, { success: false, error: 'ไม่พบ zone นี้ในบัญชี Cloudflare' }); return; }
+    let lastErr = null;
+    for (const z of zones) {
+      try {
+        await cfApi('/zones/' + z.id, { method: 'PATCH', body: { paused: false } }, z._token);
+        try { logEvent('info', 'CF: ปลด Pause zone ' + z.name); } catch (e) {}
+        json(res, { success: true, zone: z.name, token: cfTokenName(z._token), wasPaused: !!z.paused });
+        return;
+      } catch (e) {
+        lastErr = cfIsAuthError(e.message)
+          ? (e.message + ' — token ไม่มีสิทธิ์ปลด Pause · ต้องเพิ่ม Permission "Zone → Zone → Edit" ' +
+             '(ตอนนี้มีแค่ Read) หรือกดปลดเองที่ Cloudflare → Overview → Advanced Actions → Resume Cloudflare on Site')
+          : e.message;
+      }
+    }
+    json(res, { success: false, error: lastErr });
     return;
   }
   // ตรวจสิทธิ์ token ทีละตัว (ทดสอบเขียนด้วยค่าเดิม — ไม่เปลี่ยนอะไรจริง)
