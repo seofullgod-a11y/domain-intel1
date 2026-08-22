@@ -1865,27 +1865,55 @@ async function cfPauseScanRun() {
 // ปลด pause หลายโดเมนรวดเดียว
 let cfResumeBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, failures: [], startedAt: null, finishedAt: null };
 async function cfResumeBulkRun(domains) {
-  cfResumeBulk = { running: true, total: domains.length, done: 0, ok: 0, failed: 0, failures: [], startedAt: Date.now(), finishedAt: null };
+  cfResumeBulk = { running: true, total: domains.length, done: 0, ok: 0, failed: 0, failures: [], blockedTokens: {}, startedAt: Date.now(), finishedAt: null };
   for (const dom of domains) {
+    let lastErr = null, lastToken = null, tried = 0;
+    const blockedHere = []; // token ที่ปฏิเสธ "โดเมนนี้" — นับจริงเฉพาะตอนที่สุดท้ายปลดไม่สำเร็จ
     try {
-      // ใช้ zone+token จากผลสแกนก่อน (เร็วกว่า) ถ้าไม่มีค่อยไล่หาใหม่
-      let z = cfPauseScanZones.find(x => x.name === dom);
-      if (!z) {
-        const found = await cfFindZoneAll(dom);
-        z = found.length ? { id: found[0].id, name: found[0].name, _token: found[0]._token } : null;
+      // รวมผู้สมัคร: zone จากผลสแกน (เร็ว) + ทุก token ที่มองเห็น zone นี้ (เผื่อตัวแรกเขียนไม่ได้)
+      const cands = [];
+      const fromScan = cfPauseScanZones.find(x => x.name === dom);
+      if (fromScan) cands.push({ id: fromScan.id, token: fromScan._token, ref: fromScan });
+      let extra = [];
+      try { extra = await cfFindZoneAll(dom); } catch (e) {}
+      for (const z of extra) {
+        if (!cands.some(c => c.id === z.id && c.token === z._token)) cands.push({ id: z.id, token: z._token, ref: null });
       }
-      if (!z) throw new Error('ไม่พบ zone นี้ในบัญชี Cloudflare');
-      await cfApi('/zones/' + z.id, { method: 'PATCH', body: { paused: false } }, z._token);
-      cfPauseClear(dom);
-      z.paused = false;
-      cfResumeBulk.ok++;
+      if (!cands.length) throw new Error('ไม่พบ zone นี้ในบัญชี Cloudflare');
+      let done = false;
+      for (const c of cands) {
+        tried++;
+        try {
+          await cfApi('/zones/' + c.id, { method: 'PATCH', body: { paused: false } }, c.token);
+          cfPauseClear(dom);
+          if (c.ref) c.ref.paused = false;
+          const sz = cfPauseScanZones.find(x => x.id === c.id); if (sz) sz.paused = false;
+          cfResumeBulk.ok++;
+          done = true;
+          break;
+        } catch (e) {
+          lastErr = e; lastToken = c.token;
+          if (cfIsAuthError(e.message)) {
+            const tn = cfTokenName(c.token);
+            if (blockedHere.indexOf(tn) === -1) blockedHere.push(tn);
+            continue; // token นี้เขียนไม่ได้ ลองตัวถัดไป
+          }
+          break; // error อื่น ไม่ใช่เรื่องสิทธิ์ ไม่ต้องวน
+        }
+      }
+      if (!done) throw (lastErr || new Error('ปลดไม่สำเร็จ'));
     } catch (e) {
       cfResumeBulk.failed++;
-      if (cfResumeBulk.failures.length < 150) {
+      // นับ token ที่บล็อก เฉพาะโดเมนที่ปลดไม่สำเร็จจริงๆ (ไม่นับตัวที่ token อื่นช่วยปลดได้แล้ว)
+      blockedHere.forEach(tn => { cfResumeBulk.blockedTokens[tn] = (cfResumeBulk.blockedTokens[tn] || 0) + 1; });
+      if (cfResumeBulk.failures.length < 300) {
         cfResumeBulk.failures.push({
           domain: dom,
+          token: lastToken ? cfTokenName(lastToken) : null,
+          tried,
           error: cfIsAuthError(e.message)
-            ? (e.message + ' — ต้องเพิ่มสิทธิ์ "Zone → Zone → Edit" ให้ token (ตอนนี้อาจมีแค่ Read)')
+            ? (e.message + ' — ' + (lastToken ? cfTokenName(lastToken) : 'token') +
+               ' ไม่มีสิทธิ์ pause/unpause · ต้องเปลี่ยน Permission "Zone → Zone" จาก Read เป็น Edit')
             : e.message
         });
       }
