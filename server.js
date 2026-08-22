@@ -744,6 +744,49 @@ async function cfRequest(method, cfPath, body = null) {
   });
 }
 
+// ===== PAUSED-ZONE REGISTRY (added feature) — กัน zone ค้าง pause ถาวร =====
+// ปัญหาเดิม: auto-fix สั่ง pause zone แล้วตั้ง setInterval ไว้ปลดทีหลัง
+// พอ Railway redeploy → interval หายไปกับ process → zone ค้าง pause ตลอดกาล
+// (CF ไม่ทำงานเลย · เมฆส้ม/Cache Rule ไร้ผล · bandwidth วิ่งผ่าน origin เต็มๆ โดยไม่มีใครรู้)
+// แก้: จดลงไฟล์ถาวร แล้วมี "ตัวกวาด" ปลดให้เองตอน start และทุก 10 นาที
+const CF_PAUSE_DIR = process.env.VAULT_DIR || '/tmp';
+const CF_PAUSE_FILE = path.join(CF_PAUSE_DIR, 'domainintel-cfpaused.json');
+const CF_PAUSE_MAX_MIN = Math.max(5, parseInt(process.env.CF_PAUSE_MAX_MIN, 10) || 60); // ค้างได้นานสุดกี่นาที
+let cfPausedRegistry = {};
+try { cfPausedRegistry = JSON.parse(fs.readFileSync(CF_PAUSE_FILE, 'utf8')) || {}; } catch (e) { cfPausedRegistry = {}; }
+function saveCfPaused() {
+  try { fs.mkdirSync(CF_PAUSE_DIR, { recursive: true }); fs.writeFileSync(CF_PAUSE_FILE, JSON.stringify(cfPausedRegistry)); } catch (e) {}
+}
+function cfPauseRecord(domain, zoneId, reason) {
+  cfPausedRegistry[domain] = { zoneId, reason: reason || 'auto-fix', pausedAt: Date.now() };
+  saveCfPaused();
+  console.log('[CF-Pause] จด ' + domain + ' ไว้ในรายการรอปลด (' + Object.keys(cfPausedRegistry).length + ' รายการ)');
+}
+function cfPauseClear(domain) {
+  if (cfPausedRegistry[domain]) { delete cfPausedRegistry[domain]; saveCfPaused(); }
+}
+// ตัวกวาด: ปลด zone ที่ค้างเกินเวลาที่กำหนด (force=true = ปลดทุกตัวในรายการทันที)
+async function cfSweepPausedZones(force) {
+  const names = Object.keys(cfPausedRegistry);
+  const out = { checked: names.length, resumed: 0, resumedDomains: [] };
+  for (const domain of names) {
+    const rec = cfPausedRegistry[domain] || {};
+    const mins = (Date.now() - (rec.pausedAt || 0)) / 60000;
+    if (!force && mins < CF_PAUSE_MAX_MIN) continue;
+    try {
+      await unpauseCloudflareZone(domain, rec.zoneId);
+      out.resumed++; out.resumedDomains.push(domain);
+      console.log('[CF-Sweep] ปลด pause ' + domain + ' (ค้างมา ' + Math.round(mins) + ' นาที)');
+      try { logEvent('warning', 'CF: ปลด pause ที่ค้าง — ' + domain + ' (ค้างมา ' + Math.round(mins) + ' นาที)'); } catch (e) {}
+    } catch (e) { console.log('[CF-Sweep] ปลด ' + domain + ' ไม่ได้: ' + e.message); }
+    await new Promise(r => setTimeout(r, 250));
+  }
+  return out;
+}
+// กวาดตอน start (เก็บของค้างจาก process ก่อนหน้า) + ทุก 10 นาที
+setTimeout(() => { cfSweepPausedZones(false).catch(() => {}); }, 45000);
+setInterval(() => { cfSweepPausedZones(false).catch(() => {}); }, 10 * 60 * 1000);
+
 async function pauseCloudflareZone(domain) {
   if (!CF_API_TOKEN) return null;
   try {
@@ -761,7 +804,7 @@ async function pauseCloudflareZone(domain) {
         const zoneId = zones.result[0].id;
         console.log(`[CF] พบ zone ${zoneId} สำหรับ ${d}`);
         const r = await cfRequest('PATCH', `/zones/${zoneId}`, { paused: true });
-        if (r?.success) return zoneId;
+        if (r?.success) { cfPauseRecord(domain, zoneId, 'auto-fix'); return zoneId; }
       }
     }
     
@@ -776,7 +819,7 @@ async function pauseCloudflareZone(domain) {
       if (match) {
         console.log(`[CF] พบ zone ${match.id} (${match.name}) จากรายการทั้งหมด`);
         const r = await cfRequest('PATCH', `/zones/${match.id}`, { paused: true });
-        if (r?.success) return match.id;
+        if (r?.success) { cfPauseRecord(domain, match.id, 'auto-fix'); return match.id; }
       }
       console.log(`[CF] Zones ที่มี:`, allZones.result.map(z => z.name).join(', '));
     }
@@ -797,8 +840,9 @@ async function unpauseCloudflareZone(domain, zoneId) {
       if (zones?.result?.length) zoneId = zones.result[0].id;
     }
     if (zoneId) {
-      await cfRequest('PATCH', `/zones/${zoneId}`, { paused: false });
+      const r = await cfRequest('PATCH', `/zones/${zoneId}`, { paused: false });
       console.log(`[CF] Unpause ${domain} done`);
+      if (r?.success !== false) cfPauseClear(domain); // ปลดแล้วเอาออกจากรายการรอปลด
     }
   } catch {}
 }
@@ -1763,6 +1807,96 @@ async function cfCacheDiagnose(domain) {
   return report;
 }
 let cfCacheBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, proxied: 0, failures: [] };
+
+// ===== สแกนหา zone ที่ค้าง Pause ทั้งบัญชี (added feature) =====
+// ดึง zone ทั้งหมดของทุก token ทีเดียว (เร็วกว่าไล่ถามทีละโดเมนมาก) แล้วดูว่าตัวไหน paused
+let cfPauseScan = { running: false, zones: 0, pages: 0, paused: [], notActive: [], startedAt: null, finishedAt: null, error: null };
+let cfPauseScanZones = []; // เก็บ token ไว้ฝั่ง server เท่านั้น (ไม่ส่งออก API)
+async function cfListAllZones(onProgress) {
+  const out = [];
+  const seen = new Set();
+  for (const token of (CF_TOKENS.length ? CF_TOKENS : [CF_TOKEN])) {
+    let page = 1;
+    while (page <= 80) {
+      let j;
+      try { j = await cfApi('/zones?per_page=50&page=' + page, {}, token); }
+      catch (e) { break; } // token นี้ใช้ไม่ได้ ข้ามไปตัวถัดไป
+      const rows = j.result || [];
+      for (const z of rows) {
+        if (seen.has(z.id)) continue;
+        seen.add(z.id);
+        out.push({ id: z.id, name: z.name, status: z.status, paused: !!z.paused, _token: token });
+      }
+      if (typeof onProgress === 'function') onProgress(out.length, page);
+      const ti = j.result_info || {};
+      if (!ti.total_pages || page >= ti.total_pages) break;
+      page++;
+      await new Promise(r => setTimeout(r, 120));
+    }
+  }
+  return out;
+}
+async function cfPauseScanRun() {
+  cfPauseScan = { running: true, zones: 0, pages: 0, paused: [], notActive: [], startedAt: Date.now(), finishedAt: null, error: null };
+  try {
+    const zones = await cfListAllZones((n, p) => { cfPauseScan.zones = n; cfPauseScan.pages = p; });
+    cfPauseScanZones = zones;
+    for (const z of zones) {
+      if (z.paused) {
+        const rec = cfPausedRegistry[z.name];
+        cfPauseScan.paused.push({
+          domain: z.name, zoneId: z.id, status: z.status, token: cfTokenName(z._token),
+          knownStuck: !!rec,
+          stuckMin: rec && rec.pausedAt ? Math.round((Date.now() - rec.pausedAt) / 60000) : null
+        });
+      } else if (z.status && z.status !== 'active') {
+        cfPauseScan.notActive.push({ domain: z.name, status: z.status });
+      }
+    }
+    cfPauseScan.zones = zones.length;
+    try {
+      logEvent(cfPauseScan.paused.length ? 'warning' : 'info',
+        'สแกน CF: ' + zones.length + ' zone · ค้าง pause ' + cfPauseScan.paused.length + ' · ยังไม่ active ' + cfPauseScan.notActive.length);
+    } catch (e) {}
+  } catch (e) { cfPauseScan.error = e.message; }
+  cfPauseScan.running = false;
+  cfPauseScan.finishedAt = Date.now();
+}
+// ปลด pause หลายโดเมนรวดเดียว
+let cfResumeBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, failures: [], startedAt: null, finishedAt: null };
+async function cfResumeBulkRun(domains) {
+  cfResumeBulk = { running: true, total: domains.length, done: 0, ok: 0, failed: 0, failures: [], startedAt: Date.now(), finishedAt: null };
+  for (const dom of domains) {
+    try {
+      // ใช้ zone+token จากผลสแกนก่อน (เร็วกว่า) ถ้าไม่มีค่อยไล่หาใหม่
+      let z = cfPauseScanZones.find(x => x.name === dom);
+      if (!z) {
+        const found = await cfFindZoneAll(dom);
+        z = found.length ? { id: found[0].id, name: found[0].name, _token: found[0]._token } : null;
+      }
+      if (!z) throw new Error('ไม่พบ zone นี้ในบัญชี Cloudflare');
+      await cfApi('/zones/' + z.id, { method: 'PATCH', body: { paused: false } }, z._token);
+      cfPauseClear(dom);
+      z.paused = false;
+      cfResumeBulk.ok++;
+    } catch (e) {
+      cfResumeBulk.failed++;
+      if (cfResumeBulk.failures.length < 150) {
+        cfResumeBulk.failures.push({
+          domain: dom,
+          error: cfIsAuthError(e.message)
+            ? (e.message + ' — ต้องเพิ่มสิทธิ์ "Zone → Zone → Edit" ให้ token (ตอนนี้อาจมีแค่ Read)')
+            : e.message
+        });
+      }
+    }
+    cfResumeBulk.done++;
+    await new Promise(r => setTimeout(r, 250));
+  }
+  cfResumeBulk.running = false;
+  cfResumeBulk.finishedAt = Date.now();
+  try { logEvent('info', 'ปลด pause รวม: สำเร็จ ' + cfResumeBulk.ok + ' · ล้มเหลว ' + cfResumeBulk.failed); } catch (e) {}
+}
 // ยิง GET จริงเพื่อดู header — ใช้พิสูจน์ว่า cache ทำงานแล้ว (cf-cache-status: HIT)
 function cfCacheProbe(targetUrl) {
   return new Promise((resolve) => {
@@ -3644,6 +3778,55 @@ async function handleRequest(req, res) {
     json(res, { success: true, ...cfCacheBulk });
     return;
   }
+  // ---- สแกนหา zone ที่ค้าง Pause ทั้งบัญชี ----
+  if (req.method === 'POST' && url === '/api/cfpause/scan') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (!CF_TOKENS.length) { json(res, { success: false, error: 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN' }); return; }
+    if (cfPauseScan.running) { json(res, { success: false, error: 'กำลังสแกนอยู่แล้ว' }); return; }
+    cfPauseScanRun().catch(() => { cfPauseScan.running = false; });
+    json(res, { success: true, started: true });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/cfpause/scan-status') {
+    json(res, { success: true, ...cfPauseScan, registry: Object.keys(cfPausedRegistry).length, maxMin: CF_PAUSE_MAX_MIN });
+    return;
+  }
+  // ปลด pause หลายโดเมนรวดเดียว (background)
+  if (req.method === 'POST' && url === '/api/cfpause/resume') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    if (cfResumeBulk.running) { json(res, { success: false, error: 'กำลังทำงานอยู่แล้ว' }); return; }
+    let domains = Array.isArray(body.domains) && body.domains.length
+      ? [...new Set(body.domains.map(x => String(x).trim().toLowerCase()).filter(validDomainName))]
+      : cfPauseScan.paused.map(p => p.domain);
+    if (!domains.length) { json(res, { success: false, error: 'ไม่มีโดเมนให้ปลด (สแกนก่อน)' }); return; }
+    cfResumeBulkRun(domains).catch(() => { cfResumeBulk.running = false; });
+    json(res, { success: true, started: true, total: domains.length });
+    return;
+  }
+  if (req.method === 'GET' && url === '/api/cfpause/resume-status') {
+    json(res, { success: true, ...cfResumeBulk });
+    return;
+  }
+  // รายการที่ระบบจดไว้ว่า pause ค้างอยู่ (จากไฟล์ถาวร) + สั่งกวาดทันที
+  if (req.method === 'GET' && url === '/api/cfpause/registry') {
+    const rows = Object.keys(cfPausedRegistry).map(d => ({
+      domain: d, zoneId: cfPausedRegistry[d].zoneId, reason: cfPausedRegistry[d].reason,
+      pausedAt: cfPausedRegistry[d].pausedAt,
+      stuckMin: Math.round((Date.now() - (cfPausedRegistry[d].pausedAt || 0)) / 60000)
+    })).sort((a, b) => b.stuckMin - a.stuckMin);
+    json(res, { success: true, rows, maxMin: CF_PAUSE_MAX_MIN, persistent: CF_PAUSE_DIR !== '/tmp', dir: CF_PAUSE_DIR });
+    return;
+  }
+  if (req.method === 'POST' && url === '/api/cfpause/sweep') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    const r = await cfSweepPausedZones(!!body.force);
+    json(res, { success: true, ...r });
+    return;
+  }
+
   // ปลด Pause ให้ zone (เคสที่ auto-fix เคย pause ไว้แล้วค้าง)
   if (req.method === 'POST' && url === '/api/cfcache/unpause') {
     const body = await parseBody(req);
