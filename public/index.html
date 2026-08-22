@@ -7992,6 +7992,7 @@ function ccEnsurePage(){
           '<input id="cc-domain" list="cc-domlist" placeholder="miracle55.bio" style="'+INP+';width:100%" onkeydown="if(event.key===\'Enter\')ccCheck()">'+
           '<datalist id="cc-domlist"></datalist></div>'+
         '<button class="btn" style="padding:8px 14px;font-size:13px" onclick="ccCheck()"><i class="ti ti-search"></i> ตรวจสถานะ</button>'+
+        '<button class="btn" style="padding:8px 12px;font-size:12px;background:rgba(99,102,241,0.15);color:#818cf8;border-color:rgba(99,102,241,0.35)" onclick="ccDiagnose()" title="เช็คว่า token ตัวไหนมีสิทธิ์อะไรบ้าง (ไม่เปลี่ยนอะไรจริง)">🔎 ตรวจสิทธิ์ Token</button>'+
         '<button class="btn" style="padding:8px 14px;font-size:13px;background:rgba(245,130,32,0.15);color:#f58220;border-color:rgba(245,130,32,0.35)" onclick="ccApply(true)">⚡ เปิด Cache เลย</button>'+
         '<button class="btn" style="padding:8px 12px;font-size:12px;background:rgba(148,163,184,0.12);color:var(--text3,#888)" onclick="ccApply(false)" title="ลบเฉพาะ rule ที่ระบบสร้าง ([auto-cache]) — rule อื่นไม่แตะ">ถอด rule</button>'+
       '</div>'+
@@ -8170,6 +8171,47 @@ async function ccApply(enable){
     if(typeof toast==='function')toast(e.message,'error');
     if(box) box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>';
   }
+}
+
+async function ccDiagnose(){
+  var v=((document.getElementById('cc-domain')||{}).value||'').trim().toLowerCase();
+  var box=document.getElementById('cc-result'); if(!box) return;
+  if(!v){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">พิมพ์ชื่อโดเมนก่อน</span>'; return; }
+  if(typeof wpNeedKey==='function'){ if(!wpNeedKey()) return; }
+  box.innerHTML='<span style="color:var(--text3,#888);font-size:13px">กำลังตรวจสิทธิ์ token ทีละตัว (ทดสอบเขียนด้วยค่าเดิม ไม่เปลี่ยนอะไร) ...</span>';
+  try{
+    var r=await fetch(API+'/api/cfcache/diagnose',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,domain:v})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; box.innerHTML='<span style="color:#e24b4a;font-size:13px">คีย์ผิด ลองใหม่</span>'; return; }
+    if(!d.success){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">ตรวจไม่ได้: '+(d.error||'?')+'</span>'; return; }
+    function ic(x){ return x===true?'<span style="color:var(--green,#2ecc71)">✅</span>':(x===false?'<span style="color:#e24b4a">❌</span>':'<span style="color:var(--text3,#888)">–</span>'); }
+    var rows=(d.rows||[]).map(function(t){
+      var notes=(t.notes||[]).length?'<div style="font-size:11px;color:var(--text3,#888);padding:2px 6px 8px 6px;line-height:1.7">• '+t.notes.join('<br>• ')+'</div>':'';
+      return '<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
+        '<td style="padding:6px">'+t.token+(t.plan?('<div style="font-size:10px;color:var(--text3,#888)">แพลน '+t.plan+'</div>'):'')+'</td>'+
+        '<td style="padding:6px;text-align:center">'+ic(t.valid)+'</td>'+
+        '<td style="padding:6px;text-align:center">'+ic(t.zoneRead)+'</td>'+
+        '<td style="padding:6px;text-align:center">'+ic(t.dnsRead)+'</td>'+
+        '<td style="padding:6px;text-align:center">'+ic(t.dnsWrite)+'</td>'+
+        '<td style="padding:6px;text-align:center">'+ic(t.cacheRead)+'</td>'+
+        '<td style="padding:6px;text-align:center">'+ic(t.cacheWrite)+'</td></tr>'+
+        (notes?'<tr><td colspan="7" style="padding:0">'+notes+'</td></tr>':'');
+    }).join('');
+    var okAll=/^✅/.test(d.verdict||'');
+    box.innerHTML='<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:'+(okAll?'var(--green,#2ecc71)':'#e24b4a')+'">'+(d.verdict||'')+'</div>'+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">Token</th>'+
+      '<th style="padding:6px">ใช้ได้</th><th style="padding:6px">เห็น zone</th>'+
+      '<th style="padding:6px">DNS อ่าน</th><th style="padding:6px">DNS เขียน</th>'+
+      '<th style="padding:6px">Cache อ่าน</th><th style="padding:6px">Cache เขียน</th></tr>'+rows+'</table>'+
+      (okAll?'':'<div style="margin-top:10px;font-size:12px;color:var(--text3,#888);line-height:1.9">'+
+        '<b style="color:var(--text,#eee)">วิธีแก้:</b> Cloudflare → My Profile → API Tokens → กด <b>Edit</b> ที่ token ที่เห็น zone แล้วเพิ่ม Permission:<br>'+
+        '• <code>Zone</code> → <code>Cache Rules</code> → <b>Edit</b><br>'+
+        '• <code>Zone</code> → <code>DNS</code> → <b>Edit</b><br>'+
+        '• <code>Zone</code> → <code>Zone</code> → <b>Read</b><br>'+
+        'และที่ <b>Zone Resources</b> ต้องเลือก <i>All zones</i> หรือใส่โดเมนนี้เข้าไปด้วย · เสร็จแล้วกด <b>Continue → Save</b> (ไม่ต้องสร้าง token ใหม่ ค่าเดิมใช้ได้ต่อ)</div>');
+  }catch(e){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>'; }
 }
 
 async function ccProbe(){
