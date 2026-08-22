@@ -8054,6 +8054,7 @@ function ccEnsurePage(){
         '<span id="cc-scan-info" style="font-size:12px;color:var(--text3,#888)"></span>'+
       '</div>'+
       '<div id="cc-scan-progress" style="margin-top:10px;font-size:12px"></div>'+
+      '<div id="cc-resume-result" style="margin-top:8px"></div>'+
       '<div id="cc-scan-result" style="margin-top:8px"></div>'+
     '</div>'+
 
@@ -8437,26 +8438,59 @@ async function ccResumeAll(){
   }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
 }
 
+window._ccResumeFails=[];
 function ccPollResume(){
   if(_ccResumePoll) clearInterval(_ccResumePoll);
   var box=document.getElementById('cc-scan-progress');
+  var out=document.getElementById('cc-resume-result');
   async function tick(){
     try{
       var r=await fetch(API+'/api/cfpause/resume-status'); var d=await r.json();
-      if(!box) return;
       var pct=d.total?Math.round(d.done/d.total*100):0;
       var bar='<div style="background:#222;border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#2ecc71;height:100%;width:'+pct+'%;transition:width .3s"></div></div>';
-      var fails='';
-      if(d.failures&&d.failures.length){
-        fails='<div style="margin-top:6px;color:#e24b4a">ปลดไม่ได้ ('+d.failed+'):</div>'+
-          '<div style="max-height:140px;overflow:auto;font-size:11px;color:var(--text3,#888)">'+
-          d.failures.map(function(f){return '• '+f.domain+': '+f.error;}).join('<br>')+'</div>';
-      }
-      box.innerHTML=bar+'ปลดไป '+d.done+'/'+d.total+' — สำเร็จ '+d.ok+' · ล้มเหลว '+d.failed+(d.running?' (กำลังทำ...)':' ✅ เสร็จแล้ว')+fails;
-      if(!d.running){ clearInterval(_ccResumePoll); _ccResumePoll=null; setTimeout(ccPauseScan,1500); }
+      if(box) box.innerHTML=bar+'ปลดไป '+d.done+'/'+d.total+' — <b style="color:var(--green,#2ecc71)">สำเร็จ '+d.ok+'</b> · ล้มเหลว '+d.failed+(d.running?' (กำลังทำ...)':' ✅ เสร็จแล้ว');
+      window._ccResumeFails=d.failures||[];
+      if(out) out.innerHTML=ccRenderResumeFails(d);
+      if(!d.running){ clearInterval(_ccResumePoll); _ccResumePoll=null; setTimeout(ccPauseScan,2500); }
     }catch(e){}
   }
   tick(); _ccResumePoll=setInterval(tick,1500);
+}
+
+function ccRenderResumeFails(d){
+  var f=d.failures||[];
+  if(!f.length) return d.running?'':'';
+  // สรุปว่า token ตัวไหนเป็นตัวบล็อก
+  var bt=d.blockedTokens||{};
+  var names=Object.keys(bt);
+  var head='';
+  if(names.length){
+    head='<div style="background:rgba(226,75,74,0.12);border:1px solid rgba(226,75,74,0.4);border-radius:8px;padding:10px;margin-bottom:8px">'+
+      '<div style="color:#e24b4a;font-weight:600;font-size:13px">🔑 ติดที่สิทธิ์ของ token</div>'+
+      '<div style="font-size:12px;color:var(--text3,#888);margin-top:4px;line-height:1.8">'+
+      names.map(function(n){return '• <b>'+n+'</b> — ปลดไม่ได้ '+bt[n]+' zone';}).join('<br>')+
+      '<br><br><b style="color:var(--text,#eee)">วิธีแก้:</b> Cloudflare → My Profile → API Tokens → Edit token ตัวนั้น → '+
+      'เปลี่ยนแถว <code>Zone</code> → <code>Zone</code> จาก <b>Read</b> เป็น <b style="color:var(--green,#2ecc71)">Edit</b> → Save '+
+      '<br>(สิทธิ์นี้คือตัวที่ใช้ pause/unpause · ค่า token ไม่เปลี่ยน ไม่ต้องแก้ Railway)</div></div>';
+  }
+  return head+
+    '<div style="font-size:12px;color:#e24b4a;margin-bottom:4px">ปลดไม่ได้ '+f.length+' รายการ '+
+    '<button class="btn" style="padding:2px 10px;font-size:11px;margin-left:6px" onclick="ccCopyFails()">📋 คัดลอกรายชื่อ</button></div>'+
+    '<div style="max-height:160px;overflow:auto;font-size:11px;color:var(--text3,#888);line-height:1.7">'+
+    f.map(function(x){return '• '+x.domain+(x.token?(' ['+x.token+']'):'');}).join('<br>')+'</div>';
+}
+
+function ccCopyFails(){
+  var t=(window._ccResumeFails||[]).map(function(x){return x.domain;}).join('\n');
+  if(!t){ if(typeof toast==='function')toast('ไม่มีรายชื่อ','error'); return; }
+  try{
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t); }
+    else{
+      var ta=document.createElement('textarea'); ta.value=t; document.body.appendChild(ta);
+      ta.select(); document.execCommand('copy'); document.body.removeChild(ta);
+    }
+    if(typeof toast==='function')toast('คัดลอก '+(window._ccResumeFails||[]).length+' โดเมนแล้ว','success');
+  }catch(e){ if(typeof toast==='function')toast('คัดลอกไม่ได้: '+e.message,'error'); }
 }
 
 function ccPollBulk(){
