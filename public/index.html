@@ -522,6 +522,9 @@ textarea.form-input { resize: vertical; min-height: 80px; }
       <div class="nav-item" onclick="openDnsIp()">
         <i class="ti ti-arrows-exchange"></i> เปลี่ยน IP (Cloudflare)
       </div>
+      <div class="nav-item" onclick="openCfCache()">
+        <i class="ti ti-cloud-download"></i> Cache รูป (ลด Bandwidth)
+      </div>
       <div class="nav-item" onclick="showPage('tasks')">
         <i class="ti ti-layout-kanban"></i> To-Do Board
       </div>
@@ -7962,4 +7965,296 @@ function kwStat(val,label,color){
   if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', init);
   else init();
 })();
+</script>
+<script>
+// ===== CLOUDFLARE CACHE RULE PAGE (added feature) =====
+// ให้ Cloudflare cache รูป/static แทน origin → ลด bandwidth ขาออกของเซิร์ฟเวอร์
+window._ccDomains = [];
+var _ccBulkPoll = null;
+
+function ccEnsurePage(){
+  if(document.getElementById('page-cfcache')) return;
+  var a=document.querySelector('[id^="page-"]'); var c=a?a.parentElement:document.getElementById('main-app');
+  var div=document.createElement('div'); div.id='page-cfcache'; div.style.display='none';
+  div.style.flexDirection='column'; div.style.padding='18px'; div.style.gap='14px'; div.style.overflow='auto';
+  var CARD='background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px';
+  var LBL='font-size:12px;color:var(--text3,#888);display:block;margin-bottom:4px';
+  var INP='background:var(--bg,#0b0b0b);border:1px solid var(--border,#2a2a2a);color:var(--text,#eee);border-radius:8px;padding:8px 10px;font-size:13px';
+  div.innerHTML=
+    '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-cloud-download"></i> Cache รูป (ลด Bandwidth)</h2>'+
+    '<div style="font-size:12px;color:var(--text3,#888);margin-top:4px">เปิดเมฆส้ม + ใส่ Cache Rule ให้ Cloudflare เสิร์ฟรูป/CSS/JS แทนเซิร์ฟเวอร์ — ลด bandwidth ขาออก 70-90%</div></div>'+
+
+    // ── การ์ด 1: ทีละโดเมน ──
+    '<div style="'+CARD+'">'+
+      '<div style="font-weight:600;margin-bottom:10px">1️⃣ ทำทีละโดเมน</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
+        '<div style="flex:1;min-width:240px"><label style="'+LBL+'">ชื่อโดเมน</label>'+
+          '<input id="cc-domain" list="cc-domlist" placeholder="miracle55.bio" style="'+INP+';width:100%" onkeydown="if(event.key===\'Enter\')ccCheck()">'+
+          '<datalist id="cc-domlist"></datalist></div>'+
+        '<button class="btn" style="padding:8px 14px;font-size:13px" onclick="ccCheck()"><i class="ti ti-search"></i> ตรวจสถานะ</button>'+
+        '<button class="btn" style="padding:8px 14px;font-size:13px;background:rgba(245,130,32,0.15);color:#f58220;border-color:rgba(245,130,32,0.35)" onclick="ccApply(true)">⚡ เปิด Cache เลย</button>'+
+        '<button class="btn" style="padding:8px 12px;font-size:12px;background:rgba(148,163,184,0.12);color:var(--text3,#888)" onclick="ccApply(false)" title="ลบเฉพาะ rule ที่ระบบสร้าง ([auto-cache]) — rule อื่นไม่แตะ">ถอด rule</button>'+
+      '</div>'+
+      '<div style="margin-top:8px;font-size:12px;color:var(--text3,#888)">ทางลัด: '+
+        '<span class="cc-chip" onclick="ccPick(\'miracle55.bio\')">miracle55.bio</span></div>'+
+
+      // ตัวเลือก
+      '<div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--border,#2a2a2a)">'+
+        '<div><label style="'+LBL+'">Edge TTL (CF เก็บนานเท่าไร)</label>'+
+          '<select id="cc-edge" style="'+INP+'">'+
+            '<option value="7">7 วัน</option><option value="30" selected>30 วัน (แนะนำ)</option>'+
+            '<option value="90">90 วัน</option><option value="365">1 ปี</option></select></div>'+
+        '<div><label style="'+LBL+'">Browser TTL (เครื่องคนเข้าเว็บ)</label>'+
+          '<select id="cc-browser" style="'+INP+'">'+
+            '<option value="7">7 วัน</option><option value="30">30 วัน</option>'+
+            '<option value="365" selected>1 ปี (แนะนำ)</option></select></div>'+
+        '<div><label style="'+LBL+'">เปิดเมฆส้มให้ record ไหน</label>'+
+          '<select id="cc-proxymode" style="'+INP+'">'+
+            '<option value="root" selected>เฉพาะ @ และ www (ปลอดภัย)</option>'+
+            '<option value="all">ทุก record (ยกเว้น mail/ftp/ns)</option>'+
+            '<option value="none">ไม่ต้องแตะ DNS (ใส่ rule อย่างเดียว)</option></select></div>'+
+      '</div>'+
+      '<div id="cc-result" style="margin-top:12px"></div>'+
+    '</div>'+
+
+    // ── การ์ด 2: พิสูจน์ผล ──
+    '<div style="'+CARD+'">'+
+      '<div style="font-weight:600;margin-bottom:10px">2️⃣ พิสูจน์ว่า cache ทำงานจริง</div>'+
+      '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">วางลิงก์ไฟล์รูปเต็มๆ แล้วกดตรวจ — ระบบจะยิง 2 ครั้ง ครั้งที่สองควรได้ <b style="color:var(--green,#2ecc71)">cf-cache-status: HIT</b></div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
+        '<div style="flex:1;min-width:280px"><input id="cc-probe-url" placeholder="https://miracle55.bio/wp-content/uploads/2026/07/new-v0-mrc55-728x200-1.gif" style="'+INP+';width:100%" onkeydown="if(event.key===\'Enter\')ccProbe()"></div>'+
+        '<button class="btn" style="padding:8px 14px;font-size:13px" onclick="ccProbe()"><i class="ti ti-activity"></i> ตรวจ header</button>'+
+      '</div>'+
+      '<div id="cc-probe-result" style="margin-top:10px"></div>'+
+    '</div>'+
+
+    // ── การ์ด 3: หลายโดเมน ──
+    '<div style="'+CARD+'">'+
+      '<div style="font-weight:600;margin-bottom:6px">3️⃣ ทำหลายโดเมนรวดเดียว</div>'+
+      '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">วางรายชื่อโดเมน บรรทัดละ 1 ตัว (หรือคั่นด้วย , เว้นวรรค) — ใช้ตัวเลือกจากการ์ดที่ 1</div>'+
+      '<textarea id="cc-bulk-list" rows="5" placeholder="miracle55.bio&#10;next55-th.com&#10;kodzap.club" style="'+INP+';width:100%;font-family:monospace"></textarea>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">'+
+        '<button class="btn" style="padding:8px 14px;font-size:13px;background:rgba(245,130,32,0.15);color:#f58220;border-color:rgba(245,130,32,0.35)" onclick="ccBulk(true)">⚡ เปิด Cache ทั้งลิสต์</button>'+
+        '<button class="btn" style="padding:8px 12px;font-size:12px;background:rgba(148,163,184,0.12);color:var(--text3,#888)" onclick="ccBulk(false)">ถอด rule ทั้งลิสต์</button>'+
+        '<span id="cc-bulk-count" style="font-size:12px;color:var(--text3,#888)"></span>'+
+      '</div>'+
+      '<div id="cc-bulk-progress" style="margin-top:10px;font-size:12px"></div>'+
+    '</div>'+
+
+    // ── หมายเหตุ ──
+    '<div style="'+CARD+';border-color:rgba(245,130,32,0.25)">'+
+      '<div style="font-weight:600;margin-bottom:6px;color:#f58220">⚠️ อ่านก่อนใช้</div>'+
+      '<ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text3,#888);line-height:1.9">'+
+        '<li>โดเมนต้องอยู่ในบัญชี Cloudflare ที่ตั้ง token ไว้แล้ว — ถ้าไม่เจอ zone ให้เพิ่ม token ใน <code>CLOUDFLARE_API_TOKENS</code></li>'+
+        '<li>Token ต้องมีสิทธิ์ <b>Zone → Cache Rules → Edit</b> และ <b>Zone → DNS → Edit</b></li>'+
+        '<li>เปิดเมฆส้มแล้ว IP จริงจะถูกซ่อน — ระบบข้าม record ของ mail/ftp/ns/panel ให้อัตโนมัติ</li>'+
+        '<li><b style="color:#e24b4a">สำคัญ:</b> ก่อนเปิดเมฆส้ม ให้ตั้ง SSL/TLS ใน Cloudflare เป็น <b>Full</b> หรือ <b>Full (strict)</b> — ถ้าเป็น Flexible เว็บ WordPress จะเด้งวนไม่รู้จบ</li>'+
+        '<li>rule ที่ระบบสร้างมีป้าย <code>[auto-cache]</code> — rule อื่นที่คุณตั้งเองจะไม่ถูกลบ</li>'+
+        '<li>ถ้าเปลี่ยนรูปแล้วยังเห็นรูปเก่า ให้ Purge Cache ใน Cloudflare หรือเปลี่ยนชื่อไฟล์</li>'+
+      '</ul>'+
+    '</div>';
+  c.appendChild(div);
+  // สไตล์ chip (ใส่ครั้งเดียว)
+  if(!document.getElementById('cc-style')){
+    var st=document.createElement('style'); st.id='cc-style';
+    st.textContent='.cc-chip{display:inline-block;background:rgba(245,130,32,0.12);border:1px solid rgba(245,130,32,0.3);color:#f58220;padding:2px 10px;border-radius:12px;font-size:12px;cursor:pointer;margin:2px}'+
+      '.cc-chip:hover{background:rgba(245,130,32,0.25)}'+
+      '#page-cfcache code{background:rgba(148,163,184,0.15);padding:1px 5px;border-radius:4px;font-size:11px}';
+    document.head.appendChild(st);
+  }
+}
+
+function openCfCache(){
+  ccEnsurePage(); showPage('cfcache');
+  document.querySelectorAll('.nav-item').forEach(function(n){ if((n.getAttribute('onclick')||'')==='openCfCache()') n.classList.add('active'); });
+  ccLoadDomains();
+}
+
+async function ccLoadDomains(){
+  if(window._ccDomains.length) return;
+  try{
+    var r=await fetch(API+'/api/cloudflare/domains-status'); var d=await r.json();
+    window._ccDomains=(d.domains||[]).map(function(x){return x.domain;});
+    var dl=document.getElementById('cc-domlist');
+    if(dl) dl.innerHTML=window._ccDomains.slice(0,2000).map(function(x){return '<option value="'+x+'">';}).join('');
+  }catch(e){}
+}
+
+function ccPick(dom){ var el=document.getElementById('cc-domain'); if(el){ el.value=dom; ccCheck(); } }
+
+function ccOpts(){
+  var pm=(document.getElementById('cc-proxymode')||{}).value||'root';
+  return {
+    edgeDays: parseInt((document.getElementById('cc-edge')||{}).value||'30',10),
+    browserDays: parseInt((document.getElementById('cc-browser')||{}).value||'365',10),
+    proxy: pm!=='none',
+    proxyMode: pm==='all'?'all':'root'
+  };
+}
+
+async function ccCheck(){
+  var v=((document.getElementById('cc-domain')||{}).value||'').trim().toLowerCase();
+  var box=document.getElementById('cc-result'); if(!box) return;
+  if(!v){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">พิมพ์ชื่อโดเมนก่อน</span>'; return; }
+  box.innerHTML='<span style="color:var(--text3,#888);font-size:13px">กำลังตรวจ '+v+' ...</span>';
+  try{
+    var r=await fetch(API+'/api/cfcache/status?domain='+encodeURIComponent(v));
+    var d=await r.json();
+    if(!d.success){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">ตรวจไม่ได้: '+(d.error||'?')+'</span>'; return; }
+    if(!d.hasZone){
+      box.innerHTML='<div style="color:#e3b93b;font-size:13px">🟡 ไม่พบ <b>'+v+'</b> ในบัญชี Cloudflare ที่ตั้ง token ไว้<br>'+
+        '<span style="font-size:12px;color:var(--text3,#888)">→ ต้องเพิ่มโดเมนเข้า Cloudflare ก่อน หรือเพิ่ม API token ของบัญชีนั้นใน CLOUDFLARE_API_TOKENS</span></div>';
+      return;
+    }
+    var proxyTxt = d.mainCount===0
+      ? '<span style="color:#e3b93b">ไม่มี A/CNAME ของ @ หรือ www</span>'
+      : (d.mainProxied
+          ? '<span style="color:var(--green,#2ecc71)">🟠 เปิดเมฆส้มแล้ว ('+d.mainProxiedCount+'/'+d.mainCount+')</span>'
+          : '<span style="color:#e24b4a">⚪ ยังเป็นเมฆเทา ('+d.mainProxiedCount+'/'+d.mainCount+' proxied) — CF ยังไม่ได้ช่วยอะไร</span>');
+    var ruleTxt = d.hasCacheRule
+      ? '<span style="color:var(--green,#2ecc71)">✅ มี Cache Rule ของระบบแล้ว</span>'
+      : '<span style="color:#e3b93b">⚠️ ยังไม่มี Cache Rule (มี rule อื่น '+(d.cacheRules||0)+' ตัว)</span>';
+    var recs=(d.records||[]).slice(0,40).map(function(x){
+      return '<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:4px 6px">'+x.name+'</td>'+
+        '<td style="padding:4px 6px;color:var(--text3,#888)">'+x.type+'</td>'+
+        '<td style="padding:4px 6px;color:var(--text3,#888)">'+x.content+'</td>'+
+        '<td style="padding:4px 6px">'+(x.proxied?'<span style="color:#f58220">🟠 proxied</span>':'<span style="color:var(--text3,#888)">⚪ DNS only</span>')+'</td></tr>';
+    }).join('');
+    box.innerHTML='<div style="font-size:13px;line-height:1.9">'+
+      '<div>zone: <b>'+(d.zone||v)+'</b></div>'+
+      '<div>เมฆส้ม: '+proxyTxt+'</div>'+
+      '<div>Cache Rule: '+ruleTxt+'</div>'+
+      (d.recError?'<div style="color:#e24b4a;font-size:12px">อ่าน DNS ไม่ได้: '+d.recError+'</div>':'')+
+      (d.ruleError?'<div style="color:#e24b4a;font-size:12px">อ่าน Cache Rule ไม่ได้: '+d.ruleError+' (token อาจไม่มีสิทธิ์ Cache Rules)</div>':'')+
+      '</div>'+
+      (recs?'<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text3,#888)">ดู DNS record ('+(d.records||[]).length+')</summary>'+
+        '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">'+recs+'</table></details>':'');
+  }catch(e){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>'; }
+}
+
+async function ccApply(enable){
+  var v=((document.getElementById('cc-domain')||{}).value||'').trim().toLowerCase();
+  var box=document.getElementById('cc-result');
+  if(!v){ if(typeof toast==='function')toast('พิมพ์ชื่อโดเมนก่อน','error'); return; }
+  if(typeof wpNeedKey==='function'){ if(!wpNeedKey()) return; }
+  var o=ccOpts();
+  if(enable){
+    var warn='เปิด Cache ให้ '+v+' ?\n\n';
+    if(o.proxy) warn+='• เปิดเมฆส้ม (proxy) ให้ '+(o.proxyMode==='all'?'ทุก record ยกเว้น mail/ftp/ns':'@ และ www')+'\n';
+    warn+='• ใส่ Cache Rule: รูป/CSS/JS → CF เก็บ '+o.edgeDays+' วัน, เบราว์เซอร์เก็บ '+o.browserDays+' วัน\n\nrule เดิมของคุณไม่หาย';
+    if(!confirm(warn)) return;
+  } else {
+    if(!confirm('ถอด Cache Rule ที่ระบบสร้าง ([auto-cache]) ออกจาก '+v+' ?\n\nเมฆส้มไม่ถูกปิด · rule อื่นไม่แตะ')) return;
+  }
+  if(box) box.innerHTML='<span style="color:var(--text3,#888);font-size:13px">กำลังทำ '+v+' ...</span>';
+  try{
+    var r=await fetch(API+'/api/cfcache/apply',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,domain:v,enable:enable,proxy:enable&&o.proxy,proxyMode:o.proxyMode,edgeDays:o.edgeDays,browserDays:o.browserDays})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด ลองใหม่','error'); if(box)box.innerHTML=''; return; }
+    if(!d.success){
+      if(typeof toast==='function')toast('ทำไม่ได้: '+(d.error||'?'),'error');
+      if(box) box.innerHTML='<span style="color:#e24b4a;font-size:13px">❌ '+(d.error||'?')+'</span>';
+      return;
+    }
+    var pl=(d.proxied||[]).length;
+    if(typeof toast==='function')toast(enable?('☁️ เปิด Cache ให้ '+v+' แล้ว'+(pl?(' · เปิดเมฆส้ม '+pl+' record'):'')):('ถอด rule ของ '+v+' แล้ว'),'success');
+    var sk=(d.skipped||[]).map(function(x){return '• '+x.name+' — '+x.why;}).join('<br>');
+    if(box) box.innerHTML='<div style="font-size:13px;line-height:1.9;color:var(--green,#2ecc71)">✅ '+(enable?'เปิด Cache สำเร็จ':'ถอด rule สำเร็จ')+' (zone '+(d.zone||v)+')</div>'+
+      (pl?'<div style="font-size:12px">🟠 เปิดเมฆส้มใหม่: '+(d.proxied||[]).join(', ')+'</div>':'')+
+      (d.ruleEnabled!==null?'<div style="font-size:12px">Cache Rule: '+(d.ruleEnabled?'ใส่แล้ว':'ถอดแล้ว')+' (rule อื่นที่เก็บไว้ '+(d.keptRules||0)+' ตัว)</div>':'')+
+      (sk?'<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--text3,#888)">record ที่ข้าม ('+(d.skipped||[]).length+')</summary><div style="font-size:11px;color:var(--text3,#888);margin-top:4px">'+sk+'</div></details>':'')+
+      (enable?'<div style="margin-top:8px;font-size:12px;color:var(--text3,#888)">💡 รอ 1-2 นาที แล้วใช้การ์ดที่ 2 ตรวจว่าได้ <b>HIT</b> หรือยัง</div>':'');
+    setTimeout(ccCheck,1500);
+  }catch(e){
+    if(typeof toast==='function')toast(e.message,'error');
+    if(box) box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>';
+  }
+}
+
+async function ccProbe(){
+  var u=((document.getElementById('cc-probe-url')||{}).value||'').trim();
+  var box=document.getElementById('cc-probe-result'); if(!box) return;
+  if(!u){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">วางลิงก์ไฟล์ก่อน</span>'; return; }
+  box.innerHTML='<span style="color:var(--text3,#888);font-size:13px">กำลังยิง 2 ครั้ง (ประมาณ 3 วินาที) ...</span>';
+  try{
+    var r=await fetch(API+'/api/cfcache/probe?url='+encodeURIComponent(u));
+    var d=await r.json();
+    if(!d.success){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">ตรวจไม่ได้: '+(d.error||'?')+'</span>'; return; }
+    function row(label,x){
+      if(!x) return '';
+      var cs=x.cfCacheStatus||'(ไม่มี header — ไม่ผ่าน Cloudflare)';
+      var col=/^HIT$/i.test(x.cfCacheStatus||'')?'var(--green,#2ecc71)':(/^(MISS|EXPIRED|REVALIDATED|UPDATING)$/i.test(x.cfCacheStatus||'')?'#e3b93b':'#e24b4a');
+      return '<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
+        '<td style="padding:5px 8px;color:var(--text3,#888)">'+label+'</td>'+
+        '<td style="padding:5px 8px">HTTP '+x.status+'</td>'+
+        '<td style="padding:5px 8px;font-weight:600;color:'+col+'">'+cs+'</td>'+
+        '<td style="padding:5px 8px;font-size:11px;color:var(--text3,#888)">'+(x.cacheControl||'— ไม่มี cache-control')+'</td></tr>';
+    }
+    var second=d.second||{};
+    var verdict;
+    if(/^HIT$/i.test(second.cfCacheStatus||'')) verdict='<div style="color:var(--green,#2ecc71);font-weight:600;font-size:13px">🎉 สำเร็จ — Cloudflare เสิร์ฟไฟล์นี้แทนเซิร์ฟเวอร์แล้ว</div>';
+    else if(!second.cfCacheStatus && !d.first.cfCacheStatus) verdict='<div style="color:#e24b4a;font-weight:600;font-size:13px">❌ ไฟล์นี้ไม่ผ่าน Cloudflare เลย (เมฆเทา) — ต้องเปิดเมฆส้มก่อน</div>';
+    else if(/^DYNAMIC$/i.test(second.cfCacheStatus||'')) verdict='<div style="color:#e3b93b;font-weight:600;font-size:13px">⚠️ DYNAMIC = CF ยังไม่ถือว่าไฟล์นี้ cache ได้ → Cache Rule ยังไม่ทำงาน/ยังไม่ครอบนามสกุลนี้</div>';
+    else if(/^BYPASS$/i.test(second.cfCacheStatus||'')) verdict='<div style="color:#e3b93b;font-weight:600;font-size:13px">⚠️ BYPASS = มีอะไรสั่งข้าม cache (cookie / no-cache / rule อื่น)</div>';
+    else verdict='<div style="color:#e3b93b;font-weight:600;font-size:13px">⏳ ยังไม่ HIT — ลองกดซ้ำอีกครั้งใน 1-2 นาที (ครั้งแรก CF ต้องดึงจาก origin ก่อน)</div>';
+    box.innerHTML=verdict+
+      '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">'+
+      '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:5px 8px">ครั้งที่</th><th style="padding:5px 8px">สถานะ</th><th style="padding:5px 8px">cf-cache-status</th><th style="padding:5px 8px">cache-control</th></tr>'+
+      row('1',d.first)+row('2',d.second)+'</table>'+
+      '<div style="font-size:11px;color:var(--text3,#888);margin-top:6px">ขนาดไฟล์: '+(d.first.contentLength?(Math.round(d.first.contentLength/1024)+' KB'):'?')+
+      ' · ชนิด: '+(d.first.contentType||'?')+(d.first.cfRay?' · cf-ray '+d.first.cfRay:'')+'</div>'+
+      (d.first.contentLength&&d.first.contentLength>1048576?'<div style="margin-top:6px;font-size:12px;color:#e3b93b">⚠️ ไฟล์นี้ใหญ่ '+Math.round(d.first.contentLength/1048576*10)/10+' MB — ควรบีบให้เหลือ &lt;500KB ด้วย (แบนเนอร์ไม่ควรเกินขนาดนี้)</div>':'');
+  }catch(e){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>'; }
+}
+
+function ccParseList(){
+  var t=((document.getElementById('cc-bulk-list')||{}).value||'');
+  return [...new Set(t.split(/[\s,;]+/).map(function(x){return x.trim().toLowerCase().replace(/^https?:\/\//,'').replace(/\/.*$/,'');}).filter(function(x){return x&&x.indexOf('.')>0;}))];
+}
+
+async function ccBulk(enable){
+  var list=ccParseList();
+  var cnt=document.getElementById('cc-bulk-count');
+  if(!list.length){ if(typeof toast==='function')toast('วางรายชื่อโดเมนก่อน','error'); return; }
+  if(cnt) cnt.textContent='('+list.length+' โดเมน)';
+  if(typeof wpNeedKey==='function'){ if(!wpNeedKey()) return; }
+  var o=ccOpts();
+  var msg=enable
+    ? 'เปิด Cache ให้ '+list.length+' โดเมน?\n\n'+(o.proxy?('• เปิดเมฆส้ม '+(o.proxyMode==='all'?'ทุก record':'@ + www')+'\n'):'')+'• Cache Rule: CF เก็บ '+o.edgeDays+' วัน\n\nใช้เวลาประมาณ '+Math.ceil(list.length*1.5/60)+' นาที'
+    : 'ถอด Cache Rule ของระบบ ออกจาก '+list.length+' โดเมน?';
+  if(!confirm(msg)) return;
+  try{
+    var r=await fetch(API+'/api/cfcache/bulk',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,domains:list,enable:enable,proxy:enable&&o.proxy,proxyMode:o.proxyMode,edgeDays:o.edgeDays,browserDays:o.browserDays})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){ if(typeof toast==='function')toast(d.error||'เริ่มไม่ได้','error'); return; }
+    if(typeof toast==='function')toast('เริ่มทำ '+d.total+' โดเมน...','info');
+    ccPollBulk();
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
+}
+
+function ccPollBulk(){
+  if(_ccBulkPoll) clearInterval(_ccBulkPoll);
+  var box=document.getElementById('cc-bulk-progress');
+  async function tick(){
+    try{
+      var r=await fetch(API+'/api/cfcache/bulk-status'); var d=await r.json();
+      if(!box) return;
+      var pct=d.total?Math.round(d.done/d.total*100):0;
+      var bar='<div style="background:#222;border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#f58220;height:100%;width:'+pct+'%;transition:width .3s"></div></div>';
+      var line='ทำไป '+d.done+'/'+d.total+' — สำเร็จ '+d.ok+' · ล้มเหลว '+d.failed+' · เปิดเมฆส้ม '+(d.proxied||0)+' record'+(d.running?' (กำลังทำ...)':' ✅ เสร็จแล้ว');
+      var fails='';
+      if(d.failures&&d.failures.length){
+        fails='<div style="margin-top:6px;color:#e24b4a">ที่ล้มเหลว ('+d.failed+'):</div>'+
+          '<div style="max-height:140px;overflow:auto;font-size:11px;color:var(--text3,#888)">'+
+          d.failures.map(function(f){return '• '+f.domain+': '+f.error;}).join('<br>')+'</div>';
+      }
+      box.innerHTML=bar+line+fails;
+      if(!d.running){ clearInterval(_ccBulkPoll); _ccBulkPoll=null; }
+    }catch(e){}
+  }
+  tick(); _ccBulkPoll=setInterval(tick,1500);
+}
 </script>
