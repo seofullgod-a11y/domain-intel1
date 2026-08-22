@@ -8107,6 +8107,33 @@ async function ccCheck(){
         '<span style="font-size:12px;color:var(--text3,#888)">→ ต้องเพิ่มโดเมนเข้า Cloudflare ก่อน หรือเพิ่ม API token ของบัญชีนั้นใน CLOUDFLARE_API_TOKENS</span></div>';
       return;
     }
+    // ---- ความจริงจาก DNS จริงบนเน็ต (สำคัญกว่าที่ CF บอก) ----
+    var L=d.live||{}, alerts='';
+    if(d.zonePaused){
+      alerts+='<div style="background:rgba(226,75,74,0.12);border:1px solid rgba(226,75,74,0.4);border-radius:8px;padding:10px;margin-bottom:10px">'+
+        '<div style="color:#e24b4a;font-weight:600;font-size:13px">🛑 zone นี้ถูก Pause อยู่ — CF ไม่ทำงานเลย</div>'+
+        '<div style="font-size:12px;color:var(--text3,#888);margin-top:4px">เมฆส้ม/Cache Rule จะไม่มีผลจนกว่าจะปลด (มักเกิดจาก auto-fix ตอนเจอ error 521-524 แล้วค้าง)</div>'+
+        '<button class="btn" style="margin-top:8px;padding:5px 12px;font-size:12px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.35)" onclick="ccUnpause()">▶️ ปลด Pause เดี๋ยวนี้</button></div>';
+    }
+    if(d.zoneStatus && d.zoneStatus!=='active'){
+      alerts+='<div style="color:#e3b93b;font-size:12px;margin-bottom:8px">⚠️ สถานะ zone = <b>'+d.zoneStatus+'</b> (ยังไม่ active)</div>';
+    }
+    if(L.nsIsCloudflare===false){
+      alerts+='<div style="background:rgba(226,75,74,0.12);border:1px solid rgba(226,75,74,0.4);border-radius:8px;padding:10px;margin-bottom:10px">'+
+        '<div style="color:#e24b4a;font-weight:600;font-size:13px">🛑 Nameserver ยังไม่ได้ชี้มา Cloudflare</div>'+
+        '<div style="font-size:12px;color:var(--text3,#888);margin-top:4px">ตอนนี้: '+(L.ns||[]).join(', ')+'<br>ต้องไปเปลี่ยน NS ที่ผู้ให้บริการโดเมน (registrar) เป็นของ CF ก่อน'+
+        ((d.cfNameServers||[]).length?(' → <b>'+d.cfNameServers.join(', ')+'</b>'):'')+'</div></div>';
+    }
+    if(L.viaCloudflare===false && L.nsIsCloudflare!==false && !d.zonePaused){
+      alerts+='<div style="background:rgba(227,185,59,0.12);border:1px solid rgba(227,185,59,0.4);border-radius:8px;padding:10px;margin-bottom:10px">'+
+        '<div style="color:#e3b93b;font-weight:600;font-size:13px">⚠️ DNS จริงยังตอบ IP ของเซิร์ฟเวอร์ ไม่ใช่ IP ของ Cloudflare</div>'+
+        '<div style="font-size:12px;color:var(--text3,#888);margin-top:4px">ตอบอยู่: '+(L.ips||[]).join(', ')+' — traffic ยังไม่ผ่าน CF (อาจต้องรอ TTL เก่าหมด หรือ zone ถูก pause)</div></div>';
+    }
+    var liveTxt = L.viaCloudflare===true
+      ? '<span style="color:var(--green,#2ecc71)">✅ ผ่าน Cloudflare จริง ('+(L.ips||[]).join(', ')+')</span>'
+      : (L.viaCloudflare===false
+          ? '<span style="color:#e24b4a">❌ ยังชี้ origin ตรง ('+(L.ips||[]).join(', ')+')</span>'
+          : '<span style="color:var(--text3,#888)">– เช็คไม่ได้ '+(L.ipError||L.error||'')+'</span>');
     var proxyTxt = d.mainCount===0
       ? '<span style="color:#e3b93b">ไม่มี A/CNAME ของ @ หรือ www</span>'
       : (d.mainProxied
@@ -8121,8 +8148,9 @@ async function ccCheck(){
         '<td style="padding:4px 6px;color:var(--text3,#888)">'+x.content+'</td>'+
         '<td style="padding:4px 6px">'+(x.proxied?'<span style="color:#f58220">🟠 proxied</span>':'<span style="color:var(--text3,#888)">⚪ DNS only</span>')+'</td></tr>';
     }).join('');
-    box.innerHTML='<div style="font-size:13px;line-height:1.9">'+
-      '<div>zone: <b>'+(d.zone||v)+'</b></div>'+
+    box.innerHTML=alerts+'<div style="font-size:13px;line-height:1.9">'+
+      '<div>zone: <b>'+(d.zone||v)+'</b>'+(d.zonePaused?' <span style="color:#e24b4a">(PAUSED)</span>':'')+'</div>'+
+      '<div>DNS จริงบนเน็ต: '+liveTxt+'</div>'+
       '<div>เมฆส้ม: '+proxyTxt+'</div>'+
       '<div>Cache Rule: '+ruleTxt+'</div>'+
       (d.recError?'<div style="color:#e24b4a;font-size:12px">อ่าน DNS ไม่ได้: '+d.recError+'</div>':'')+
@@ -8171,6 +8199,27 @@ async function ccApply(enable){
     if(typeof toast==='function')toast(e.message,'error');
     if(box) box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>';
   }
+}
+
+async function ccUnpause(){
+  var v=((document.getElementById('cc-domain')||{}).value||'').trim().toLowerCase();
+  if(!v){ if(typeof toast==='function')toast('พิมพ์ชื่อโดเมนก่อน','error'); return; }
+  if(typeof wpNeedKey==='function'){ if(!wpNeedKey()) return; }
+  if(!confirm('ปลด Pause ให้ '+v+' ?\n\nหลังปลด Cloudflare จะกลับมาทำงาน (proxy + cache) ตามปกติ')) return;
+  try{
+    var r=await fetch(API+'/api/cfcache/unpause',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({key:window._wpKey,domain:v})});
+    var d=await r.json();
+    if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด','error'); return; }
+    if(!d.success){
+      if(typeof toast==='function')toast('ปลดไม่ได้','error');
+      var b=document.getElementById('cc-result');
+      if(b) b.innerHTML='<div style="color:#e24b4a;font-size:13px">❌ '+(d.error||'?')+'</div>';
+      return;
+    }
+    if(typeof toast==='function')toast('▶️ ปลด Pause '+v+' แล้ว — รอ 1 นาทีค่อยตรวจ header','success');
+    setTimeout(ccCheck,2000);
+  }catch(e){ if(typeof toast==='function')toast(e.message,'error'); }
 }
 
 async function ccDiagnose(){
