@@ -1418,6 +1418,52 @@ const CF_NEVER_PROXY = ['mail', 'smtp', 'imap', 'pop', 'pop3', 'webmail', 'mx', 
   'ftp', 'sftp', 'ssh', 'cpanel', 'whm', 'plesk', 'webdisk', 'ns', 'ns1', 'ns2', 'ns3', 'vpn',
   'direct', 'origin', 'cpcalendars', 'cpcontacts', 'autodiscover', 'autoconfig', 'dkim', '_domainkey'];
 
+// ---- ตัวช่วยเรื่อง token / สิทธิ์ ----
+function cfTokenName(token) {
+  const i = CF_TOKENS.indexOf(token);
+  const tail = String(token || '').slice(-4);
+  return 'token #' + (i >= 0 ? (i + 1) : '?') + ' (...' + tail + ')';
+}
+// ข้อความ error ของ CF ที่แปลว่า "token ไม่มีสิทธิ์" (ไม่ใช่ของพัง)
+function cfIsAuthError(msg) {
+  return /not authorized|unauthorized|authentication error|permission|forbidden|access denied|10000|9109/i.test(String(msg || ''));
+}
+// แปลง error ดิบของ CF เป็นภาษาคนพร้อมบอกว่าต้องเพิ่มสิทธิ์อะไร
+function cfExplainError(msg, what, token) {
+  const raw = String(msg || '');
+  if (!cfIsAuthError(raw)) return raw;
+  const need = {
+    dns: 'Zone → DNS → Edit',
+    cache: 'Zone → Cache Rules → Edit',
+    zone: 'Zone → Zone → Read'
+  }[what] || 'สิทธิ์ที่เกี่ยวข้อง';
+  return raw + ' — ' + cfTokenName(token) + ' ไม่มีสิทธิ์ ' + what.toUpperCase() +
+    ' · ต้องเพิ่ม Permission "' + need + '" ให้ token นี้ใน Cloudflare (My Profile → API Tokens → Edit) ' +
+    'และ Zone Resources ต้องครอบโดเมนนี้ด้วย';
+}
+// หา zone ให้ครบทุก token ที่มองเห็น (เผื่อ token แรกอ่านได้แต่เขียนไม่ได้)
+async function cfFindZoneAll(domain) {
+  const root = String(domain || '').replace(/^www\./, '');
+  const cands = [root];
+  const parts = root.split('.');
+  for (let i = 1; i < parts.length - 1; i++) cands.push(parts.slice(i).join('.'));
+  const found = [];
+  for (const token of (CF_TOKENS.length ? CF_TOKENS : [CF_TOKEN])) {
+    for (const cand of cands) {
+      let j;
+      try { j = await cfApi('/zones?name=' + encodeURIComponent(cand), {}, token); }
+      catch (e) { continue; }
+      if (j.result && j.result.length) {
+        const zone = Object.assign({}, j.result[0]);
+        zone._token = token;
+        found.push(zone);
+        break; // token นี้เจอแล้ว ไปดู token ถัดไป
+      }
+    }
+  }
+  return found;
+}
+
 function cfCacheExts(exts) {
   const list = (Array.isArray(exts) && exts.length ? exts : CF_CACHE_EXTS_DEFAULT)
     .map(e => String(e).toLowerCase().replace(/[^a-z0-9]/g, '')).filter(Boolean);
@@ -1526,50 +1572,131 @@ async function cfCacheCheckDomain(domain) {
   return out;
 }
 // ลงมือทำจริง: เปิด proxy + ใส่ Cache Rule
+// ถ้ามีหลาย token ที่เห็น zone เดียวกัน จะไล่ลองจนกว่าจะเจอตัวที่ "เขียนได้"
 async function cfCacheApplyDomain(domain, opts) {
   opts = opts || {};
   const doProxy = opts.proxy !== false;
   const doRule = opts.rule !== false;
   const enable = opts.enable !== false; // false = ถอด rule ของระบบออก
-  const zone = await cfFindZone(domain);
-  if (!zone) return { domain, ok: false, error: 'ไม่พบ zone นี้ในบัญชี Cloudflare (อาจอยู่ account อื่น — เพิ่ม token ใน CLOUDFLARE_API_TOKENS)' };
-  const out = { domain, ok: true, zone: zone.name, proxied: [], skipped: [], ruleEnabled: null };
-  try {
-    if (doProxy && enable) {
-      const recs = await cfGetProxiableRecords(zone.id, zone._token);
-      for (const r of recs) {
-        if (!cfShouldProxy(r, zone.name, opts.proxyMode)) { out.skipped.push({ name: r.name, why: 'ข้าม (mail/subdomain/wildcard)' }); continue; }
-        if (r.proxied) { out.skipped.push({ name: r.name, why: 'เปิดเมฆส้มอยู่แล้ว' }); continue; }
+  const zones = await cfFindZoneAll(domain);
+  if (!zones.length) return { domain, ok: false, error: 'ไม่พบ zone นี้ในบัญชี Cloudflare (อาจอยู่ account อื่น — เพิ่ม token ใน CLOUDFLARE_API_TOKENS)' };
+
+  let lastErr = null;
+  for (let zi = 0; zi < zones.length; zi++) {
+    const zone = zones[zi];
+    const out = { domain, ok: true, zone: zone.name, token: cfTokenName(zone._token), proxied: [], skipped: [], ruleEnabled: null };
+    let authFail = false;
+    try {
+      // ---- 1) เปิดเมฆส้ม ----
+      if (doProxy && enable) {
+        const recs = await cfGetProxiableRecords(zone.id, zone._token);
+        for (const r of recs) {
+          if (!cfShouldProxy(r, zone.name, opts.proxyMode)) { out.skipped.push({ name: r.name, why: 'ข้าม (mail/subdomain/wildcard)' }); continue; }
+          if (r.proxied) { out.skipped.push({ name: r.name, why: 'เปิดเมฆส้มอยู่แล้ว' }); continue; }
+          try {
+            await cfApi('/zones/' + zone.id + '/dns_records/' + r.id, { method: 'PATCH', body: { proxied: true } }, zone._token);
+            out.proxied.push(r.name);
+            await new Promise(r2 => setTimeout(r2, 120));
+          } catch (e) {
+            if (cfIsAuthError(e.message)) { authFail = true; throw new Error(cfExplainError(e.message, 'dns', zone._token)); }
+            out.skipped.push({ name: r.name, why: 'เปิดไม่ได้: ' + e.message });
+          }
+        }
+      }
+      // ---- 2) Cache Rule ----
+      if (doRule) {
+        let existing;
+        try { existing = await cfCacheGetRules(zone.id, zone._token); }
+        catch (e) {
+          if (cfIsAuthError(e.message)) { authFail = true; throw new Error(cfExplainError(e.message, 'cache', zone._token)); }
+          throw e;
+        }
+        const kept = existing
+          .filter(r => String(r.description || '').indexOf(CF_CACHE_TAG) === -1)
+          .map(cfSanitizeRule);
+        const merged = enable ? [cfCacheRule(opts), ...kept] : kept;
         try {
-          await cfApi('/zones/' + zone.id + '/dns_records/' + r.id, { method: 'PATCH', body: { proxied: true } }, zone._token);
-          out.proxied.push(r.name);
-          await new Promise(r2 => setTimeout(r2, 120));
-        } catch (e) { out.skipped.push({ name: r.name, why: 'เปิดไม่ได้: ' + e.message }); }
+          await cfCachePutRules(zone.id, merged, zone._token);
+        } catch (e1) {
+          if (cfIsAuthError(e1.message)) { authFail = true; throw new Error(cfExplainError(e1.message, 'cache', zone._token)); }
+          // เผื่อ CF ไม่รับ lower() หรือ expression ยาวเกิน → ลองใหม่แบบเรียบง่าย (ไม่ใช้ lower)
+          if (enable && /expression|syntax|filter|not supported|unavailable/i.test(e1.message)) {
+            const simple = [cfCacheRule(Object.assign({}, opts, { noLower: true })), ...kept];
+            try { await cfCachePutRules(zone.id, simple, zone._token); }
+            catch (e2) {
+              if (cfIsAuthError(e2.message)) { authFail = true; throw new Error(cfExplainError(e2.message, 'cache', zone._token)); }
+              throw e2;
+            }
+            out.fallback = 'ใช้ expression แบบไม่มี lower() (นามสกุลตัวพิมพ์ใหญ่จะไม่ถูก cache)';
+          } else { throw e1; }
+        }
+        out.ruleEnabled = enable;
+        out.keptRules = kept.length;
       }
+      return out; // สำเร็จด้วย token ตัวนี้
+    } catch (e) {
+      lastErr = { error: e.message, zone: zone.name, proxied: out.proxied, skipped: out.skipped, token: cfTokenName(zone._token) };
+      // ถ้าเป็นปัญหาสิทธิ์ และยังมี token อื่นที่เห็น zone นี้ → ลองตัวถัดไป
+      if (authFail && zi < zones.length - 1) continue;
+      break;
     }
-    if (doRule) {
-      const existing = await cfCacheGetRules(zone.id, zone._token);
-      const kept = existing
-        .filter(r => String(r.description || '').indexOf(CF_CACHE_TAG) === -1)
-        .map(cfSanitizeRule);
-      const merged = enable ? [cfCacheRule(opts), ...kept] : kept;
-      try {
-        await cfCachePutRules(zone.id, merged, zone._token);
-      } catch (e1) {
-        // เผื่อ CF ไม่รับ lower() หรือ expression ยาวเกิน → ลองใหม่แบบเรียบง่าย (ไม่ใช้ lower)
-        if (enable && /expression|syntax|filter|not supported|unavailable/i.test(e1.message)) {
-          const simple = [cfCacheRule(Object.assign({}, opts, { noLower: true })), ...kept];
-          await cfCachePutRules(zone.id, simple, zone._token);
-          out.fallback = 'ใช้ expression แบบไม่มี lower() (นามสกุลตัวพิมพ์ใหญ่จะไม่ถูก cache)';
-        } else { throw e1; }
-      }
-      out.ruleEnabled = enable;
-      out.keptRules = kept.length;
-    }
-    return out;
-  } catch (e) {
-    return { domain, ok: false, zone: zone.name, error: e.message, proxied: out.proxied, skipped: out.skipped };
   }
+  return Object.assign({ domain, ok: false, hint: 'ดูปุ่ม "ตรวจสิทธิ์ Token" เพื่อรู้ว่าขาดสิทธิ์ตัวไหน' }, lastErr);
+}
+// ตรวจสิทธิ์ token แบบละเอียด — ใช้ "เขียนทับด้วยค่าเดิม" เป็นการทดสอบ (ไม่เปลี่ยนอะไรจริง)
+async function cfCacheDiagnose(domain) {
+  const report = { domain, tokens: CF_TOKENS.length, rows: [] };
+  if (!CF_TOKENS.length) { report.error = 'ยังไม่ได้ตั้ง CLOUDFLARE_API_TOKEN'; return report; }
+  const root = String(domain || '').replace(/^www\./, '');
+  for (const token of CF_TOKENS) {
+    const row = { token: cfTokenName(token), valid: null, zoneRead: null, dnsRead: null, dnsWrite: null, cacheRead: null, cacheWrite: null, notes: [] };
+    // 1) token ใช้ได้ไหม
+    try {
+      const v = await cfApi('/user/tokens/verify', {}, token);
+      row.valid = true;
+      if (v.result && v.result.status && v.result.status !== 'active') row.notes.push('สถานะ token: ' + v.result.status);
+    } catch (e) { row.valid = false; row.notes.push('verify ไม่ผ่าน: ' + e.message); report.rows.push(row); continue; }
+    // 2) เห็น zone ไหม
+    let zone = null;
+    try {
+      const j = await cfApi('/zones?name=' + encodeURIComponent(root), {}, token);
+      if (j.result && j.result.length) { zone = j.result[0]; row.zoneRead = true; }
+      else { row.zoneRead = false; row.notes.push('token นี้มองไม่เห็น ' + root + ' (คนละ account หรือ Zone Resources ไม่ครอบ)'); }
+    } catch (e) { row.zoneRead = false; row.notes.push('อ่าน zone ไม่ได้: ' + e.message); }
+    if (!zone) { report.rows.push(row); continue; }
+    row.zone = zone.name; row.plan = (zone.plan && zone.plan.name) || null;
+    // 3) DNS อ่าน / เขียน (เขียนทับด้วยค่าเดิม = ไม่เปลี่ยนอะไร)
+    let rec = null;
+    try {
+      const j = await cfApi('/zones/' + zone.id + '/dns_records?type=A&per_page=1', {}, token);
+      row.dnsRead = true; rec = (j.result || [])[0] || null;
+      if (!rec) row.notes.push('ไม่มี A record ให้ทดสอบเขียน');
+    } catch (e) { row.dnsRead = false; row.notes.push('อ่าน DNS ไม่ได้: ' + cfExplainError(e.message, 'dns', token)); }
+    if (rec) {
+      try {
+        await cfApi('/zones/' + zone.id + '/dns_records/' + rec.id, { method: 'PATCH', body: { proxied: !!rec.proxied } }, token);
+        row.dnsWrite = true;
+      } catch (e) { row.dnsWrite = false; row.notes.push('เขียน DNS ไม่ได้: ' + cfExplainError(e.message, 'dns', token)); }
+    }
+    // 4) Cache Rules อ่าน / เขียน (PUT rule ชุดเดิมกลับไป = ไม่เปลี่ยนอะไร)
+    let rules = null;
+    try { rules = await cfCacheGetRules(zone.id, token); row.cacheRead = true; row.cacheRuleCount = rules.length; }
+    catch (e) { row.cacheRead = false; row.notes.push('อ่าน Cache Rules ไม่ได้: ' + cfExplainError(e.message, 'cache', token)); }
+    if (rules) {
+      try {
+        await cfCachePutRules(zone.id, rules.map(cfSanitizeRule), token);
+        row.cacheWrite = true;
+      } catch (e) { row.cacheWrite = false; row.notes.push('เขียน Cache Rules ไม่ได้: ' + cfExplainError(e.message, 'cache', token)); }
+    }
+    report.rows.push(row);
+  }
+  const good = report.rows.find(r => r.dnsWrite && r.cacheWrite);
+  report.verdict = good
+    ? ('✅ ' + good.token + ' ใช้ได้ครบ — กด "เปิด Cache เลย" ได้เลย')
+    : (report.rows.some(r => r.zoneRead)
+        ? '❌ เจอ zone แล้ว แต่ token ยังเขียนไม่ได้ — ต้องเพิ่ม Permission ตามหมายเหตุด้านล่าง'
+        : '❌ ไม่มี token ไหนมองเห็นโดเมนนี้เลย — โดเมนอาจอยู่อีก account (เพิ่ม token ใน CLOUDFLARE_API_TOKENS)');
+  return report;
 }
 let cfCacheBulk = { running: false, total: 0, done: 0, ok: 0, failed: 0, proxied: 0, failures: [] };
 // ยิง GET จริงเพื่อดู header — ใช้พิสูจน์ว่า cache ทำงานแล้ว (cf-cache-status: HIT)
@@ -3451,6 +3578,18 @@ async function handleRequest(req, res) {
   }
   if (req.method === 'GET' && url === '/api/cfcache/bulk-status') {
     json(res, { success: true, ...cfCacheBulk });
+    return;
+  }
+  // ตรวจสิทธิ์ token ทีละตัว (ทดสอบเขียนด้วยค่าเดิม — ไม่เปลี่ยนอะไรจริง)
+  if (req.method === 'POST' && url === '/api/cfcache/diagnose') {
+    const body = await parseBody(req);
+    if (!body || body.key !== ISP_AGENT_KEY) { json(res, { success: false, error: 'ต้องมี key ที่ถูกต้อง' }, 403); return; }
+    const domain = String(body.domain || '').trim().toLowerCase();
+    if (!validDomainName(domain)) { json(res, { success: false, error: 'ชื่อโดเมนไม่ถูกต้อง' }); return; }
+    try {
+      const r = await cfCacheDiagnose(domain);
+      json(res, { success: true, ...r });
+    } catch (e) { json(res, { success: false, error: e.message }); }
     return;
   }
   // พิสูจน์ผล: ยิง GET จริงแล้วอ่าน header cf-cache-status / cache-control
