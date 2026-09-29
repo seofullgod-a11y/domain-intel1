@@ -17,12 +17,12 @@ if(localStorage.getItem('di_fx')!=='off')document.documentElement.classList.add(
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Anuphan:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.48.0/dist/tabler-icons.min.css" />
-<link rel="stylesheet" href="ui/di-ui.css?v=3.2.0" onerror="document.documentElement.classList.add('di-css-missing')" />
+<link rel="stylesheet" href="ui/di-ui.css?v=3.3.0" onerror="document.documentElement.classList.add('di-css-missing')" />
 <style>
 /* กันพัง: ถ้าไฟล์ ui/di-ui.css ไม่ถูก deploy จะมีแถบเตือนสีแดงบนสุด */
 html.di-css-missing body::before{content:'⚠ ไม่พบไฟล์ public/ui/di-ui.css — ต้อง deploy โฟลเดอร์ ui ด้วย';position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;font:600 14px/1.4 sans-serif;padding:10px 16px;text-align:center}
 </style>
-<script src="ui/di-ui.js?v=3.2.0" defer></script>
+<script src="ui/di-ui.js?v=3.3.0" defer></script>
 </head>
 <body>
 
@@ -98,11 +98,16 @@ html.di-css-missing body::before{content:'⚠ ไม่พบไฟล์ public
       <div class="logo-mark"><svg class="di-logo-svg" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="dlg-sb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset=".55" stop-color="#2dd4bf"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#dlg-sb)"/><g fill="none" stroke="#03140e" stroke-width="2.6" stroke-linecap="round"><circle cx="24" cy="24" r="6.2"/><g class="o1"><path d="M24 11.4a12.6 12.6 0 0 1 12.6 12.6"/></g><g class="o2"><path d="M24 36.6A12.6 12.6 0 0 1 11.4 24" opacity=".5"/></g></g><circle cx="24" cy="24" r="2.3" fill="#03140e"/></svg></div>
       <div class="sb-brand-text">
         <div class="logo-text">Domain<span>Intel</span></div>
-        <div class="logo-ver">Ops Console · v3.2</div>
+        <div class="logo-ver">Ops Console · v3.3.0</div>
       </div>
       <button type="button" class="sb-mini-btn" id="sb-mini-btn" title="ย่อ/ขยายเมนู  ( [ )" aria-label="ย่อ/ขยายเมนู"><i class="ti ti-layout-sidebar-left-collapse"></i></button>
     </div>
     <button type="button" class="sb-search" data-open-palette><i class="ti ti-search"></i><span>ค้นหาเมนู / โดเมน…</span><kbd>Ctrl K</kbd></button>
+    <div class="sb-sync" id="sb-sync">
+      <button type="button" class="sync-main" data-sync-now title="ดึงรายชื่อโดเมนล่าสุดจาก Plesk ทุกเซิร์ฟเวอร์ (เพิ่มโดเมนใหม่ + อัปเดตสถานะ Plesk)"><span class="sync-ic"><i class="ti ti-refresh"></i></span><span class="sync-txt"><b>Sync Plesk</b><small><span class="sync-badge" id="sync-badge">AUTO</span><span id="sync-sub">กำลังโหลด…</span></small></span></button>
+      <button type="button" class="sync-more" data-sync-menu aria-haspopup="true" aria-expanded="false" title="ตั้งค่า Sync อัตโนมัติ" aria-label="ตั้งค่า Sync อัตโนมัติ"><i class="ti ti-adjustments-horizontal"></i></button>
+      <div class="sync-menu" id="sync-menu" role="dialog" aria-label="ตั้งค่า Sync Plesk"></div>
+    </div>
     <nav class="nav" id="main-nav">
     <div class="nav-top">
         <div class="nav-item" onclick="showPage('hub')" data-tool="hub" data-status="live" data-kw="home hub หน้าแรก ศูนย์รวม เริ่มต้น" tabindex="0" role="link"><i class="ti ti-smart-home"></i><span class="nav-label">ศูนย์รวม</span></div>
@@ -207,6 +212,7 @@ html.di-css-missing body::before{content:'⚠ ไม่พบไฟล์ public
           <div class="hero-legend" id="hero-legend"></div>
           <div class="hero-actions">
             <button class="btn btn-green" onclick="DIUI.focusDiag()"><i class="ti ti-stethoscope"></i> วินิจฉัยเว็บ</button>
+            <button class="btn btn-sync" data-sync-now type="button"><i class="ti ti-refresh"></i> Sync Plesk</button>
             <button class="btn" onclick="checkAllNow()"><i class="ti ti-refresh"></i> เช็คทุกโดเมน</button>
             <button class="btn" onclick="openAddModal()"><i class="ti ti-plus"></i> เพิ่มโดเมน</button>
             <button class="btn" onclick="showPage('command')"><i class="ti ti-layout-grid"></i> ศูนย์บัญชาการ</button>

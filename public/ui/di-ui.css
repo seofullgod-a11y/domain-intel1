@@ -1479,7 +1479,7 @@ html.di-con-open .toast-container { bottom: calc(min(460px, 62vh) + 36px); }
 .hn-card.lv-ok .hn-spark { color: var(--viz-good); }
 
 /* ส่วนที่มีเฉพาะโหมด HUD — ซ่อนในโหมดเรียบ */
-.hud-ticker, .ab-hud, .hud-code, .hud-sweep, .hud-ticks, .hud-inner, #hud-fx { display: none; }
+.hud-ticker, .ab-hud, .hud-code, .hud-sweep, .hud-ticks, .hud-inner { display: none; }
 .ab-fx.on { color: var(--accent-ink); background: color-mix(in srgb, var(--accent) 10%, transparent); border-color: color-mix(in srgb, var(--accent) 22%, transparent); }
 
 /* ==========================================================================
@@ -1560,16 +1560,7 @@ html.fx-hud body::after {
   background-size: 44px 44px;
   -webkit-mask-image: radial-gradient(ellipse 90% 75% at 50% 15%, #000 25%, transparent 78%); mask-image: radial-gradient(ellipse 90% 75% at 50% 15%, #000 25%, transparent 78%);
 }
-html.fx-hud #hud-fx { display: block; position: fixed; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
-.hf-beam { position: absolute; left: 0; right: 0; top: -140px; height: 140px; opacity: .4;
-  background: linear-gradient(180deg, transparent, color-mix(in srgb, var(--hud-c) 4%, transparent) 75%, color-mix(in srgb, var(--hud-c) 16%, transparent) 99.3%, transparent);
-  animation: hud-beam 10s linear infinite; }
-html.light .hf-beam { opacity: .35; }
-@keyframes hud-beam { from { transform: translateY(0) } to { transform: translateY(calc(100vh + 280px)) } }
-.hf-pass { position: absolute; left: 0; right: 0; top: 0; height: 2px; opacity: 0;
-  background: linear-gradient(90deg, transparent, var(--hud-c) 20%, var(--hud-c2) 80%, transparent); box-shadow: 0 0 18px 2px var(--hud-glow); }
-.hf-pass.go { animation: hud-pass .75s cubic-bezier(.3,.6,.3,1) both; }
-@keyframes hud-pass { 0% { opacity: 0; transform: translateY(var(--appbar-h)) } 12% { opacity: .9 } 100% { opacity: 0; transform: translateY(100vh) } }
+/* (ตัดออกตามคำขอ: เส้นสแกนแนวนอนที่วิ่งขึ้นลงบนพื้นหลัง และเส้นวิ่งตอนเปลี่ยนหน้า) */
 
 /* ---- appbar: ค่าวัด API + นาฬิการะบบ ---- */
 html.fx-hud .ab-hud { display: flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; flex-shrink: 0;
@@ -1684,3 +1675,66 @@ html.fx-hud .nd-bar i { background: linear-gradient(90deg, color-mix(in srgb, va
 .nd-v { text-align: right; color: var(--text2); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nd-v b { color: var(--text); font-weight: 650; }
 html.fx-hud .lg-btn { border-radius: 0; clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+
+/* ==========================================================================
+   24. SYNC PLESK — ปุ่มเด่นบนเมนูซ้าย (ทุกหน้า) + ปุ่มบนหน้าศูนย์รวม
+   ========================================================================== */
+.sb-sync { position: relative; display: flex; gap: 6px; margin: 0 14px 10px; }
+.sync-main {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 10px 0 8px; cursor: pointer; text-align: left;
+  border-radius: 12px; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border2));
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 14%, var(--bg2)), color-mix(in srgb, var(--accent-2) 8%, var(--bg2)));
+  color: var(--text); transition: border-color var(--d2), box-shadow var(--d3) var(--ease), transform var(--d2);
+}
+.sync-main:hover { border-color: color-mix(in srgb, var(--accent) 55%, transparent); box-shadow: 0 8px 22px -12px color-mix(in srgb, var(--accent) 70%, transparent); transform: translateY(-1px); }
+.sync-main:active { transform: translateY(0) scale(.99); }
+.sync-main:disabled { cursor: progress; }
+.sync-ic { width: 32px; height: 32px; border-radius: 9px; display: grid; place-items: center; flex-shrink: 0; font-size: 17px; color: var(--on-accent); background: var(--grad-brand); box-shadow: 0 6px 16px -8px var(--accent); }
+.sync-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.sync-txt b { font-size: 13.5px; font-weight: 700; color: var(--text); }
+.sync-txt small { font-size: 11.5px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-sync.auto .sync-txt small { color: var(--text2); }
+.sb-sync.err .sync-txt small { color: var(--red); }
+.sb-sync.running .sync-ic i, [data-sync-now].running i.ti-refresh { animation: spin .9s linear infinite; }
+.sb-sync.running .sync-txt small { color: var(--amber); }
+.sync-more { width: 38px; flex-shrink: 0; display: grid; place-items: center; cursor: pointer; font-size: 17px; border-radius: 12px; border: 1px solid var(--border2); background: var(--bg2); color: var(--text2); transition: all var(--d2); }
+.sync-more:hover, .sync-more[aria-expanded="true"] { color: var(--text); border-color: var(--border3); background: var(--bg3); }
+.sync-menu {
+  position: absolute; left: 0; right: 0; top: calc(100% + 8px); z-index: 90; display: none; flex-direction: column; gap: 12px; padding: 14px;
+  border-radius: 14px; border: 1px solid var(--border2); background: color-mix(in srgb, var(--bg2) 97%, transparent); box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); animation: di-menu-in .2s var(--ease) both;
+}
+.sync-menu.open { display: flex; }
+.sm-h { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text); }
+.sm-h i { color: var(--accent-ink); font-size: 16px; }
+.sm-seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; padding: 3px; border-radius: 10px; background: var(--bg3); border: 1px solid var(--border); }
+.sm-seg button { height: 30px; border: 0; border-radius: 7px; background: transparent; color: var(--text2); font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all var(--d2); }
+.sm-seg button:hover { color: var(--text); }
+.sm-seg button.on { background: var(--grad-brand); color: var(--on-accent); box-shadow: 0 4px 12px -6px var(--accent); }
+.sm-rows { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; }
+.sm-rows > div { display: flex; justify-content: space-between; gap: 10px; }
+.sm-rows span { color: var(--text3); }
+.sm-rows b { color: var(--text); font-weight: 600; text-align: right; font-variant-numeric: tabular-nums; }
+.sm-rows em { font-style: normal; color: var(--text3); font-weight: 500; }
+.sm-rows .sm-err { display: flex; align-items: flex-start; gap: 6px; color: var(--red); line-height: 1.45; justify-content: flex-start; }
+.sm-go { width: 100%; height: 36px; }
+.sm-note { font-size: 11.5px; color: var(--text3); line-height: 1.5; }
+.btn-sync { border-color: color-mix(in srgb, var(--accent) 38%, var(--border2)) !important; color: var(--accent-ink) !important; }
+.btn-sync:hover { background: color-mix(in srgb, var(--accent) 12%, var(--bg3)) !important; }
+html.sb-mini .sb-sync { margin: 0 14px 10px; }
+html.sb-mini .sync-main { justify-content: center; padding: 0; height: 44px; }
+html.sb-mini .sync-txt, html.sb-mini .sync-more, html.sb-mini .sync-menu { display: none; }
+html.fx-hud .sync-main, html.fx-hud .sync-more, html.fx-hud .sync-menu, html.fx-hud .sm-seg { border-radius: 6px; }
+html.fx-hud .sync-ic { border-radius: 5px; }
+html.fx-hud .sync-main { border-color: color-mix(in srgb, var(--hud-c) 35%, var(--border2)); box-shadow: 0 0 22px -10px var(--hud-glow); }
+@media (max-width: 900px) {
+  html.sb-mini .sync-txt { display: flex; } html.sb-mini .sync-more { display: grid; } html.sb-mini .sync-menu.open { display: flex; }
+  html.sb-mini .sync-main { justify-content: flex-start; padding: 0 10px 0 8px; height: 50px; }
+}
+.sync-txt b { white-space: nowrap; }
+.sync-txt small { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
+#sync-sub { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sync-badge { flex-shrink: 0; display: inline-flex; align-items: center; height: 16px; padding: 0 5px; border-radius: 4px; font: 700 9.5px/1 var(--mono); letter-spacing: .04em; white-space: nowrap; color: var(--on-accent); background: var(--accent); }
+.sync-badge.off { color: var(--text2); background: var(--bg4); }
+html.fx-hud .sync-badge:not(.off) { background: var(--hud-c); color: #03141a; box-shadow: 0 0 10px -2px var(--hud-glow); }
+html.light.fx-hud .sync-badge:not(.off) { color: #fff; }

@@ -306,6 +306,8 @@
   }
   function closeMenus() {
     $$('.di-menu.open').forEach(function (m) { m.classList.remove('open'); var b = m.previousElementSibling; if (b) b.setAttribute('aria-expanded', 'false'); });
+    var sm = doc.getElementById('sync-menu');
+    if (sm && sm.classList.contains('open')) { sm.classList.remove('open'); var sb = doc.querySelector('[data-sync-menu]'); if (sb) sb.setAttribute('aria-expanded', 'false'); }
   }
 
   function onNav(pageId) {
@@ -333,7 +335,6 @@
       if (it && it.scrollIntoView) { try { it.scrollIntoView({ block: 'nearest' }); } catch (e) {} }
       var tool = toolFor(page, it);
       ensureInfo(page, tool);
-      hudPass();
       if (pageId !== 'page-hub') decode(page.querySelector(':scope > .topbar .topbar-title, :scope > .ph-dyn h2'), 480);
       if (tool && tool.id !== 'hub') pushRecentTool(tool.id);
       if (pageId === 'page-hub') {
@@ -547,6 +548,7 @@
     var A = [
       ['เปิดคอนโซลคำสั่ง (ดูสิ่งที่ส่งไปเซิร์ฟเวอร์)', 'ti-terminal-2', 'console terminal log script คอนโซล สคริปต์ คำสั่ง', function () { D.console.open(); }],
       ['สลับโหมดมืด / สว่าง', 'ti-contrast-2', 'theme dark light ธีม', function () { D.toggleTheme($('#ab-theme')); }],
+      ['Sync Plesk ตอนนี้ (ดึงโดเมนใหม่จาก Plesk)', 'ti-refresh', 'sync plesk ซิงค์ ดึงโดเมน อัปเดต update', function () { D.syncPlesk({}); }],
       ['เปิด/ปิดเอฟเฟกต์ HUD (โหมดเรียบ)', 'ti-sparkles', 'hud fx effect animation ไฮเทค เอฟเฟกต์ โหมดเรียบ', function () { D.fx.toggle(); }],
       ['รีเฟรชข้อมูลตอนนี้', 'ti-refresh', 'refresh reload โหลดใหม่', window.refreshNow || window.loadData],
       ['เพิ่มโดเมนใหม่', 'ti-plus', 'add domain new', window.openAddModal],
@@ -1409,7 +1411,7 @@
   function hudTick() {
     var d = new Date(), c = $('#ah-clock');
     if (c) c.textContent = pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
-    var s = $('#ht-sync'); if (s && HUD.syncAt) s.textContent = agoTxt(HUD.syncAt);
+    renderSync();
   }
   function hudLat() {
     var e = $('#ah-lat'); if (e) { e.textContent = msTxt(HUD.lat); e.className = 'lv-' + latLv(HUD.lat); }
@@ -1436,11 +1438,6 @@
       else { nodes.forEach(function (n, i) { n.nodeValue = fin[i]; }); elm.classList.remove('hud-decoding'); }
     })();
   }
-  function hudPass() {
-    if (!fxOn() || reduced) return;
-    var p = $('#hud-fx .hf-pass'); if (!p) return;
-    p.classList.remove('go'); void p.offsetWidth; p.classList.add('go');
-  }
   /* แถบค่าวัดใน hero */
   function renderTele() {
     var box = $('#hud-tele'); if (!box) return;
@@ -1458,7 +1455,7 @@
       ['AVG.RESP', msTxt(avg), 'เวลาตอบเฉลี่ยของเว็บ', 'lv-' + latLv(avg)],
       ['SSL<30D', ssl, 'SSL ใกล้หมดอายุ', ssl ? 'lv-warn' : 'lv-good'],
       ['API.LAT', msTxt(HUD.lat), 'หน้าเว็บ ↔ เซิร์ฟเวอร์', 'lv-' + latLv(HUD.lat), 'ht-lat'],
-      ['LAST.SYNC', HUD.syncAt ? agoTxt(HUD.syncAt) : '—', 'ดึงข้อมูลล่าสุด', '', 'ht-sync']
+      ['PLESK.SYNC', SYNC.running ? 'กำลัง sync…' : lastPleskSync() ? agoTxt(lastPleskSync()) : '—', syncEvery() ? 'Sync อัตโนมัติทุก ' + (syncEvery() === 60 ? '1 ชม.' : syncEvery() + ' นาที') : 'Sync อัตโนมัติ: ปิด', '', 'ht-psync']
     ];
     var html = cells.map(function (c) {
       return '<div class="ht-cell"><span class="ht-k">' + c[0] + '</span><b class="ht-v ' + c[3] + '"' + (c[4] ? ' id="' + c[4] + '"' : '') + '>' + esc(String(c[1])) + '</b><span class="ht-d">' + esc(c[2]) + '</span></div>';
@@ -1599,6 +1596,116 @@
     return '<svg class="hn-spark" viewBox="0 0 100 28" preserveAspectRatio="none" aria-hidden="true"><polyline points="' + pts + '"/></svg>';
   }
 
+  /* ------------------------------------------------------------ 10f. SYNC PLESK (ปุ่มเด่น + อัตโนมัติ)
+     - กดได้จากเมนูซ้าย (ทุกหน้า) / หน้าศูนย์รวม / palette
+     - อัตโนมัติ: ขณะเปิดหน้าเว็บ จะสั่ง sync ตามรอบที่เลือก (เซิร์ฟเวอร์เองก็ sync ทุก 1 ชม. อยู่แล้ว)
+     - "ล่าสุด" คำนวณจาก pleskSyncedAt ของโดเมนที่เซิร์ฟเวอร์ส่งมา = เวลาจริงที่ sync ครั้งล่าสุด (รวมรอบของเซิร์ฟเวอร์)
+     ========================================================================== */
+  var SYNC = { running: false, err: null, result: null, bootAt: 0 };
+  var SYNC_OPTS = [[0, 'ปิด'], [15, '15 นาที'], [30, '30 นาที'], [60, '1 ชม.']];
+  function agoShort(t) { var s = Math.max(0, Math.round((Date.now() - t) / 1000)); return s < 60 ? 'เมื่อสักครู่' : s < 3600 ? Math.floor(s / 60) + ' นาทีก่อน' : s < 86400 ? Math.floor(s / 3600) + ' ชม.ก่อน' : Math.floor(s / 86400) + ' วันก่อน'; }
+  function syncEvery() { var v = parseInt(LS.get('di_sync_auto', '15'), 10); return isNaN(v) ? 15 : v; }
+  function lastPleskSync() {
+    var mx = 0;
+    domainsList().forEach(function (d) { if (d.pleskSyncedAt) { var t = Date.parse(d.pleskSyncedAt); if (t > mx) mx = t; } });
+    return mx || null;
+  }
+  function nextSyncAt() {
+    var ev = syncEvery(); if (!ev) return null;
+    var base = Math.max(lastPleskSync() || 0, +LS.get('di_sync_at', '0') || 0);
+    return base ? base + ev * 60000 : Date.now();
+  }
+  function conNote(prefix, text, ok) {
+    var e = CON.entries.filter(function (x) { return x.path.indexOf(prefix) === 0 && Date.now() - x.t0 < 300000; }).pop();
+    if (!e) return;
+    // ข้อความจบเดิม (คำตอบแรกของเซิร์ฟเวอร์) ย้ายขึ้นไปเป็นบรรทัด แล้วใช้ผลลัพธ์สุดท้ายเป็นบรรทัดจบแทน
+    if (e.end) addLine(e, e.end, e.state === 'err' ? 'err' : 'ok', e.state === 'err' ? '✗' : '✓');
+    e.end = text; e.state = ok ? 'ok' : 'err'; e.watch = null;
+    renderEntry(e); saveCon();
+  }
+  function renderSync() {
+    var last = lastPleskSync(), ev = syncEvery();
+    var sub = SYNC.running ? 'กำลัง sync…'
+      : SYNC.err ? 'ไม่สำเร็จ · กดลองใหม่'
+      : last ? agoShort(last) : 'ยังไม่เคย sync';
+    var s1 = $('#sync-sub'); if (s1 && s1.textContent !== sub) s1.textContent = sub;
+    var bd = $('#sync-badge');
+    if (bd) { var bt = ev ? 'AUTO ' + (ev === 60 ? '1ชม.' : ev + 'น.') : 'MANUAL'; if (bd.textContent !== bt) bd.textContent = bt; bd.classList.toggle('off', !ev); bd.title = ev ? 'Sync อัตโนมัติทุก ' + (ev === 60 ? '1 ชั่วโมง' : ev + ' นาที') + ' ขณะเปิดหน้าเว็บ' : 'ปิด Sync อัตโนมัติ (เซิร์ฟเวอร์ยัง sync เองทุก 1 ชม.)'; }
+    var pod = $('#sb-sync');
+    if (pod) { pod.classList.toggle('running', SYNC.running); pod.classList.toggle('err', !!SYNC.err && !SYNC.running); pod.classList.toggle('auto', !!ev); }
+    $$('[data-sync-now]').forEach(function (b) { b.classList.toggle('running', SYNC.running); if (b.tagName === 'BUTTON') b.disabled = SYNC.running; });
+    var ps = $('#ht-psync'); if (ps) ps.textContent = SYNC.running ? 'กำลัง sync…' : last ? agoTxt(last) : '—';
+    var menu = $('#sync-menu'); if (menu && menu.classList.contains('open')) renderSyncMenu();
+  }
+  function renderSyncMenu() {
+    var menu = $('#sync-menu'); if (!menu) return;
+    var last = lastPleskSync(), ev = syncEvery(), nx = nextSyncAt(), r = SYNC.result;
+    var html = '<div class="sm-h"><i class="ti ti-refresh"></i><b>Sync Plesk อัตโนมัติ</b></div>' +
+      '<div class="sm-seg" role="radiogroup" aria-label="รอบ Sync อัตโนมัติ">' + SYNC_OPTS.map(function (o) {
+        return '<button type="button" role="radio" aria-checked="' + (o[0] === ev) + '" class="' + (o[0] === ev ? 'on' : '') + '" data-sync-auto="' + o[0] + '">' + o[1] + '</button>';
+      }).join('') + '</div>' +
+      '<div class="sm-rows">' +
+        '<div><span>ล่าสุด</span><b>' + (last ? esc(fmtClock(new Date(last))) + ' น. <em>(' + esc(agoTxt(last)) + ')</em>' : 'ยังไม่เคย sync') + '</b></div>' +
+        '<div><span>รอบถัดไป</span><b>' + (SYNC.running ? 'กำลังทำ…' : ev ? (nx <= Date.now() ? 'เร็วๆ นี้' : '~' + esc(fmtClock(new Date(nx))) + ' น.') : '—') + '</b></div>' +
+        (r ? '<div><span>ผลครั้งล่าสุด</span><b>เพิ่มใหม่ ' + r.added + ' · รวม ' + r.total.toLocaleString() + '</b></div>' : '') +
+        (SYNC.err ? '<div class="sm-err"><i class="ti ti-alert-triangle"></i>' + esc(SYNC.err) + '</div>' : '') +
+      '</div>' +
+      '<button type="button" class="btn btn-green sm-go" data-sync-now' + (SYNC.running ? ' disabled' : '') + '><i class="ti ti-refresh"></i> Sync ตอนนี้</button>' +
+      '<p class="sm-note">เซิร์ฟเวอร์ sync เองทุก 1 ชม. เสมอ (แม้ไม่ได้เปิดเว็บ) · ตัวตั้งเวลานี้ช่วย sync ถี่ขึ้นขณะเปิดหน้าเว็บค้างไว้</p>';
+    if (menu.__html !== html) { menu.__html = html; menu.innerHTML = html; }
+  }
+  function toggleSyncMenu(force) {
+    var menu = $('#sync-menu'), btn = $('[data-sync-menu]'); if (!menu) return;
+    var open = force != null ? force : !menu.classList.contains('open');
+    if (open) { closeMenus(); renderSyncMenu(); }
+    menu.classList.toggle('open', open); if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  D.syncPlesk = function (opt) {
+    opt = opt || {};
+    if (SYNC.running) { if (!opt.auto && typeof window.toast === 'function') window.toast('กำลัง Sync อยู่แล้ว…', 'info'); return; }
+    SYNC.running = true; SYNC.err = null; renderSync();
+    LS.set('di_sync_at', String(Date.now()));
+    var before = lastPleskSync() || 0, names = {}, t0 = Date.now();
+    domainsList().forEach(function (d) { names[d.domain] = 1; });
+    var finish = function (ok, msg) {
+      SYNC.running = false; SYNC.err = ok ? null : msg; renderSync();
+      if (typeof window.toast !== 'function') return;
+      if (ok) {
+        var r = SYNC.result;
+        conNote('/api/plesk/sync', 'Sync เสร็จ: เพิ่มโดเมนใหม่ ' + r.added + ' · รวม ' + r.total.toLocaleString() + ' โดเมน · ใช้เวลา ' + durTxt(r.ms), true);
+        if (!opt.auto || r.added) window.toast('✅ Sync Plesk เสร็จ — ' + (r.added ? 'เพิ่มโดเมนใหม่ <b>' + r.added + '</b> · ' : 'ไม่มีโดเมนใหม่ · ') + 'รวม ' + r.total.toLocaleString() + ' โดเมน', 'success');
+      } else {
+        conNote('/api/plesk/sync', msg, false);
+        if (!opt.auto) window.toast('Sync Plesk ไม่สำเร็จ: ' + esc(msg), 'error');
+      }
+    };
+    fetch(apiBase() + '/api/plesk/sync', { method: 'POST', credentials: 'include' })
+      .then(function (r) { return r.json().catch(function () { return {}; }).then(function (j) { return { ok: r.ok, status: r.status, j: j }; }); })
+      .then(function (res) {
+        if (!res.ok || res.j.error || res.j.success === false) throw new Error(res.j.error || ('HTTP ' + res.status));
+        var tries = 0;
+        var poll = function () {
+          tries++;
+          Promise.resolve(typeof window.loadData === 'function' ? window.loadData() : null).then(safe(function () {
+            if ((lastPleskSync() || 0) > before) {
+              var list = domainsList();
+              SYNC.result = { at: Date.now(), added: list.filter(function (d) { return !names[d.domain]; }).length, total: list.length, ms: Date.now() - t0 };
+              finish(true);
+            } else if (tries >= 12) finish(false, 'เซิร์ฟเวอร์รับคำสั่งแล้ว แต่ยังไม่ได้ข้อมูลใหม่จาก Plesk ภายใน 1 นาที (อาจต่อ Plesk ไม่ได้ — ดู Server Manager)');
+            else setTimeout(poll, 5000);
+          }), function () { if (tries >= 12) finish(false, 'โหลดข้อมูลใหม่ไม่ได้'); else setTimeout(poll, 5000); });
+        };
+        setTimeout(poll, 3500);
+      })
+      .catch(function (e) { finish(false, (e && e.message) || 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้'); });
+  };
+  function syncAutoTick() {
+    if (SYNC.running || !syncEvery() || !shown($('#main-app'))) return;
+    if (!SYNC.bootAt || Date.now() - SYNC.bootAt < 60000) return;   // ให้หน้าโหลดข้อมูลรอบแรกก่อน 1 นาที
+    if (SYNC.err && Date.now() - (+LS.get('di_sync_at', '0') || 0) < syncEvery() * 60000) return;
+    var nx = nextSyncAt(); if (nx && nx <= Date.now()) D.syncPlesk({ auto: true });
+  }
+
   /* ------------------------------------------------------------ 11. LOGIN */
   function initLogin() {
     var pass = $('#login-pass'), eye = $('#lg-eye'), caps = $('#lg-caps');
@@ -1636,6 +1743,7 @@
     var u = $('#logged-user'), av = $('#sb-avatar');
     if (u && av) av.textContent = (u.textContent || 'A').trim().charAt(0).toUpperCase() || 'A';
     buildConsole(); root.classList.add('di-con-on');
+    SYNC.bootAt = Date.now(); renderSync();
     var p = currentPage();
     if (p) onNav(p.id);
     D.renderHero();
@@ -1652,9 +1760,9 @@
     syncThemeMeta();
 
     if (isMac) $$('kbd').forEach(function (k) { if (k.textContent === 'Ctrl K') k.textContent = '⌘K'; });
-    // HUD: เส้นสแกน + เวลา
-    var fxl = el('div', '', '<i class="hf-beam"></i><i class="hf-pass"></i>'); fxl.id = 'hud-fx'; fxl.setAttribute('aria-hidden', 'true'); doc.body.appendChild(fxl);
+    // HUD: ปุ่ม ✨ + นาฬิกา
     syncFxBtn(); hudTick(); setInterval(hudTick, 1000);
+    setInterval(safe(syncAutoTick), 20000);
 
     // ห่อฟังก์ชันเดิม
     after('showPage', function (name) { onNav('page-' + name); });
@@ -1678,9 +1786,12 @@
       if (t.closest('.hub-q')) { e.preventDefault(); var hv = $('#hub-q'); D.openPalette(hv ? hv.value : ''); if (hv) hv.value = ''; return; }
       if (t.closest('#ab-theme')) { D.toggleTheme(t.closest('#ab-theme')); return; }
       if (t.closest('#ab-fx')) { D.fx.toggle(); return; }
+      var sa = t.closest('[data-sync-auto]'); if (sa) { LS.set('di_sync_auto', sa.getAttribute('data-sync-auto')); renderSync(); renderSyncMenu(); D.renderHub(); renderTele(); return; }
+      if (t.closest('[data-sync-now]')) { e.preventDefault(); toggleSyncMenu(false); D.syncPlesk({}); return; }
+      if (t.closest('[data-sync-menu]')) { toggleSyncMenu(); return; }
       var tk = t.closest('#tk-track [data-dom]'); if (tk) { D.findDomain(tk.getAttribute('data-dom')); return; }
       if (t.closest('#sb-mini-btn')) { D.toggleMini(); return; }
-      if (!t.closest('.di-more')) closeMenus();
+      if (!t.closest('.di-more, .sb-sync')) closeMenus();
       if (t.closest('#main-nav .nav-item') && innerWidth <= 900 && typeof window.closeSidebar === 'function') window.closeSidebar();
     });
     var navEl = $('#main-nav');
