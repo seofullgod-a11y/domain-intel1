@@ -3,394 +3,76 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>DomainIntel — SEO Domain Dashboard</title>
+<title>DomainIntel — Ops Console</title>
+<meta name="theme-color" content="#07080c" />
+<meta name="color-scheme" content="dark light" />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0' stop-color='%2334d399'/%3E%3Cstop offset='1' stop-color='%2322d3ee'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect x='2' y='2' width='44' height='44' rx='13' fill='url(%23g)'/%3E%3Ccircle cx='24' cy='24' r='6.2' fill='none' stroke='%2303140e' stroke-width='3'/%3E%3Cpath d='M24 11.4a12.6 12.6 0 0 1 12.6 12.6' fill='none' stroke='%2303140e' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E" />
+<script>
+/* ตั้งธีม + โหมดเมนูก่อนวาดหน้าจอ (กันจอกระพริบ) */
+(function(){try{var t=localStorage.getItem('di_theme');if(t==='light')document.documentElement.classList.add('light');
+if(localStorage.getItem('di_sb_mini')==='1')document.documentElement.classList.add('sb-mini');
+if(localStorage.getItem('di_fx')!=='off')document.documentElement.classList.add('fx-hud');}catch(e){document.documentElement.classList.add('fx-hud');}})();
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Anuphan:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.48.0/dist/tabler-icons.min.css" />
+<link rel="stylesheet" href="ui/di-ui.css?v=3.2.0" onerror="document.documentElement.classList.add('di-css-missing')" />
 <style>
-:root {
-  /* ===== DARK MODE (default) — Black + Emerald/Gold + Glow ===== */
-  --bg:      #0a0a0b;
-  --bg2:     #131316;
-  --bg3:     #1c1c21;
-  --bg4:     #28282f;
-  --border:  rgba(255,255,255,0.06);
-  --border2: rgba(255,255,255,0.12);
-  --text:    #ededf0;
-  --text2:   #9b9ba5;
-  --text3:   #5a5a66;
-  --teal:    #34d399;
-  --teal-dim:rgba(52,211,153,0.12);
-  --green:   #34d399;
-  --green-dim:rgba(52,211,153,0.12);
-  --gold:    #fbbf24;
-  --gold-dim:rgba(251,191,36,0.12);
-  --red:     #f87171;
-  --red-dim: rgba(248,113,113,0.12);
-  --amber:   #fbbf24;
-  --amber-dim:rgba(251,191,36,0.12);
-  --blue:    #38bdf8;
-  --blue-dim:rgba(56,189,248,0.12);
-  --purple:  #c084fc;
-  --purple-dim:rgba(192,132,252,0.12);
-  --radius:  10px;
-  --radius-sm: 6px;
-  --sidebar-w: 220px;
-  --font: 'IBM Plex Sans Thai', sans-serif;
-  --mono: 'IBM Plex Mono', monospace;
-  --shadow: 0 1px 3px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.4);
-  --shadow-md: 0 4px 20px rgba(0,0,0,0.6);
-  --glow-green: 0 0 20px rgba(52,211,153,0.15);
-  --glow-gold: 0 0 20px rgba(251,191,36,0.15);
-}
-
-/* ===== LIGHT MODE ===== */
-html.light {
-  --bg:      #f0f4f8;
-  --bg2:     #ffffff;
-  --bg3:     #f7fafc;
-  --bg4:     #edf2f7;
-  --border:  rgba(0,0,0,0.08);
-  --border2: rgba(0,0,0,0.14);
-  --text:    #1a202c;
-  --text2:   #4a5568;
-  --text3:   #a0aec0;
-  --teal:    #0284c7;
-  --teal-dim:rgba(2,132,199,0.1);
-  --green:   #059669;
-  --green-dim:rgba(5,150,105,0.1);
-  --red:     #dc2626;
-  --red-dim: rgba(220,38,38,0.1);
-  --amber:   #d97706;
-  --amber-dim:rgba(217,119,6,0.1);
-  --blue:    #2563eb;
-  --blue-dim:rgba(37,99,235,0.1);
-  --shadow: 0 1px 3px rgba(0,0,0,0.1), 0 1px 2px rgba(0,0,0,0.06);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.12);
-}
-* { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; }
-body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 13px; line-height: 1.5; transition: background 0.2s, color 0.2s; }
-
-/* SCROLLBAR */
-::-webkit-scrollbar { width: 5px; height: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text3); }
-
-/* LAYOUT */
-.app { display: flex; height: 100vh; overflow: hidden; }
-.sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--bg2); border-right: 1px solid var(--border); display: flex; flex-direction: column; padding: 0; overflow-y: auto; transition: background 0.2s; }
-.main { flex: 1; overflow-y: auto; display: flex; flex-direction: column; background: var(--bg); }
-
-/* ===== SIDEBAR ===== */
-.logo { padding: 18px 16px 14px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
-.logo-icon { width: 30px; height: 30px; background: linear-gradient(135deg,var(--teal),var(--green)); border-radius: 7px; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #fff; font-weight: 700; flex-shrink: 0; box-shadow: 0 2px 8px rgba(14,165,233,0.35); }
-.logo-text { font-size: 13px; font-weight: 600; color: var(--text); letter-spacing: 0; font-family: var(--font); }
-.logo-text span { color: var(--teal); }
-.logo-ver { font-size: 10px; color: var(--text3); margin-top: 1px; }
-.nav { padding: 8px 0; flex: 1; overflow-y: auto; scrollbar-width: none; }
-.nav::-webkit-scrollbar { display: none; }
-.nav-section { font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text3); padding: 12px 16px 4px; font-weight: 600; }
-.nav-item { display: flex; align-items: center; gap: 9px; padding: 7px 16px; border-radius: 0; border-left: 2px solid transparent; cursor: pointer; color: var(--text2); font-size: 12px; font-family: var(--font); transition: all 0.12s; margin-bottom: 1px; }
-.nav-item:hover { background: var(--bg3); color: var(--text); }
-.nav-item.active { background: rgba(52,211,153,0.1); color: var(--teal); border-left-color: var(--teal); font-weight: 500; box-shadow: inset 0 0 20px rgba(52,211,153,0.05); }
-.nav-item i { width: 15px; text-align: center; font-size: 14px; flex-shrink: 0; opacity: 0.8; }
-.nav-item.active i { opacity: 1; }
-.nav-badge { margin-left: auto; font-size: 10px; padding: 1px 6px; border-radius: 10px; font-weight: 600; background: var(--red-dim); color: var(--red); }
-.nav-badge.amber { background: var(--amber-dim); color: var(--amber); }
-.nav-badge.green { background: var(--green-dim); color: var(--green); }
-.sidebar-footer { padding: 12px 16px; border-top: 1px solid var(--border); }
-.status-indicator { display: flex; align-items: center; gap: 7px; font-size: 11px; color: var(--text2); padding: 4px 0; }
-.dot-live { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; box-shadow: 0 0 6px var(--green); }
-@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
-@keyframes pulse { 0%,100%{opacity:1;box-shadow:0 0 6px var(--green)} 50%{opacity:0.6;box-shadow:0 0 12px var(--green)} }
-
-/* ===== TOPBAR ===== */
-.topbar { display: flex; align-items: center; padding: 10px 20px; gap: 10px; border-bottom: 1px solid var(--border); background: var(--bg2); flex-shrink: 0; box-shadow: var(--shadow); }
-.topbar-title { font-size: 14px; font-weight: 600; color: var(--text); }
-.topbar-sub { font-size: 11px; color: var(--text3); margin-top: 1px; }
-.topbar-right { margin-left: auto; display: flex; gap: 6px; align-items: center; }
-
-/* ===== BUTTONS ===== */
-.btn { padding: 6px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg3); color: var(--text2); font-size: 12px; cursor: pointer; font-family: var(--font); display: inline-flex; align-items: center; gap: 5px; transition: all 0.15s; white-space: nowrap; font-weight: 500; }
-.btn:hover { background: var(--bg4); color: var(--text); border-color: var(--text3); }
-.btn i { font-size: 13px; }
-.btn-green { background: var(--teal); color: #fff; border-color: var(--teal); font-weight: 600; }
-.btn-green:hover { background: #0284c7; border-color: #0284c7; color: #fff; }
-.btn-red { background: var(--red-dim); color: var(--red); border-color: rgba(239,68,68,0.3); }
-.btn-red:hover { background: rgba(239,68,68,0.2); }
-.btn-ghost { background: transparent; border-color: transparent; color: var(--text2); }
-.btn-ghost:hover { background: var(--bg3); color: var(--text); }
-.btn-amber { background: var(--amber-dim); color: var(--amber); border-color: rgba(245,158,11,0.3); }
-.btn-amber:hover { background: rgba(245,158,11,0.2); }
-.btn-sm { padding: 4px 9px; font-size: 11px; }
-.btn-icon { padding: 6px 8px; }
-
-/* DARK MODE TOGGLE */
-.theme-toggle { width: 34px; height: 18px; background: var(--bg4); border: 1px solid var(--border2); border-radius: 10px; cursor: pointer; position: relative; transition: background 0.2s; flex-shrink: 0; }
-.theme-toggle.on { background: var(--teal); border-color: var(--teal); }
-.theme-toggle::after { content: ''; position: absolute; width: 12px; height: 12px; background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
-.theme-toggle.on::after { left: 18px; }
-.theme-toggle-wrap { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text2); }
-
-/* ===== CONTENT ===== */
-.content { padding: 16px 20px; flex: 1; }
-
-/* ===== METRIC CARDS ===== */
-.metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 10px; margin-bottom: 18px; }
-.metric-card { background: linear-gradient(145deg, var(--bg2), var(--bg)); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; position: relative; overflow: hidden; transition: all 0.2s; box-shadow: var(--shadow); }
-.metric-card:hover { border-color: var(--border2); box-shadow: var(--shadow-md), var(--glow-green); transform: translateY(-1px); }
-.metric-card::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2px; background: var(--teal); opacity: 0; transition: opacity 0.15s; }
-.metric-card.highlight-green { border-color: rgba(52,211,153,0.25); box-shadow: var(--shadow), 0 0 24px rgba(52,211,153,0.08); }
-.metric-card.highlight-green::after { background: var(--green); opacity: 0.7; box-shadow: 0 0 12px var(--green); }
-.metric-card.highlight-red { border-color: rgba(248,113,113,0.25); box-shadow: var(--shadow), 0 0 24px rgba(248,113,113,0.08); }
-.metric-card.highlight-red::after { background: var(--red); opacity: 0.7; box-shadow: 0 0 12px var(--red); }
-.metric-card.highlight-amber { border-color: rgba(251,191,36,0.25); box-shadow: var(--shadow), 0 0 24px rgba(251,191,36,0.08); }
-.metric-card.highlight-amber::after { background: var(--amber); opacity: 0.7; box-shadow: 0 0 12px var(--amber); }
-.metric-card.highlight-blue { border-color: rgba(96,165,250,0.2); }
-.metric-card.highlight-blue::after { background: var(--blue); opacity: 0.6; }
-.metric-card.clickable { cursor: pointer; }
-.metric-card.clickable:hover { background: var(--bg3); border-color: var(--border2); transform: translateY(-1px); box-shadow: var(--shadow-md); }
-.metric-card.clickable:hover::after { opacity: 1; }
-.metric-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; display: flex; align-items: center; gap: 5px; font-weight: 600; }
-.metric-val { font-size: 26px; font-weight: 700; color: var(--text); font-family: var(--mono); line-height: 1; }
-.metric-val.green { color: var(--green); }
-.metric-val.red { color: var(--red); }
-.metric-val.amber { color: var(--amber); }
-.metric-val.blue { color: var(--teal); }
-.metric-sub { font-size: 11px; color: var(--text3); margin-top: 5px; }
-
-/* ===== TOOLBAR ===== */
-.toolbar { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
-.search-box { position: relative; flex: 1; min-width: 200px; }
-.search-box i { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text3); font-size: 13px; }
-.search-box input { width: 100%; padding: 7px 12px 7px 32px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
-.search-box input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(14,165,233,0.1); }
-.search-box input::placeholder { color: var(--text3); }
-select.sel { padding: 7px 12px; background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 12px; font-family: var(--font); outline: none; cursor: pointer; }
-select.sel:focus { border-color: var(--teal); }
-select.sel option { background: var(--bg2); }
-
-/* ===== TABS ===== */
-.tabs { display: flex; gap: 0; margin-bottom: 14px; border-bottom: 1px solid var(--border); overflow-x: auto; scrollbar-width: none; }
-.tabs::-webkit-scrollbar { display: none; }
-.tab { padding: 8px 14px; font-size: 12px; cursor: pointer; color: var(--text2); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; transition: all 0.12s; display: flex; align-items: center; gap: 6px; font-weight: 500; }
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--teal); border-bottom-color: var(--teal); }
-.tab-count { background: var(--bg3); border-radius: 10px; font-size: 10px; padding: 1px 6px; }
-.tab.active .tab-count { background: var(--teal-dim); color: var(--teal); }
-
-/* ===== TABLE ===== */
-.table-container { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
-.table-wrap { overflow-x: auto; }
-table { width: 100%; border-collapse: collapse; }
-thead th { padding: 10px 14px; text-align: left; font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; background: var(--bg3); border-bottom: 1px solid var(--border); white-space: nowrap; cursor: pointer; user-select: none; }
-thead th:hover { color: var(--text2); }
-thead th.sort-asc::after { content: ' ↑'; color: var(--teal); }
-thead th.sort-desc::after { content: ' ↓'; color: var(--teal); }
-tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
-tbody tr:last-child { border-bottom: none; }
-tbody tr:hover { background: var(--bg3); }
-tbody td { padding: 10px 14px; font-size: 12px; color: var(--text); vertical-align: middle; }
-.domain-name { font-family: var(--mono); font-size: 12px; color: var(--teal); font-weight: 500; }
-.domain-name a { color: inherit; text-decoration: none; }
-.domain-name a:hover { opacity: 0.8; text-decoration: underline; }
-
-/* ===== BADGES ===== */
-.badge { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600; padding: 3px 8px; border-radius: 20px; }
-.badge-up { background: var(--green-dim); color: var(--green); }
-.badge-down { background: var(--red-dim); color: var(--red); }
-.badge-warn { background: var(--amber-dim); color: var(--amber); }
-.badge-unknown { background: var(--bg4); color: var(--text3); border: 1px solid var(--border); }
-.badge-blue { background: var(--blue-dim); color: var(--blue); border: 1px solid rgba(0,170,255,0.2); }
-
-/* TRAFFIC BAR */
-.traffic-wrap { display: flex; align-items: center; gap: 8px; min-width: 120px; }
-.traffic-bar-bg { flex: 1; height: 5px; background: var(--bg4); border-radius: 3px; overflow: hidden; }
-.traffic-bar-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
-.traffic-val { font-family: var(--mono); font-size: 12px; min-width: 40px; text-align: right; color: var(--text2); }
-
-/* KW BADGES */
-.kw-pos { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
-.kw-top1 { color: var(--green); }
-.kw-top3 { color: #34d399; }
-.kw-top10 { color: var(--blue); }
-.kw-top30 { color: var(--amber); }
-.kw-none { color: var(--text3); }
-
-/* EXPIRY */
-.expiry-ok { color: var(--text2); font-size: 12px; }
-.expiry-warn { color: var(--amber); font-size: 12px; font-weight: 500; }
-.expiry-danger { color: var(--red); font-size: 12px; font-weight: 600; }
-
-/* ACTIONS */
-.action-group { display: flex; gap: 4px; }
-.action-btn { width: 28px; height: 28px; border-radius: var(--radius-sm); border: 1px solid transparent; background: transparent; color: var(--text3); cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: all 0.15s; }
-.action-btn:hover { background: var(--bg4); color: var(--text); border-color: var(--border); }
-.action-btn.danger:hover { background: var(--red-dim); color: var(--red); border-color: rgba(240,82,82,0.3); }
-
-/* PAGINATION */
-.pagination { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text3); }
-.page-btns { display: flex; gap: 4px; }
-.page-btn { padding: 4px 10px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text2); cursor: pointer; font-size: 12px; font-family: var(--font); }
-.page-btn:hover { background: var(--bg4); }
-.page-btn.active { background: var(--teal); color: #fff; border-color: var(--teal); font-weight: 600; }
-.page-btn:disabled { opacity: 0.4; cursor: default; }
-
-/* MODAL */
-.modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.7); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
-.modal { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 28px; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-md); }
-.modal-title { font-size: 16px; font-weight: 600; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
-.form-group { margin-bottom: 16px; }
-.form-label { font-size: 12px; color: var(--text2); margin-bottom: 6px; display: block; font-weight: 500; }
-.form-input { width: 100%; padding: 9px 12px; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text); font-size: 13px; font-family: var(--font); outline: none; transition: border-color 0.15s; }
-.form-input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(14,165,233,0.1); }
-.form-input::placeholder { color: var(--text3); }
-textarea.form-input { resize: vertical; min-height: 80px; }
-.form-hint { font-size: 11px; color: var(--text3); margin-top: 4px; }
-.modal-footer { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
-.close-btn { position: absolute; right: 20px; top: 20px; }
-
-/* LOADING */
-.loading { display: flex; align-items: center; gap: 8px; color: var(--text3); font-size: 13px; padding: 40px; justify-content: center; }
-.spinner { width: 16px; height: 16px; border: 2px solid var(--bg4); border-top-color: var(--teal); border-radius: 50%; animation: spin 0.7s linear infinite; }
-@keyframes spin { to { transform: rotate(360deg); } }
-
-/* TOAST */
-.toast-container { position: fixed; bottom: 24px; right: 24px; display: flex; flex-direction: column; gap: 8px; z-index: 9999; }
-.toast { background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius); padding: 12px 16px; font-size: 13px; display: flex; align-items: center; gap: 10px; min-width: 280px; animation: slideIn 0.2s ease; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
-.toast.success { border-color: rgba(16,185,129,0.3); background: var(--bg2); }
-.toast.error { border-color: rgba(239,68,68,0.3); background: var(--bg2); }
-.toast i { font-size: 16px; }
-.toast.success i { color: var(--green); }
-.toast.error i { color: var(--red); }
-.toast.info i { color: var(--teal); }
-@keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
-
-/* DETAIL PANEL */
-.detail-panel { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-top: 16px; }
-.detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 16px; }
-.detail-item { background: var(--bg3); border-radius: var(--radius-sm); padding: 12px; }
-.detail-item-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
-.detail-item-val { font-size: 15px; font-weight: 600; font-family: var(--mono); }
-.kw-table-wrap { max-height: 300px; overflow-y: auto; }
-.kw-table-wrap table th { position: sticky; top: 0; z-index: 1; }
-
-/* GSC CONNECT BANNER */
-.gsc-banner { background: linear-gradient(135deg, var(--bg3), var(--bg2)); border: 1px solid rgba(96,165,250,0.2); border-radius: var(--radius); padding: 20px; margin-bottom: 20px; display: flex; align-items: center; gap: 16px; }
-.gsc-banner-icon { font-size: 28px; }
-.gsc-banner-text h3 { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-.gsc-banner-text p { font-size: 12px; color: var(--text2); }
-.gsc-banner-action { margin-left: auto; }
-
-/* SETTINGS PAGE */
-.settings-section { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
-.settings-section-title { font-size: 14px; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; color: var(--text); }
-.settings-section-title i { color: var(--teal); }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.server-status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 4px 10px; border-radius: 20px; }
-.server-ok { background: var(--green-dim); color: var(--green); }
-.server-err { background: var(--red-dim); color: var(--red); }
-
-/* EMPTY STATE */
-.empty-state { padding: 60px 20px; text-align: center; color: var(--text3); }
-.empty-state i { font-size: 40px; margin-bottom: 12px; display: block; }
-.empty-state h3 { font-size: 15px; color: var(--text2); margin-bottom: 6px; }
-.empty-state p { font-size: 13px; }
-
-/* PROGRESS */
-.progress-bar { height: 3px; background: var(--bg4); border-radius: 2px; overflow: hidden; margin-top: 8px; }
-.progress-fill { height: 100%; background: var(--green); border-radius: 2px; transition: width 0.3s; }
-
-/* RESPONSIVE MOBILE */
-.mobile-menu-btn { display:none; position:fixed; top:12px; left:12px; z-index:1000; background:var(--bg2); border:1px solid var(--border2); border-radius:var(--radius-sm); padding:8px 10px; cursor:pointer; color:var(--text); }
-.sidebar-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.5); z-index:998; }
-
-@media (max-width: 768px) {
-  .app { flex-direction: column; }
-  .mobile-menu-btn { display:flex; align-items:center; gap:6px; }
-  .sidebar { 
-    position: fixed; left: -240px; top: 0; bottom: 0; z-index: 999;
-    width: 240px !important; min-width: 240px !important;
-    transition: left 0.25s ease;
-    box-shadow: 4px 0 20px rgba(0,0,0,0.4);
-  }
-  .sidebar.open { left: 0; }
-  .sidebar-overlay.open { display: block; }
-  .content { padding: 12px; padding-top: 52px; }
-  .form-row { grid-template-columns: 1fr; }
-  .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
-  .stat-card { padding: 12px; }
-  .topbar { flex-wrap: wrap; gap: 8px; padding: 8px 12px; }
-  .topbar h2 { font-size: 14px; }
-  .btn { padding: 6px 10px; font-size: 12px; }
-  table { font-size: 12px; }
-  table th, table td { padding: 6px 8px; }
-  /* ซ่อนคอลัมน์ที่ไม่จำเป็นบนมือถือ */
-  .col-traffic, .col-keywords, .col-ssl, .col-clicks { display: none; }
-  .domain-name { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .modal { margin: 12px; width: calc(100% - 24px); max-width: 100%; }
-  .bulk-bar-inner { flex-wrap: wrap; }
-  #progress-modal .modal { margin: 12px; }
-}
-.ov-flow-item { display:inline-flex; align-items:center; gap:5px; background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius-sm); padding:5px 10px; font-size:11px; color:var(--text); }
-.ov-auto-row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid var(--border); font-size:11px; }
-.ov-auto-row:last-child { border-bottom:none; }
-.ov-pill { font-size:10px; padding:1px 7px; border-radius:10px; border:1px solid var(--border2); color:var(--text2); white-space:nowrap; }
-.ov-rule-card { background:var(--bg3); border:1px solid var(--border); border-radius:var(--radius-sm); padding:10px; }
-.ov-integ-row { display:flex; align-items:center; gap:8px; padding:5px 0; border-bottom:1px solid var(--border); font-size:11px; }
-.ov-integ-row:last-child { border-bottom:none; }
-.ov-server-card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--radius); padding:14px; }
-.ov-badge { display:inline-flex; align-items:center; gap:3px; font-size:10px; font-weight:600; padding:2px 7px; border-radius:10px; }
-.ov-badge-green { background:var(--green-dim); color:var(--green); }
-.ov-badge-amber { background:var(--amber-dim); color:var(--amber); }
-.ov-badge-red { background:var(--red-dim); color:var(--red); }
-.ov-badge-gray { background:var(--bg4); color:var(--text2); }
-@keyframes loadbar {
-  0%{width:10%;margin-left:0}
-  50%{width:50%;margin-left:30%}
-  100%{width:10%;margin-left:90%}
-}
-
-/* favorites star (added feature) */
-.nav-item { position: relative; }
-.nav-fav-star { position:absolute; right:8px; top:50%; transform:translateY(-50%); cursor:pointer; opacity:0; font-size:13px; color:var(--text3,#888); transition:opacity .12s,color .12s; z-index:2; padding:2px; }
-.nav-item:hover .nav-fav-star { opacity:0.5; }
-.nav-fav-star:hover { opacity:1 !important; color:#f5c518; }
-.nav-fav-star.faved { opacity:1; color:#f5c518; }
-.nav-fav-section .nav-fav-star.faved { color:#f5c518; }
+/* กันพัง: ถ้าไฟล์ ui/di-ui.css ไม่ถูก deploy จะมีแถบเตือนสีแดงบนสุด */
+html.di-css-missing body::before{content:'⚠ ไม่พบไฟล์ public/ui/di-ui.css — ต้อง deploy โฟลเดอร์ ui ด้วย';position:fixed;top:0;left:0;right:0;z-index:99999;background:#b91c1c;color:#fff;font:600 14px/1.4 sans-serif;padding:10px 16px;text-align:center}
 </style>
+<script src="ui/di-ui.js?v=3.2.0" defer></script>
 </head>
 <body>
 
+<div id="di-splash" aria-hidden="true"><div><div class="sp-mark"><svg class="di-logo-svg" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="dlg-sp" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset=".55" stop-color="#2dd4bf"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#dlg-sp)"/><g fill="none" stroke="#03140e" stroke-width="2.6" stroke-linecap="round"><circle cx="24" cy="24" r="6.2"/><g class="o1"><path d="M24 11.4a12.6 12.6 0 0 1 12.6 12.6"/></g><g class="o2"><path d="M24 36.6A12.6 12.6 0 0 1 11.4 24" opacity=".5"/></g></g><circle cx="24" cy="24" r="2.3" fill="#03140e"/></svg></div><div class="sp-bar"><i></i></div></div></div>
+<div id="di-progress"><i></i></div>
+
 <!-- LOGIN PAGE -->
-<div id="login-page" style="display:none;position:fixed;inset:0;background:var(--bg1);z-index:9999;align-items:center;justify-content:center">
-  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:40px;width:100%;max-width:400px;margin:20px">
-    <div style="text-align:center;margin-bottom:32px">
-      <div style="width:56px;height:56px;background:linear-gradient(135deg,var(--green),#34d399);border-radius:14px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center">
-        <i class="ti ti-globe" style="font-size:28px;color:#fff"></i>
+<div id="login-page" style="display:none">
+  <div class="lg-aurora"><i></i><i></i><i></i></div>
+  <div class="lg-grid"></div>
+  <div class="lg-shell">
+    <section class="lg-hero">
+      <div class="lg-hero-kicker"><span class="dot"></span> ระบบเฝ้าระวังทำงานตลอด 24 ชม.</div>
+      <h2>ดูแลทุกโดเมน<br><em>ในจอเดียว</em></h2>
+      <p>สถานะเว็บ · Cloudflare · เซิร์ฟเวอร์ Plesk · SEO — เห็นปัญหาก่อนลูกค้าเห็น และแก้ได้ในคลิกเดียว</p>
+      <div class="lg-feats">
+        <div class="lg-feat"><div class="lg-feat-ic" style="color:var(--green);background:var(--green-dim)"><i class="ti ti-radar"></i></div><div><b>เฝ้าระวังอัตโนมัติ</b><span>เช็คทุกเว็บตลอดเวลา แจ้งเตือนทันทีทาง Telegram</span></div></div>
+        <div class="lg-feat"><div class="lg-feat-ic" style="color:var(--blue);background:var(--blue-dim)"><i class="ti ti-cloud-check"></i></div><div><b>Cloudflare ครบวงจร</b><span>Cache · WAF · DNS · ปลด Pause ในที่เดียว</span></div></div>
+        <div class="lg-feat"><div class="lg-feat-ic" style="color:var(--purple);background:var(--purple-dim)"><i class="ti ti-robot"></i></div><div><b>ทีม AI ช่วยแก้ปัญหา</b><span>วินิจฉัยและแก้งานที่ปลอดภัยให้อัตโนมัติ</span></div></div>
       </div>
-      <h1 style="margin:0;font-size:22px;font-weight:700">DomainIntel</h1>
-      <p style="margin:8px 0 0;color:var(--text3);font-size:13px">SEO Domain Intelligence Dashboard</p>
-    </div>
-    <div style="margin-bottom:24px">
-      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">Password</label>
-      <input id="login-pass" type="password" placeholder="••••••••" class="form-input" style="width:100%;box-sizing:border-box"
-        onkeydown="if(event.key==='Enter')doLogin()" />
-    </div>
-    <div id="login-otp-wrap" style="margin-bottom:24px;display:none">
-      <label style="font-size:12px;color:var(--text3);display:block;margin-bottom:6px">รหัส 2FA (6 หลักจากแอป Authenticator)</label>
-      <input id="login-otp" type="text" inputmode="numeric" maxlength="6" placeholder="123456" class="form-input" style="width:100%;box-sizing:border-box;letter-spacing:4px;text-align:center"
-        onkeydown="if(event.key==='Enter')doLogin()" />
-    </div>
-    <button onclick="doLogin()" class="btn btn-green" style="width:100%;padding:12px;font-size:14px;justify-content:center">
-      <i class="ti ti-login"></i> เข้าสู่ระบบ
-    </button>
-    <div id="login-error" style="display:none;color:var(--red);font-size:12px;text-align:center;margin-top:12px"></div>
-    <div style="text-align:center;margin-top:20px;font-size:11px;color:var(--text3)">DomainIntel v1.0 · Secure Access</div>
+    </section>
+    <section class="lg-right">
+      <svg class="lg-orbit" viewBox="0 0 700 700" aria-hidden="true">
+        <circle class="rg" cx="350" cy="350" r="190"/><circle class="rg d" cx="350" cy="350" r="265"/><circle class="rg" cx="350" cy="350" r="340"/>
+        <g class="orb orb1"><circle class="pt g" cx="350" cy="160" r="6"/><circle class="pt c" cx="540" cy="350" r="4"/></g>
+        <g class="orb orb2"><circle class="pt v" cx="85" cy="350" r="5"/><circle class="pt g" cx="350" cy="615" r="4"/></g>
+        <g class="orb orb3"><circle class="pt c" cx="350" cy="10" r="5"/><circle class="pt w" cx="590" cy="590" r="4"/></g>
+      </svg>
+      <div class="lg-card" id="lg-card">
+        <div class="lg-logo"><svg class="di-logo-svg" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="dlg-lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset=".55" stop-color="#2dd4bf"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#dlg-lg)"/><g fill="none" stroke="#03140e" stroke-width="2.6" stroke-linecap="round"><circle cx="24" cy="24" r="6.2"/><g class="o1"><path d="M24 11.4a12.6 12.6 0 0 1 12.6 12.6"/></g><g class="o2"><path d="M24 36.6A12.6 12.6 0 0 1 11.4 24" opacity=".5"/></g></g><circle cx="24" cy="24" r="2.3" fill="#03140e"/></svg></div>
+        <h1 class="lg-title">Domain<span>Intel</span></h1>
+        <p class="lg-sub">เข้าสู่ระบบเพื่อจัดการโดเมนทั้งหมดของคุณ</p>
+        <label class="lg-label" for="login-pass">รหัสผ่าน</label>
+        <div class="lg-field">
+          <i class="ti ti-lock"></i>
+          <input id="login-pass" type="password" placeholder="กรอกรหัสผ่าน" class="form-input" autocomplete="current-password"
+            onkeydown="if(event.key==='Enter')doLogin()" />
+          <button type="button" class="lg-eye" id="lg-eye" aria-label="แสดง/ซ่อนรหัสผ่าน" tabindex="-1"><i class="ti ti-eye"></i></button>
+        </div>
+        <div class="lg-caps" id="lg-caps"><i class="ti ti-alert-triangle"></i> Caps Lock เปิดอยู่</div>
+        <div id="login-otp-wrap" style="margin-bottom:6px;display:none">
+          <label class="lg-label" for="login-otp">รหัส 2FA (6 หลักจากแอป Authenticator)</label>
+          <input id="login-otp" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" class="form-input" style="width:100%;text-align:center"
+            onkeydown="if(event.key==='Enter')doLogin()" />
+        </div>
+        <button onclick="doLogin()" class="btn btn-green lg-btn" id="lg-submit"><span>เข้าสู่ระบบ</span><i class="ti ti-arrow-right"></i></button>
+        <div id="login-error" class="lg-error" style="display:none"></div>
+        <div class="lg-foot"><i class="ti ti-shield-lock"></i> เชื่อมต่อแบบเข้ารหัส · รองรับ 2FA</div>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -409,152 +91,165 @@ textarea.form-input { resize: vertical; min-height: 80px; }
 
 <div class="app" id="main-app" style="display:none">
 
-  <!-- SIDEBAR -->
-  <!-- Mobile Menu Button -->
-  <button class="mobile-menu-btn" onclick="toggleSidebar()" id="menu-btn">
-    <i class="ti ti-menu-2"></i> เมนู
-  </button>
   <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
-  
-  <aside class="sidebar" id="sidebar">
-    <div class="logo">
-      <div class="logo-icon">D</div>
-      <div>
+
+  <aside class="sidebar" id="sidebar" aria-label="เมนูหลัก">
+    <div class="sb-brand">
+      <div class="logo-mark"><svg class="di-logo-svg" viewBox="0 0 48 48" aria-hidden="true"><defs><linearGradient id="dlg-sb" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34d399"/><stop offset=".55" stop-color="#2dd4bf"/><stop offset="1" stop-color="#22d3ee"/></linearGradient></defs><rect x="2" y="2" width="44" height="44" rx="13" fill="url(#dlg-sb)"/><g fill="none" stroke="#03140e" stroke-width="2.6" stroke-linecap="round"><circle cx="24" cy="24" r="6.2"/><g class="o1"><path d="M24 11.4a12.6 12.6 0 0 1 12.6 12.6"/></g><g class="o2"><path d="M24 36.6A12.6 12.6 0 0 1 11.4 24" opacity=".5"/></g></g><circle cx="24" cy="24" r="2.3" fill="#03140e"/></svg></div>
+      <div class="sb-brand-text">
         <div class="logo-text">Domain<span>Intel</span></div>
-        <div class="logo-ver">v2.0 · SEO Intelligence</div>
+        <div class="logo-ver">Ops Console · v3.2</div>
       </div>
+      <button type="button" class="sb-mini-btn" id="sb-mini-btn" title="ย่อ/ขยายเมนู  ( [ )" aria-label="ย่อ/ขยายเมนู"><i class="ti ti-layout-sidebar-left-collapse"></i></button>
     </div>
+    <button type="button" class="sb-search" data-open-palette><i class="ti ti-search"></i><span>ค้นหาเมนู / โดเมน…</span><kbd>Ctrl K</kbd></button>
     <nav class="nav" id="main-nav">
-      <div class="nav-section">// OVERVIEW</div>
-      <div class="nav-item active" onclick="showPage('command')">
-        <i class="ti ti-layout-grid"></i> ศูนย์บัญชาการ <span id="nav-command-badge" class="nav-badge" style="display:none"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('dashboard')">
-        <i class="ti ti-dashboard"></i> Dashboard
-      </div>
-      <div class="nav-item" onclick="showPage('overview')">
-        <i class="ti ti-topology-star"></i> System Overview
-      </div>
-      <div class="nav-section">// บริษัท</div>
-      <div class="nav-item" onclick="showPage('company')">
-        <i class="ti ti-building"></i> ทีมพนักงาน
-      </div>
-      <div class="nav-item" onclick="showPage('problems')">
-        <i class="ti ti-alert-hexagon"></i> ศูนย์ปัญหา <span id="nav-problem-badge" class="nav-badge" style="display:none"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('approvals')">
-        <i class="ti ti-checkbox"></i> รออนุมัติ <span id="nav-approval-badge" class="nav-badge" style="display:none;background:var(--gold);color:#000"></span>
-      </div>
-      <div class="nav-section">// MONITORING</div>
-      <div class="nav-item" onclick="showPage('domains');currentTab='all';applyFilters();">
-        <i class="ti ti-world"></i> โดเมนทั้งหมด
-        <span class="nav-badge" id="nav-total">0</span>
-      </div>
-      <div class="nav-item" onclick="showPageFiltered('domains','down')">
-        <i class="ti ti-alert-circle"></i> Down / Error
-        <span class="nav-badge" id="nav-down">0</span>
-      </div>
-      <div class="nav-item" onclick="showPageFiltered('domains','expiring')">
-        <i class="ti ti-clock"></i> หมดอายุเร็วๆ
-        <span class="nav-badge amber" id="nav-expiring">0</span>
-      </div>
-      <div class="nav-section">// ANALYTICS</div>
-      <div class="nav-item" onclick="showPage('traffic')">
-        <i class="ti ti-chart-line"></i> Traffic & GSC
-      </div>
-      <div class="nav-item" onclick="openKeywords()">
-        <i class="ti ti-award"></i> Keyword Rankings
-      </div>
-      <div class="nav-section">// TOOLS</div>
-      <div class="nav-item" onclick="showPageFiltered('domains','cannot-fix')">
-        <i class="ti ti-alert-circle"></i>
-        <span>แก้ไขไม่ได้</span>
-        <span class="badge" id="nav-cannotfix"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('diagnosis')">
-        <i class="ti ti-stethoscope"></i>
-        <span>รายงานสาเหตุ</span>
-        <span class="badge" id="nav-diagnosis" style="background:var(--red);color:#fff"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('import')">
-        <i class="ti ti-file-import"></i> Import CSV
-      </div>
-      <div class="nav-item" onclick="showPage('server-manager')">
-        <i class="ti ti-server"></i> Server Manager
-        <span class="badge" id="nav-server-alerts" style="background:var(--red);color:#fff;display:none"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('sla')">
-        <i class="ti ti-chart-line"></i> Uptime SLA
-      </div>
-      <div class="nav-item" onclick="showPage('resources')">
-        <i class="ti ti-cpu"></i> Resource Usage
-      </div>
-      <div class="nav-item" onclick="showPage('health')">
-        <i class="ti ti-heartbeat"></i> Health Score
-      </div>
-      <div class="nav-item" onclick="showPage('events')">
-        <i class="ti ti-history"></i> Event Timeline
-      </div>
-      <div class="nav-item" onclick="openReport()">
-        <i class="ti ti-report-analytics"></i> Diagnostic Report
-      </div>
-      <div class="nav-item" onclick="openISP()">
-        <i class="ti ti-network"></i> ISP Block Check
-      </div>
-      <div class="nav-item" onclick="openBackup()">
-        <i class="ti ti-switch-horizontal"></i> โดเมนสำรอง
-      </div>
-      <div class="nav-item" onclick="openHistory()">
-        <i class="ti ti-chart-line"></i> แนวโน้ม (History)
-      </div>
-      <div class="nav-item" onclick="openIncidents()">
-        <i class="ti ti-alert-triangle"></i> ประวัติดับ (Incidents)
-      </div>
-      <div class="nav-item" onclick="openKeywords()">
-        <i class="ti ti-search"></i> เช็ค Keyword
-      </div>
-      <div class="nav-item" onclick="openWpAdmin()">
-        <i class="ti ti-lock-open"></i> เปิด/ปิด wp-admin
-      </div>
-      <div class="nav-item" onclick="openVault()">
-        <i class="ti ti-shield-lock"></i> ข้อมูลลับส่วนตัว
-      </div>
-      <div class="nav-item" onclick="openDnsIp()">
-        <i class="ti ti-arrows-exchange"></i> เปลี่ยน IP (Cloudflare)
-      </div>
-      <div class="nav-item" onclick="openCfCache()">
-        <i class="ti ti-cloud-download"></i> Cache รูป (ลด Bandwidth)
-      </div>
-      <div class="nav-item" onclick="showPage('tasks')">
-        <i class="ti ti-layout-kanban"></i> To-Do Board
-      </div>
-      <div class="nav-item" onclick="showPage('botwatch')">
-        <i class="ti ti-shield-check"></i> Bot Watch
-        <span class="nav-badge" id="nav-botwatch" style="display:none"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('settings')">
-        <i class="ti ti-settings"></i> Settings
-      </div>
+    <div class="nav-top">
+        <div class="nav-item" onclick="showPage('hub')" data-tool="hub" data-status="live" data-kw="home hub หน้าแรก ศูนย์รวม เริ่มต้น" tabindex="0" role="link"><i class="ti ti-smart-home"></i><span class="nav-label">ศูนย์รวม</span></div>
+        <div class="nav-item" onclick="showPage('command')" data-tool="command" data-status="live" data-kw="command center auto fix autofix แก้อัตโนมัติ งานด่วน" tabindex="0" role="link"><i class="ti ti-layout-grid"></i><span class="nav-label">ศูนย์บัญชาการ</span><span id="nav-command-badge" class="nav-badge" style="display:none"></span></div>
+    </div>
+    <div class="nav-section nav-cat-label">หมวดเครื่องมือ</div>
+    <div class="nav-group" data-group="domains">
+      <button type="button" class="nav-group-head" data-group-toggle="domains" aria-expanded="false"><span class="ng-ic"><i class="ti ti-world"></i></span><span class="ng-label">โดเมน & สถานะเว็บ</span><span class="ng-dot"></span><span class="ng-count">8</span><i class="ti ti-chevron-down ng-chev"></i></button>
+      <div class="nav-group-body"><div class="nav-group-inner">
+        <div class="nav-item" onclick="showPage('domains');currentTab='all';applyFilters();" data-tool="domains" data-status="live" data-kw="domains all list เว็บ ตาราง" tabindex="0" role="link"><i class="ti ti-list-details"></i><span class="nav-label">โดเมนทั้งหมด</span><span class="nav-badge muted" id="nav-total">0</span></div>
+        <div class="nav-item" onclick="showPageFiltered('domains','down')" data-tool="down" data-status="live" data-kw="ล่ม เว็บล่ม offline down error" tabindex="0" role="link"><i class="ti ti-circle-x"></i><span class="nav-label">Down / Error</span><span class="nav-badge" id="nav-down">0</span></div>
+        <div class="nav-item" onclick="showPageFiltered('domains','expiring')" data-tool="expiring" data-status="live" data-kw="expiring expire หมดอายุ ต่ออายุ" tabindex="0" role="link"><i class="ti ti-clock"></i><span class="nav-label">หมดอายุเร็วๆ</span><span class="nav-badge amber" id="nav-expiring">0</span></div>
+        <div class="nav-item" onclick="showPage('dashboard')" data-tool="dashboard" data-status="live" data-kw="dashboard แดชบอร์ด สถิติ กราฟ" tabindex="0" role="link"><i class="ti ti-dashboard"></i><span class="nav-label">Dashboard สถิติ</span></div>
+        <div class="nav-item" onclick="showPage('sla')" data-tool="sla" data-status="live" data-kw="uptime sla ออนไลน์" tabindex="0" role="link"><i class="ti ti-activity"></i><span class="nav-label">Uptime SLA</span></div>
+        <div class="nav-item" onclick="openIncidents()" data-tool="incidents" data-status="live" data-kw="incidents downtime ดับ" tabindex="0" role="link"><i class="ti ti-alert-triangle"></i><span class="nav-label">ประวัติดับ</span></div>
+        <div class="nav-item" onclick="openHistory()" data-tool="history" data-status="live" data-kw="history trend chart กราฟ แนวโน้ม" tabindex="0" role="link"><i class="ti ti-trending-up"></i><span class="nav-label">แนวโน้มย้อนหลัง</span></div>
+        <div class="nav-item" onclick="showPage('import')" data-tool="import" data-status="live" data-kw="import csv นำเข้า" tabindex="0" role="link"><i class="ti ti-file-import"></i><span class="nav-label">Import CSV</span></div>
+      </div></div>
+    </div>
+    <div class="nav-group" data-group="fix">
+      <button type="button" class="nav-group-head" data-group-toggle="fix" aria-expanded="false"><span class="ng-ic"><i class="ti ti-first-aid-kit"></i></span><span class="ng-label">วินิจฉัย & แก้ปัญหา</span><span class="ng-dot"></span><span class="ng-count">6</span><i class="ti ti-chevron-down ng-chev"></i></button>
+      <div class="nav-group-body"><div class="nav-group-inner">
+        <div class="nav-item" onclick="showPage('problems')" data-tool="problems" data-status="live" data-kw="problems issues ปัญหา fix แก้" tabindex="0" role="link"><i class="ti ti-alert-hexagon"></i><span class="nav-label">ศูนย์ปัญหา</span><span id="nav-problem-badge" class="nav-badge" style="display:none"></span></div>
+        <div class="nav-item" onclick="showPage('diagnosis')" data-tool="diagnosis" data-status="live" data-kw="diagnosis วินิจฉัย สาเหตุ รายงานสาเหตุ" tabindex="0" role="link"><i class="ti ti-stethoscope"></i><span class="nav-label">วินิจฉัยเว็บ</span><span class="nav-badge" id="nav-diagnosis"></span></div>
+        <div class="nav-item" onclick="showPageFiltered('domains','cannot-fix')" data-tool="cannotfix" data-status="live" data-kw="cannot fix แก้ไม่ได้" tabindex="0" role="link"><i class="ti ti-tool"></i><span class="nav-label">แก้เองไม่ได้</span><span class="nav-badge" id="nav-cannotfix"></span></div>
+        <div class="nav-item" onclick="showPage('approvals')" data-tool="approvals" data-status="live" data-kw="approvals อนุมัติ" tabindex="0" role="link"><i class="ti ti-checkbox"></i><span class="nav-label">รออนุมัติ</span><span id="nav-approval-badge" class="nav-badge" style="display:none"></span></div>
+        <div class="nav-item" onclick="showPage('events')" data-tool="events" data-status="live" data-kw="events log เหตุการณ์ timeline" tabindex="0" role="link"><i class="ti ti-history"></i><span class="nav-label">ไทม์ไลน์เหตุการณ์</span></div>
+        <div class="nav-item" onclick="openBackup()" data-tool="backup" data-status="live" data-kw="backup สำรอง สลับ" tabindex="0" role="link"><i class="ti ti-switch-horizontal"></i><span class="nav-label">โดเมนสำรอง</span></div>
+      </div></div>
+    </div>
+    <div class="nav-group" data-group="cloudflare">
+      <button type="button" class="nav-group-head" data-group-toggle="cloudflare" aria-expanded="false"><span class="ng-ic"><i class="ti ti-cloud"></i></span><span class="ng-label">Cloudflare & ป้องกัน</span><span class="ng-dot"></span><span class="ng-count">5</span><i class="ti ti-chevron-down ng-chev"></i></button>
+      <div class="nav-group-body"><div class="nav-group-inner">
+        <div class="nav-item" onclick="openCfCache()" data-tool="cfcache" data-status="setup" data-kw="cloudflare cache bandwidth pause zone แบนด์วิดท์ ปลด" tabindex="0" role="link"><i class="ti ti-cloud-download"></i><span class="nav-label">Cache รูป / ปลด Pause</span></div>
+        <div class="nav-item" onclick="openDnsIp()" data-tool="dnsip" data-status="setup" data-kw="dns ip repoint ย้ายเซิร์ฟเวอร์ a record" tabindex="0" role="link"><i class="ti ti-arrows-exchange"></i><span class="nav-label">ย้าย IP (DNS)</span></div>
+        <div class="nav-item" onclick="openWpAdmin()" data-tool="wpadmin" data-status="setup" data-kw="wordpress wp-login หลังบ้าน" tabindex="0" role="link"><i class="ti ti-lock-open"></i><span class="nav-label">เปิด/ปิด wp-admin</span></div>
+        <div class="nav-item" onclick="openISP()" data-tool="isp" data-status="setup" data-kw="isp block ais true 3bb บล็อก" tabindex="0" role="link"><i class="ti ti-network"></i><span class="nav-label">เช็คโดนบล็อก (ISP)</span></div>
+        <div class="nav-item" onclick="showPage('botwatch')" data-tool="botwatch" data-status="demo" data-kw="bot บอท ip" tabindex="0" role="link"><i class="ti ti-shield-check"></i><span class="nav-label">Bot Watch</span><span class="nav-tag demo" data-t="DEMO" title="ยังไม่มีระบบหลังบ้าน — หน้าตาอย่างเดียว"></span><span class="nav-badge" id="nav-botwatch" style="display:none"></span></div>
+      </div></div>
+    </div>
+    <div class="nav-group" data-group="servers">
+      <button type="button" class="nav-group-head" data-group-toggle="servers" aria-expanded="false"><span class="ng-ic"><i class="ti ti-server-2"></i></span><span class="ng-label">เซิร์ฟเวอร์</span><span class="ng-dot"></span><span class="ng-count">5</span><i class="ti ti-chevron-down ng-chev"></i></button>
+      <div class="nav-group-body"><div class="nav-group-inner">
+        <div class="nav-item" onclick="showPage('server-manager')" data-tool="server-manager" data-status="setup" data-kw="plesk server เซิร์ฟเวอร์ nginx php" tabindex="0" role="link"><i class="ti ti-server"></i><span class="nav-label">Server Manager</span><span class="nav-badge" id="nav-server-alerts" style="display:none"></span></div>
+        <div class="nav-item" onclick="showPage('health')" data-tool="health" data-status="live" data-kw="สุขภาพ health score คะแนน" tabindex="0" role="link"><i class="ti ti-heartbeat"></i><span class="nav-label">Health Score</span></div>
+        <div class="nav-item" onclick="showPage('resources')" data-tool="resources" data-status="setup" data-kw="disk php-fpm resource ram cpu" tabindex="0" role="link"><i class="ti ti-cpu"></i><span class="nav-label">ทรัพยากรเครื่อง</span></div>
+        <div class="nav-item" onclick="showPage('overview')" data-tool="overview" data-status="partial" data-kw="system overview ภาพรวมระบบ สถาปัตยกรรม" tabindex="0" role="link"><i class="ti ti-topology-star"></i><span class="nav-label">แผนผังระบบ</span></div>
+        <div class="nav-item" onclick="openReport()" data-tool="report" data-status="live" data-kw="report รายงาน diagnostic" tabindex="0" role="link"><i class="ti ti-report-analytics"></i><span class="nav-label">Diagnostic Report</span></div>
+      </div></div>
+    </div>
+    <div class="nav-group" data-group="seo">
+      <button type="button" class="nav-group-head" data-group-toggle="seo" aria-expanded="false"><span class="ng-ic"><i class="ti ti-chart-dots"></i></span><span class="ng-label">SEO & ทราฟฟิก</span><span class="ng-dot"></span><span class="ng-count">2</span><i class="ti ti-chevron-down ng-chev"></i></button>
+      <div class="nav-group-body"><div class="nav-group-inner">
+        <div class="nav-item" onclick="showPage('traffic')" data-tool="traffic" data-status="setup" data-kw="traffic gsc search console ทราฟฟิก คลิก" tabindex="0" role="link"><i class="ti ti-chart-area-line"></i><span class="nav-label">Traffic & GSC</span></div>
+        <div class="nav-item" onclick="openKeywords()" data-tool="keywords" data-status="setup" data-kw="keyword อันดับ เช็ค keyword dataforseo ranking" tabindex="0" role="link"><i class="ti ti-award"></i><span class="nav-label">อันดับคีย์เวิร์ด</span></div>
+      </div></div>
+    </div>
+    <div class="nav-group" data-group="system">
+      <button type="button" class="nav-group-head" data-group-toggle="system" aria-expanded="false"><span class="ng-ic"><i class="ti ti-adjustments-horizontal"></i></span><span class="ng-label">ทีม & ตั้งค่า</span><span class="ng-dot"></span><span class="ng-count">4</span><i class="ti ti-chevron-down ng-chev"></i></button>
+      <div class="nav-group-body"><div class="nav-group-inner">
+        <div class="nav-item" onclick="showPage('company')" data-tool="company" data-status="setup" data-kw="team ai พนักงาน company" tabindex="0" role="link"><i class="ti ti-building"></i><span class="nav-label">ทีมพนักงาน AI</span></div>
+        <div class="nav-item" onclick="showPage('tasks')" data-tool="tasks" data-status="live" data-kw="tasks todo งาน kanban" tabindex="0" role="link"><i class="ti ti-layout-kanban"></i><span class="nav-label">บอร์ดงาน</span></div>
+        <div class="nav-item" onclick="openVault()" data-tool="vault" data-status="live" data-kw="vault password รหัส ข้อมูลลับ" tabindex="0" role="link"><i class="ti ti-shield-lock"></i><span class="nav-label">ตู้เซฟข้อมูลลับ</span></div>
+        <div class="nav-item" onclick="showPage('settings')" data-tool="settings" data-status="partial" data-kw="ตั้งค่า settings telegram แจ้งเตือน" tabindex="0" role="link"><i class="ti ti-settings"></i><span class="nav-label">ตั้งค่า</span></div>
+      </div></div>
+    </div>
     </nav>
     <div class="sidebar-footer">
-      <div style="padding:8px 10px;border-bottom:1px solid var(--border);margin-bottom:8px;display:flex;align-items:center;justify-content:space-between">
-        <span style="font-size:11px;color:var(--text3)"><i class="ti ti-user"></i> <span id="logged-user">admin</span></span>
-        <button onclick="doLogout()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:11px;padding:2px 6px;border-radius:4px" title="ออกจากระบบ"><i class="ti ti-logout"></i> ออก</button>
+      <div class="sb-user">
+        <div class="sb-avatar" id="sb-avatar">A</div>
+        <div class="sb-user-meta"><div class="sb-user-name" id="logged-user">admin</div><div class="sb-user-role">ผู้ดูแลระบบ</div></div>
+        <button type="button" class="sb-logout" onclick="doLogout()" title="ออกจากระบบ" aria-label="ออกจากระบบ"><i class="ti ti-logout"></i></button>
       </div>
-      <div class="status-indicator">
-        <div class="dot-live" id="live-dot"></div>
-        <span id="server-status-text">กำลังเชื่อมต่อ...</span>
-      </div>
-      <div style="font-size:11px;color:var(--text3);padding:4px 10px" id="last-updated-text"></div>
     </div>
+    <script type="application/json" id="di-registry">{"top": [{"id": "hub", "onclick": "showPage('hub')", "icon": "ti-smart-home", "label": "ศูนย์รวม", "desc": "หน้าแรก: สรุปสถานะทุกเว็บ สิ่งที่ต้องดูตอนนี้ และทางลัดไปทุกเครื่องมือ พร้อมคำอธิบาย", "status": "live", "badge": "", "kw": "home hub หน้าแรก ศูนย์รวม เริ่มต้น", "note": "", "needs": "", "volatile": false, "page": "hub"}, {"id": "command", "onclick": "showPage('command')", "icon": "ti-layout-grid", "label": "ศูนย์บัญชาการ", "desc": "งานด่วนที่ระบบจัดลำดับให้ + ปุ่มแก้อัตโนมัติ (Auto-fix) และสถานะเซิร์ฟเวอร์สด", "status": "live", "badge": "<span id=\"nav-command-badge\" class=\"nav-badge\" style=\"display:none\"><\/span>", "kw": "command center auto fix autofix แก้อัตโนมัติ งานด่วน", "note": "", "needs": "", "volatile": false, "page": "command"}], "cats": [{"id": "domains", "label": "โดเมน & สถานะเว็บ", "icon": "ti-world", "desc": "ดูว่าเว็บไหนออนไลน์ ล่ม หรือใกล้หมดอายุ พร้อมสถิติ uptime และประวัติย้อนหลัง", "tools": [{"id": "domains", "onclick": "showPage('domains');currentTab='all';applyFilters();", "icon": "ti-list-details", "label": "โดเมนทั้งหมด", "desc": "ตารางโดเมนทั้งหมด — ค้นหา กรอง เพิ่ม/ลบ และสั่งเช็คสถานะ", "status": "live", "badge": "<span class=\"nav-badge muted\" id=\"nav-total\">0<\/span>", "kw": "domains all list เว็บ ตาราง", "note": "", "needs": "", "volatile": false, "page": "domains"}, {"id": "down", "onclick": "showPageFiltered('domains','down')", "icon": "ti-circle-x", "label": "Down / Error", "desc": "เฉพาะเว็บที่ล่มหรือ error อยู่ตอนนี้", "status": "live", "badge": "<span class=\"nav-badge\" id=\"nav-down\">0<\/span>", "kw": "ล่ม เว็บล่ม offline down error", "note": "", "needs": "", "volatile": false, "page": "domains"}, {"id": "expiring", "onclick": "showPageFiltered('domains','expiring')", "icon": "ti-clock", "label": "หมดอายุเร็วๆ", "desc": "โดเมนที่จะหมดอายุภายใน 30 วัน", "status": "live", "badge": "<span class=\"nav-badge amber\" id=\"nav-expiring\">0<\/span>", "kw": "expiring expire หมดอายุ ต่ออายุ", "note": "", "needs": "", "volatile": false, "page": "domains"}, {"id": "dashboard", "onclick": "showPage('dashboard')", "icon": "ti-dashboard", "label": "Dashboard สถิติ", "desc": "ตัวเลขสรุป กราฟ และตารางโดเมนแบบย่อ", "status": "live", "badge": "", "kw": "dashboard แดชบอร์ด สถิติ กราฟ", "note": "ส่วน \"รายงาน CEO\" ใช้ AI — ต้องมี ANTHROPIC_API_KEY ส่วนอื่นใช้ได้ปกติ", "needs": "", "volatile": false, "page": "dashboard"}, {"id": "sla", "onclick": "showPage('sla')", "icon": "ti-activity", "label": "Uptime SLA", "desc": "เปอร์เซ็นต์เวลาออนไลน์ (uptime) รายโดเมน", "status": "live", "badge": "", "kw": "uptime sla ออนไลน์", "note": "", "needs": "", "volatile": true, "page": "sla"}, {"id": "incidents", "onclick": "openIncidents()", "icon": "ti-alert-triangle", "label": "ประวัติดับ", "desc": "บันทึกทุกครั้งที่เว็บดับ: เริ่มเมื่อไร หายเมื่อไร นานเท่าไร", "status": "live", "badge": "", "kw": "incidents downtime ดับ", "note": "", "needs": "", "volatile": true, "page": "incidents"}, {"id": "history", "onclick": "openHistory()", "icon": "ti-trending-up", "label": "แนวโน้มย้อนหลัง", "desc": "กราฟจำนวนเว็บล่ม / โดนบล็อก / ช้า ตามเวลา", "status": "live", "badge": "", "kw": "history trend chart กราฟ แนวโน้ม", "note": "", "needs": "", "volatile": true, "page": "history"}, {"id": "import", "onclick": "showPage('import')", "icon": "ti-file-import", "label": "Import CSV", "desc": "นำเข้ารายชื่อโดเมนจากไฟล์ CSV ทีละหลายโดเมน", "status": "live", "badge": "", "kw": "import csv นำเข้า", "note": "", "needs": "", "volatile": false, "page": "import"}]}, {"id": "fix", "label": "วินิจฉัย & แก้ปัญหา", "icon": "ti-first-aid-kit", "desc": "หาสาเหตุที่เว็บล่ม สั่งแก้ (บางคำสั่งต้องกดอนุมัติก่อน) และติดตามผลย้อนหลัง", "tools": [{"id": "problems", "onclick": "showPage('problems')", "icon": "ti-alert-hexagon", "label": "ศูนย์ปัญหา", "desc": "รวมปัญหาที่ระบบตรวจเจอ พร้อมปุ่มแก้ทันทีหรือส่งขออนุมัติ", "status": "live", "badge": "<span id=\"nav-problem-badge\" class=\"nav-badge\" style=\"display:none\"><\/span>", "kw": "problems issues ปัญหา fix แก้", "note": "", "needs": "", "volatile": false, "page": "problems"}, {"id": "diagnosis", "onclick": "showPage('diagnosis')", "icon": "ti-stethoscope", "label": "วินิจฉัยเว็บ", "desc": "ตรวจเว็บทีละโดเมนว่าล่มเพราะอะไร (DNS, SSL, เซิร์ฟเวอร์, Cloudflare)", "status": "live", "badge": "<span class=\"nav-badge\" id=\"nav-diagnosis\"><\/span>", "kw": "diagnosis วินิจฉัย สาเหตุ รายงานสาเหตุ", "note": "", "needs": "", "volatile": false, "page": "diagnosis"}, {"id": "cannotfix", "onclick": "showPageFiltered('domains','cannot-fix')", "icon": "ti-tool", "label": "แก้เองไม่ได้", "desc": "โดเมนที่ระบบแก้อัตโนมัติไม่ได้ ต้องให้คนเข้าไปดู", "status": "live", "badge": "<span class=\"nav-badge\" id=\"nav-cannotfix\"><\/span>", "kw": "cannot fix แก้ไม่ได้", "note": "", "needs": "", "volatile": false, "page": "domains"}, {"id": "approvals", "onclick": "showPage('approvals')", "icon": "ti-checkbox", "label": "รออนุมัติ", "desc": "คำสั่งแก้ที่รอคุณกดอนุมัติก่อนรันจริงบนเซิร์ฟเวอร์", "status": "live", "badge": "<span id=\"nav-approval-badge\" class=\"nav-badge\" style=\"display:none\"><\/span>", "kw": "approvals อนุมัติ", "note": "", "needs": "", "volatile": true, "page": "approvals"}, {"id": "events", "onclick": "showPage('events')", "icon": "ti-history", "label": "ไทม์ไลน์เหตุการณ์", "desc": "ทุกเหตุการณ์ของระบบเรียงตามเวลา: ล่ม กลับมา แก้ไข แจ้งเตือน", "status": "live", "badge": "", "kw": "events log เหตุการณ์ timeline", "note": "", "needs": "", "volatile": true, "page": "events"}, {"id": "backup", "onclick": "openBackup()", "icon": "ti-switch-horizontal", "label": "โดเมนสำรอง", "desc": "จับคู่โดเมนหลัก ↔ โดเมนสำรอง ไว้สลับเมื่อโดนบล็อก", "status": "live", "badge": "", "kw": "backup สำรอง สลับ", "note": "", "needs": "", "volatile": true, "page": "backup"}]}, {"id": "cloudflare", "label": "Cloudflare & ป้องกัน", "icon": "ti-cloud", "desc": "จัดการ Cloudflare (Cache, DNS) เช็คการโดนบล็อกจากค่ายเน็ต และปิดหน้า wp-admin กันบอท", "tools": [{"id": "cfcache", "onclick": "openCfCache()", "icon": "ti-cloud-download", "label": "Cache รูป / ปลด Pause", "desc": "ให้ Cloudflare cache รูปและไฟล์ static ลด bandwidth + สแกนปลด zone ที่ค้าง Pause", "status": "setup", "badge": "", "kw": "cloudflare cache bandwidth pause zone แบนด์วิดท์ ปลด", "note": "ต้องมี CLOUDFLARE_API_TOKEN (สิทธิ์ Zone, Cache Rules, DNS) และกรอก key ตอนสั่งงาน", "needs": "cloudflare", "volatile": false, "page": "cfcache"}, {"id": "dnsip", "onclick": "openDnsIp()", "icon": "ti-arrows-exchange", "label": "ย้าย IP (DNS)", "desc": "เปลี่ยน A record ของหลายโดเมนไป IP ใหม่ทีเดียว ตอนย้ายเซิร์ฟเวอร์", "status": "setup", "badge": "", "kw": "dns ip repoint ย้ายเซิร์ฟเวอร์ a record", "note": "ใช้ CLOUDFLARE_API_TOKEN ตัวเดียวกับ Cache", "needs": "cloudflare", "volatile": false, "page": "dnsip"}, {"id": "wpadmin", "onclick": "openWpAdmin()", "icon": "ti-lock-open", "label": "เปิด/ปิด wp-admin", "desc": "ปิดหรือเปิดการเข้าหน้า wp-login ทั้งเซิร์ฟเวอร์ กันบอทยิงรหัส", "status": "setup", "badge": "", "kw": "wordpress wp-login หลังบ้าน", "note": "สั่งผ่าน agent บนเซิร์ฟเวอร์ — ต้องตั้ง PLESK_SERVERS และติดตั้ง agent", "needs": "plesk", "volatile": false, "page": "wpadmin"}, {"id": "isp", "onclick": "openISP()", "icon": "ti-network", "label": "เช็คโดนบล็อก (ISP)", "desc": "ตรวจว่าเว็บโดน AIS / True / 3BB บล็อกหรือไม่", "status": "setup", "badge": "", "kw": "isp block ais true 3bb บล็อก", "note": "ผลแม่นเมื่อมี agent ติดตั้งในเครือข่ายไทย — ถ้าไม่มี จะได้แค่ผลตรวจจากภายนอกแบบคร่าวๆ", "needs": "", "volatile": false, "page": "isp"}, {"id": "botwatch", "onclick": "showPage('botwatch')", "icon": "ti-shield-check", "label": "Bot Watch", "desc": "ดูบอทและ IP ที่เข้าเว็บผิดปกติ", "status": "demo", "badge": "<span class=\"nav-badge\" id=\"nav-botwatch\" style=\"display:none\"><\/span>", "kw": "bot บอท ip", "note": "ยังไม่มี API หลังบ้าน (/api/botwatch/*) ใน server.js — หน้านี้ยังดึงข้อมูลจริงไม่ได้ และปุ่ม Sync จะขึ้นว่าสำเร็จทั้งที่ไม่ได้ทำอะไร", "needs": "", "volatile": false, "page": "botwatch"}]}, {"id": "servers", "label": "เซิร์ฟเวอร์", "icon": "ti-server-2", "desc": "สถานะเครื่อง Plesk คะแนนสุขภาพ การใช้ทรัพยากร และรายงานวินิจฉัยทั้งระบบ", "tools": [{"id": "server-manager", "onclick": "showPage('server-manager')", "icon": "ti-server", "label": "Server Manager", "desc": "ดูและสั่งงานเซิร์ฟเวอร์: reload nginx, จำกัด PHP-FPM, ล้างดิสก์", "status": "setup", "badge": "<span class=\"nav-badge\" id=\"nav-server-alerts\" style=\"display:none\"><\/span>", "kw": "plesk server เซิร์ฟเวอร์ nginx php", "note": "ต้องตั้ง PLESK_SERVERS และติดตั้ง agent บนเครื่อง ถึงจะสั่งงานได้", "needs": "plesk", "volatile": false, "page": "server-manager"}, {"id": "health", "onclick": "showPage('health')", "icon": "ti-heartbeat", "label": "Health Score", "desc": "คะแนนสุขภาพต่อเซิร์ฟเวอร์ คิดจาก uptime, SSL และความเร็วของเว็บในเครื่อง", "status": "live", "badge": "", "kw": "สุขภาพ health score คะแนน", "note": "", "needs": "", "volatile": false, "page": "health"}, {"id": "resources", "onclick": "showPage('resources')", "icon": "ti-cpu", "label": "ทรัพยากรเครื่อง", "desc": "ดิสก์ / PHP-FPM / เว็บที่กินทรัพยากรมากที่สุด", "status": "setup", "badge": "", "kw": "disk php-fpm resource ram cpu", "note": "วัดผ่าน agent บนเซิร์ฟเวอร์", "needs": "plesk", "volatile": true, "page": "resources"}, {"id": "overview", "onclick": "showPage('overview')", "icon": "ti-topology-star", "label": "แผนผังระบบ", "desc": "ภาพรวมสถาปัตยกรรมและระบบอัตโนมัติทั้งหมด", "status": "partial", "badge": "", "kw": "system overview ภาพรวมระบบ สถาปัตยกรรม", "note": "บางส่วนเป็นข้อมูลเขียนตายตัวในโค้ด (รายชื่อเซิร์ฟเวอร์, จำนวนระบบอัตโนมัติ) อาจไม่ตรงกับของจริงตอนนี้", "needs": "", "volatile": false, "page": "overview"}, {"id": "report", "onclick": "openReport()", "icon": "ti-report-analytics", "label": "Diagnostic Report", "desc": "รายงานวินิจฉัยทั้งระบบ (ซ่อนค่าลับแล้ว) ไว้ก็อปส่งให้ช่วยวิเคราะห์", "status": "live", "badge": "", "kw": "report รายงาน diagnostic", "note": "", "needs": "", "volatile": false, "page": "report"}]}, {"id": "seo", "label": "SEO & ทราฟฟิก", "icon": "ti-chart-dots", "desc": "ทราฟฟิกจาก Google Search Console และอันดับคีย์เวิร์ดของแต่ละเว็บ", "tools": [{"id": "traffic", "onclick": "showPage('traffic')", "icon": "ti-chart-area-line", "label": "Traffic & GSC", "desc": "คลิก การแสดงผล และ CTR จาก Google Search Console ต่อโดเมน", "status": "setup", "badge": "", "kw": "traffic gsc search console ทราฟฟิก คลิก", "note": "ต้องมี GSC_REFRESH_TOKEN — ถ้าแอป Google ยังอยู่โหมด Testing token จะหมดอายุทุก 7 วัน", "needs": "gsc", "volatile": false, "page": "traffic"}, {"id": "keywords", "onclick": "openKeywords()", "icon": "ti-award", "label": "อันดับคีย์เวิร์ด", "desc": "เช็คอันดับคีย์เวิร์ดของแต่ละเว็บ", "status": "setup", "badge": "", "kw": "keyword อันดับ เช็ค keyword dataforseo ranking", "note": "โหมด GSC ใช้ token เดียวกับ Traffic · โหมด DataForSEO ต้องตั้ง DATAFORSEO_LOGIN / DATAFORSEO_PASSWORD", "needs": "", "volatile": false, "page": "kwcheck"}]}, {"id": "system", "label": "ทีม & ตั้งค่า", "icon": "ti-adjustments-horizontal", "desc": "ทีมงาน AI บอร์ดงาน ตู้เซฟรหัสผ่าน และการตั้งค่าแจ้งเตือน", "tools": [{"id": "company", "onclick": "showPage('company')", "icon": "ti-building", "label": "ทีมพนักงาน AI", "desc": "พนักงาน AI ที่ช่วยวิเคราะห์และเสนองานให้อัตโนมัติ", "status": "setup", "badge": "", "kw": "team ai พนักงาน company", "note": "ต้องมี ANTHROPIC_API_KEY (คิดค่า API ตามการใช้งาน)", "needs": "anthropic", "volatile": true, "page": "company"}, {"id": "tasks", "onclick": "showPage('tasks')", "icon": "ti-layout-kanban", "label": "บอร์ดงาน", "desc": "บอร์ด To-Do แบบ Kanban: ต้องทำ / กำลังทำ / เสร็จ", "status": "live", "badge": "", "kw": "tasks todo งาน kanban", "note": "", "needs": "", "volatile": true, "page": "tasks"}, {"id": "vault", "onclick": "openVault()", "icon": "ti-shield-lock", "label": "ตู้เซฟข้อมูลลับ", "desc": "เก็บรหัสผ่านและข้อมูลลับแบบเข้ารหัส ปลดล็อกด้วยรหัสตู้เซฟ", "status": "live", "badge": "", "kw": "vault password รหัส ข้อมูลลับ", "note": "ข้อมูลอยู่ถาวรเมื่อตั้ง VAULT_DIR ไปที่ Railway Volume", "needs": "vault", "volatile": false, "page": "vault"}, {"id": "settings", "onclick": "showPage('settings')", "icon": "ti-settings", "label": "ตั้งค่า", "desc": "ตั้งค่าแจ้งเตือน Telegram และค่าระบบ", "status": "partial", "badge": "", "kw": "ตั้งค่า settings telegram แจ้งเตือน", "note": "ค่าบางส่วนเก็บในเบราว์เซอร์ บางส่วนเก็บในไฟล์ชั่วคราวบนเซิร์ฟเวอร์ — deploy ใหม่อาจต้องตั้งใหม่ (ค่าที่ตั้งเป็น ENV ไม่หาย)", "needs": "", "volatile": true, "page": "settings"}]}], "audited": "2026-09-29", "volatileNote": "ข้อมูลส่วนนี้เก็บในหน่วยความจำ/ไฟล์ชั่วคราวของเซิร์ฟเวอร์ — จะเริ่มนับใหม่เมื่อ deploy หรือรีสตาร์ท"}</script>
   </aside>
 
   <!-- MAIN -->
-  <main class="main">
+  <main class="main" id="di-main">
+    <header class="appbar" id="appbar">
+      <button type="button" class="ab-icon ab-menu" id="menu-btn" onclick="toggleSidebar()" aria-label="เปิดเมนู"><i class="ti ti-menu-2"></i></button>
+      <div class="ab-crumbs" id="ab-crumbs"><span class="ab-crumb-group" id="ab-crumb-group">DomainIntel</span><i class="ti ti-chevron-right"></i><span class="ab-crumb-page" id="ab-crumb-page">ศูนย์รวม</span></div>
+      <div class="ab-spacer"></div>
+      <button type="button" class="ab-search" data-open-palette><i class="ti ti-search"></i><span>ค้นหาเมนู โดเมน หรือคำสั่ง…</span><kbd>Ctrl K</kbd></button>
+      <div class="ab-hud" id="ab-hud" aria-hidden="true"><span class="ah-k">API</span><b id="ah-lat">—</b><i class="ah-sep"></i><span class="ah-k">SYS</span><b id="ah-clock">--:--:--</b></div>
+      <div class="ab-status" title="สถานะการเชื่อมต่อเซิร์ฟเวอร์"><span class="dot-live" id="live-dot"></span><span id="server-status-text">กำลังเชื่อมต่อ...</span><span class="ab-sep">·</span><span id="last-updated-text"></span></div>
+      <button type="button" class="ab-icon" id="ab-alerts" onclick="showPage('problems')" title="ศูนย์ปัญหา" aria-label="ศูนย์ปัญหา"><i class="ti ti-bell"></i><span class="ab-dot" id="ab-alerts-dot"></span></button>
+      <button type="button" class="ab-icon ab-fx" id="ab-fx" title="เอฟเฟกต์ HUD: เปิด/ปิด (โหมดเรียบ)" aria-label="สลับเอฟเฟกต์ HUD" aria-pressed="true"><i class="ti ti-sparkles"></i></button>
+      <button type="button" class="ab-icon ab-theme" id="ab-theme" title="สลับโหมดมืด/สว่าง" aria-label="สลับโหมดมืด/สว่าง"><i class="ti ti-sun"></i><i class="ti ti-moon"></i></button>
+    </header>
+
 
     <!-- DASHBOARD PAGE -->
+    <!-- ศูนย์รวม (หน้าแรก) -->
+    <div id="page-hub" class="di-hub">
+      <section class="di-hero" id="di-hero" aria-label="สรุปสถานะ">
+        <div>
+          <div class="hero-hello"><span id="hero-greet">สวัสดี</span> <span class="wave">👋</span></div>
+          <div class="hero-title" id="hero-title">กำลังรวบรวมข้อมูล…</div>
+          <div class="hero-line" id="hero-line"><span class="skel skel-row" style="width:320px;margin:4px 0"></span></div>
+          <div class="hero-stack" id="hero-stack" role="img" aria-label="สัดส่วนสถานะโดเมน"></div>
+          <div class="hero-legend" id="hero-legend"></div>
+          <div class="hero-actions">
+            <button class="btn btn-green" onclick="DIUI.focusDiag()"><i class="ti ti-stethoscope"></i> วินิจฉัยเว็บ</button>
+            <button class="btn" onclick="checkAllNow()"><i class="ti ti-refresh"></i> เช็คทุกโดเมน</button>
+            <button class="btn" onclick="openAddModal()"><i class="ti ti-plus"></i> เพิ่มโดเมน</button>
+            <button class="btn" onclick="showPage('command')"><i class="ti ti-layout-grid"></i> ศูนย์บัญชาการ</button>
+          </div>
+        </div>
+        <div class="hero-ring" id="hero-ring">
+          <div class="hud-sweep" aria-hidden="true"></div>
+          <svg class="hud-ticks" viewBox="0 0 200 200" aria-hidden="true"><g><line x1="100" y1="4" x2="100" y2="12" transform="rotate(0 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(6 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(12 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(18 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(24 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(30 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(36 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(42 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(48 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(54 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(60 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(66 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(72 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(78 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(84 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(90 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(96 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(102 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(108 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(114 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(120 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(126 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(132 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(138 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(144 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(150 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(156 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(162 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(168 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(174 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(180 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(186 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(192 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(198 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(204 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(210 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(216 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(222 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(228 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(234 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(240 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(246 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(252 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(258 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(264 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(270 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(276 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(282 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(288 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(294 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(300 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(306 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(312 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(318 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(324 100 100)"/><line x1="100" y1="4" x2="100" y2="12" transform="rotate(330 100 100)" class="mj"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(336 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(342 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(348 100 100)"/><line x1="100" y1="7" x2="100" y2="12" transform="rotate(354 100 100)"/></g><circle cx="100" cy="100" r="97" class="hud-orbit"/></svg>
+          <svg class="hud-inner" viewBox="0 0 168 168" aria-hidden="true"><circle cx="84" cy="84" r="58" class="hud-dash"/></svg>
+          <svg viewBox="0 0 168 168" aria-hidden="true"><circle class="trk" cx="84" cy="84" r="72" fill="none" stroke-width="13"/><circle class="val" id="hero-ring-val" cx="84" cy="84" r="72" fill="none" stroke-width="13" stroke-linecap="round" stroke-dasharray="452.39" stroke-dashoffset="452.39"/></svg>
+          <div class="hero-ring-center"><div class="hero-ring-num" id="hero-ring-num">—</div><div class="hero-ring-lbl">เว็บออนไลน์</div></div>
+        </div>
+        <div class="hud-tele" id="hud-tele" aria-label="ค่าวัดสด"></div>
+      </section>
+
+      <div class="hud-ticker" id="hud-ticker" aria-label="สถานะโดเมนสด"><span class="tk-lbl"><i></i>LIVE</span><div class="tk-view"><div class="tk-track" id="tk-track"></div></div></div>
+
+      <section class="hub-search" aria-label="ค้นหากลาง">
+        <label class="hub-q" for="hub-q"><i class="ti ti-search"></i>
+          <input id="hub-q" type="text" placeholder="ค้นหาอะไรก็ได้ — ชื่อโดเมน, เครื่องมือ, คำสั่ง (เช่น cache, ล่ม, ย้าย ip)" autocomplete="off" spellcheck="false" aria-label="ค้นหาโดเมน เครื่องมือ หรือคำสั่ง">
+          <kbd>Ctrl K</kbd></label>
+        <div class="hub-recent" id="hub-recent"></div>
+      </section>
+
+      <section class="hub-sec" aria-labelledby="hub-now-h">
+        <div class="hub-sec-head" data-hud="SEC.01 // PRIORITY QUEUE"><h3 id="hub-now-h"><i class="ti ti-bolt"></i> ต้องดูตอนนี้</h3><span class="hub-sec-sub" id="hub-now-sub">ดึงจากข้อมูลจริงของเซิร์ฟเวอร์</span></div>
+        <div class="hub-now" id="hub-now"><span class="skel" style="height:92px"></span><span class="skel" style="height:92px"></span><span class="skel" style="height:92px"></span><span class="skel" style="height:92px"></span></div>
+      </section>
+
+      <section class="hub-sec" aria-labelledby="hub-nodes-h">
+        <div class="hub-sec-head" data-hud="SEC.02 // NODE MAP"><h3 id="hub-nodes-h"><i class="ti ti-radar-2"></i> โหนดเซิร์ฟเวอร์ & สถานะสด</h3><span class="hub-sec-sub">1 จุด = 1 โดเมน · ยิ่งห่างจากศูนย์กลาง = ยิ่งตอบช้า · กดจุดเพื่อเปิดโดเมน</span></div>
+        <div class="hud-nodes" id="hud-nodes"><span class="skel" style="height:340px"></span><span class="skel" style="height:340px"></span></div>
+      </section>
+
+      <section class="hub-sec" aria-labelledby="hub-tools-h">
+        <div class="hub-sec-head" data-hud="SEC.03 // MODULES"><h3 id="hub-tools-h"><i class="ti ti-apps"></i> เครื่องมือทั้งหมด</h3><span class="hub-sec-sub">แยก 6 หมวด · กดเพื่อเปิด · ป้ายบอกว่าใช้งานได้จริงแค่ไหน</span></div>
+        <div class="hub-legend" id="hub-legend"></div>
+        <div class="hub-cats" id="hub-cats"></div>
+      </section>
+    </div>
+
     <!-- COMMAND CENTER PAGE -->
-    <div id="page-command">
+    <div id="page-command" style="display:none">
       <div class="topbar">
         <div>
           <div class="topbar-title"><i class="ti ti-layout-grid" style="color:var(--teal)"></i> ศูนย์บัญชาการ</div>
@@ -569,7 +264,8 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         </div>
       </div>
       <div style="padding:16px 20px" id="command-content">
-        <div style="text-align:center;padding:50px;color:var(--text3)"><i class="ti ti-refresh ti-spin" style="font-size:24px"></i><br>กำลังรวบรวมข้อมูล...</div>
+        <div class="metrics-grid"><span class="skel skel-card"></span><span class="skel skel-card"></span><span class="skel skel-card"></span><span class="skel skel-card"></span></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px"><span class="skel" style="height:260px"></span><span class="skel" style="height:260px"></span></div>
       </div>
       <!-- กล่องวินิจฉัยโดเมน -->
       <div style="padding:0 20px 20px">
@@ -577,7 +273,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div style="font-size:13px;font-weight:600;margin-bottom:10px"><i class="ti ti-stethoscope" style="color:var(--teal)"></i> วินิจฉัยโดเมนที่เข้าไม่ได้</div>
           <div style="font-size:12px;color:var(--text3);margin-bottom:10px">ใส่ชื่อโดเมนที่ขึ้นแดง/timeout ระบบจะเช็ค DNS, Cloudflare, SSL, vhost ให้ว่าติดตรงไหน</div>
           <div style="display:flex;gap:8px">
-            <input id="diag-domain-input" type="text" placeholder="เช่น slotday88.bio" 
+            <input id="diag-domain-input" type="text" placeholder="เช่น slotday88.bio" autocomplete="off" 
               onkeypress="if(event.key==='Enter')runDomainDiag()"
               style="flex:1;padding:9px 12px;background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text);font-size:13px;outline:none;font-family:var(--mono)">
             <button class="btn btn-green" onclick="runDomainDiag()" id="diag-domain-btn"><i class="ti ti-search"></i> วินิจฉัย</button>
@@ -607,11 +303,6 @@ textarea.form-input { resize: vertical; min-height: 80px; }
           <div class="topbar-sub" id="dash-subtitle">โหลดข้อมูล...</div>
         </div>
         <div class="topbar-right">
-          <div class="theme-toggle-wrap" title="สลับ Dark/Light Mode">
-            <i class="ti ti-sun" style="font-size:13px;color:var(--amber)"></i>
-            <div class="theme-toggle" id="theme-toggle" onclick="toggleTheme()"></div>
-            <i class="ti ti-moon" style="font-size:13px;color:var(--teal)"></i>
-          </div>
           <button class="btn" onclick="syncPlesk()" id="plesk-sync-btn"><i class="ti ti-server"></i> Sync Plesk</button>
           <button class="btn" id="refresh-btn" onclick="refreshNow()"><i class="ti ti-refresh"></i> รีเฟรช</button>
           <button class="btn" onclick="checkAllNow()"><i class="ti ti-refresh"></i> เช็คทุกโดเมน</button>
@@ -915,7 +606,7 @@ textarea.form-input { resize: vertical; min-height: 80px; }
         </div>
 
         <div class="settings-section">
-          <div class="settings-section-title"><i class="fa-solid fa-bell"></i> การแจ้งเตือน</div>
+          <div class="settings-section-title"><i class="ti ti-bell"></i> การแจ้งเตือน</div>
           <div class="form-row">
             <div class="form-group">
               <label class="form-label">Telegram Bot Token</label>
@@ -1683,7 +1374,7 @@ async function initApp() {
   startCountdown();
 
   // หน้าแรกคือศูนย์บัญชาการ — โหลดเลย
-  if (currentPageName === 'command') loadCommandCenter();
+  if (currentPageName === 'command' || currentPageName === 'hub') loadCommandCenter();
 
   // โหลด approval badge + อัพเดททุก 60 วิ
   refreshApprovalBadge();
@@ -2144,6 +1835,7 @@ function renderDomainTable() {
               <div class="domain-name"><a href="https://${d.domain}" target="_blank">${d.domain} <i class="ti ti-external-link" style="font-size:10px;opacity:0.5"></i></a></div>
               ${d.tags?.length ? `<div style="margin-top:3px">${d.tags.map(t=>`<span style="background:var(--bg4);color:var(--text3);font-size:10px;padding:1px 5px;border-radius:3px;margin-right:3px">${t}</span>`).join('')}</div>` : ''}
             </td>
+            <td>${d.pleskServer ? `<span class="host-chip">${d.pleskServer}</span>` : '<span style="color:var(--text3)">—</span>'}</td>
             <td>${statusBadge(d)}</td>
             <td>${pleskBadge(d)}</td>
             <td>${trafficBar(d)}</td>
@@ -2875,7 +2567,7 @@ async function bulkDelete() {
   renderQuickTable();
 }
 
-let currentPageName = 'command';
+let currentPageName = 'hub';
 let isSelectAllFiltered = false; // ติ๊กทุกโดเมนในตัวกรองปัจจุบัน
 let countdownInterval = null;
 let secondsLeft = 30;
@@ -3370,29 +3062,29 @@ function renderServerCards(servers) {
         <button onclick="serverAction('${srv.name}','fix-load')" class="btn btn-sm" style="font-size:11px;background:var(--amber-dim);color:var(--amber)"><i class="ti ti-wand"></i> Fix Load</button>
         <button onclick="serverAction('${srv.name}','kill-heavy')" class="btn btn-sm" style="font-size:11px;background:rgba(239,68,68,0.15);color:var(--red)"><i class="ti ti-skull"></i> Kill Heavy</button>
         ${srv.suspended > 0 ? `<button onclick="unsuspendServer('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:var(--green-dim);color:var(--green)"><i class="ti ti-player-play"></i> Unsuspend ${srv.suspended}</button>` : ''}
-        <button onclick="openSSHTerminal('${srv.name}','${srv.host}')" class="btn btn-sm" style="font-size:11px;background:rgba(99,102,241,0.15);color:#818cf8;border-color:rgba(99,102,241,0.3)"><i class="ti ti-terminal-2"></i> SSH Terminal</button>
+        <button onclick="openSSHTerminal('${srv.name}','${srv.host}')" class="btn btn-sm" style="font-size:11px;background:rgba(99,102,241,0.15);color:var(--indigo);border-color:rgba(99,102,241,0.3)"><i class="ti ti-terminal-2"></i> SSH Terminal</button>
         ${ahIsOff(srv.name, srv.host)
           ? `<button onclick="toggleAutoHeal('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:rgba(148,163,184,0.15);color:var(--text3);border-color:rgba(148,163,184,0.3)" title="Auto-heal ปิดอยู่ — กดเพื่อเปิด"><i class="ti ti-robot-off"></i> Auto-heal: ปิด</button>`
           : `<button onclick="toggleAutoHeal('${srv.name}')" class="btn btn-sm" style="font-size:11px;background:rgba(16,185,129,0.12);color:var(--green);border-color:rgba(16,185,129,0.3)" title="Auto-heal เปิดอยู่ — กดเพื่อปิด"><i class="ti ti-robot"></i> Auto-heal: เปิด</button>`}
       </div>
       <div id="ssh-terminal-${srv.name.replace(/\s+/g,'-')}" style="display:none;margin-top:12px;border-top:1px solid var(--border);padding-top:12px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <span style="font-size:12px;color:#818cf8;font-weight:600"><i class="ti ti-terminal-2"></i> SSH Terminal — ${srv.name} (${srv.host})</span>
+          <span style="font-size:12px;color:var(--indigo);font-weight:600"><i class="ti ti-terminal-2"></i> SSH Terminal — ${srv.name} (${srv.host})</span>
           <button onclick="closeSSHTerminal('${srv.name}')" style="background:none;border:none;color:var(--text3);cursor:pointer"><i class="ti ti-x"></i></button>
         </div>
-        <div id="ssh-output-${srv.name.replace(/\s+/g,'-')}" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:var(--mono);font-size:12px;color:#e6edf3;min-height:120px;max-height:300px;overflow-y:auto;margin-bottom:8px;white-space:pre-wrap;word-break:break-all">
-          <span style="color:#7d8590">root@${srv.host}:~# </span>
+        <div id="ssh-output-${srv.name.replace(/\s+/g,'-')}" style="background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:12px;font-family:var(--mono);font-size:12px;color:var(--text);min-height:120px;max-height:300px;overflow-y:auto;margin-bottom:8px;white-space:pre-wrap;word-break:break-all">
+          <span style="color:var(--text3)">root@${srv.host}:~# </span>
         </div>
         <div style="display:flex;gap:8px">
-          <span style="color:#818cf8;font-family:var(--mono);font-size:12px;padding:6px 0;flex-shrink:0">$</span>
+          <span style="color:var(--indigo);font-family:var(--mono);font-size:12px;padding:6px 0;flex-shrink:0">$</span>
           <input type="text" id="ssh-input-${srv.name.replace(/\s+/g,'-')}" 
             placeholder="พิมพ์คำสั่ง..." 
-            style="flex:1;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:6px 10px;color:#e6edf3;font-family:var(--mono);font-size:12px;outline:none"
+            style="flex:1;background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:6px 10px;color:var(--text);font-family:var(--mono);font-size:12px;outline:none"
             onkeydown="if(event.key==='Enter')runSSHCommand('${srv.name}','${srv.host}',this)"
             autocomplete="off" spellcheck="false"
           />
           <button onclick="runSSHCommand('${srv.name}','${srv.host}',document.getElementById('ssh-input-${srv.name.replace(/\s+/g,'-')}'))" 
-            class="btn btn-sm" style="background:#818cf8;color:#fff;border-color:#818cf8;font-size:11px">
+            class="btn btn-sm" style="background:var(--indigo);color:#fff;border-color:var(--indigo);font-size:11px">
             <i class="ti ti-send"></i> รัน
           </button>
         </div>
@@ -3786,8 +3478,8 @@ async function runSSHCommand(serverName, host, inputEl) {
   sshHistoryIdx[serverName] = sshHistory[serverName].length;
   
   // Show command in terminal
-  output.innerHTML += '\n<span style="color:#7d8590">root@' + host + ':~# </span><span style="color:#e6edf3">' + escapeHtml(cmd) + '</span>\n';
-  output.innerHTML += '<span style="color:#7d8590;font-style:italic">⏳ กำลังรัน...</span>';
+  output.innerHTML += '\n<span style="color:var(--text3)">root@' + host + ':~# </span><span style="color:var(--text)">' + escapeHtml(cmd) + '</span>\n';
+  output.innerHTML += '<span style="color:var(--text3);font-style:italic">⏳ กำลังรัน...</span>';
   output.scrollTop = output.scrollHeight;
   inputEl.value = '';
   inputEl.disabled = true;
@@ -3813,24 +3505,24 @@ async function runSSHCommand(serverName, host, inputEl) {
     }
     
     // Remove loading indicator
-    output.innerHTML = output.innerHTML.replace('<span style="color:#7d8590;font-style:italic">⏳ กำลังรัน...</span>', '');
+    output.innerHTML = output.innerHTML.replace('<span style="color:var(--text3);font-style:italic">⏳ กำลังรัน...</span>', '');
     
     if (result) {
       const lines = (result.output || '').split('~').filter(Boolean);
-      const color = result.exitCode === 0 ? '#e6edf3' : '#f85149';
+      const color = result.exitCode === 0 ? 'var(--text)' : 'var(--red)';
       output.innerHTML += '<span style="color:' + color + '">' + lines.map(l => escapeHtml(l)).join('\n') + '</span>';
       if (result.exitCode !== 0) {
-        output.innerHTML += '\n<span style="color:#f85149">Exit code: ' + result.exitCode + '</span>';
+        output.innerHTML += '\n<span style="color:var(--red)">Exit code: ' + result.exitCode + '</span>';
       }
     } else {
-      output.innerHTML += '<span style="color:#f85149">Timeout — Agent ไม่ตอบสนองใน 60 วินาที</span>';
+      output.innerHTML += '<span style="color:var(--red)">Timeout — Agent ไม่ตอบสนองใน 60 วินาที</span>';
     }
   } catch(e) {
-    output.innerHTML = output.innerHTML.replace('<span style="color:#7d8590;font-style:italic">⏳ กำลังรัน...</span>', '');
-    output.innerHTML += '<span style="color:#f85149">Error: ' + escapeHtml(e.message) + '</span>';
+    output.innerHTML = output.innerHTML.replace('<span style="color:var(--text3);font-style:italic">⏳ กำลังรัน...</span>', '');
+    output.innerHTML += '<span style="color:var(--red)">Error: ' + escapeHtml(e.message) + '</span>';
   }
   
-  output.innerHTML += '\n<span style="color:#7d8590">root@' + host + ':~# </span>';
+  output.innerHTML += '\n<span style="color:var(--text3)">root@' + host + ':~# </span>';
   output.scrollTop = output.scrollHeight;
   inputEl.disabled = false;
   inputEl.focus();
@@ -4800,7 +4492,7 @@ function renderEvents() {
   ['all','critical','warning','down','slow'].forEach(k => {
     const btn = document.getElementById('ev-f-' + k);
     if (!btn) return;
-    if (filter === k) { btn.style.background='var(--teal)'; btn.style.color='#fff'; btn.style.borderColor='var(--teal)'; }
+    if (filter === k) { btn.style.background='var(--teal)'; btn.style.color='var(--on-accent)'; btn.style.borderColor='var(--teal)'; }
     else { btn.style.background=''; btn.style.color=''; btn.style.borderColor=''; }
   });
 
@@ -6084,7 +5776,7 @@ async function aiAnalyze(prefillText, context) {
 function formatAIResponse(text) {
   let html = text.replace(/</g,'&lt;');
   // code block
-  html = html.replace(/\`\`\`[\w]*\n?([\s\S]*?)\`\`\`/g, (m,code) => `<pre style="background:#000;border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;color:#4ade80;overflow-x:auto;white-space:pre-wrap;margin:8px 0;font-family:var(--mono)">${code.trim()}</pre>`);
+  html = html.replace(/\`\`\`[\w]*\n?([\s\S]*?)\`\`\`/g, (m,code) => `<pre style="background:#000;border:1px solid var(--border);border-radius:6px;padding:10px;font-size:11px;color:var(--green);overflow-x:auto;white-space:pre-wrap;margin:8px 0;font-family:var(--mono)">${code.trim()}</pre>`);
   // inline code
   html = html.replace(/\`([^\`]+)\`/g, '<code style="background:var(--bg4);padding:1px 5px;border-radius:4px;font-family:var(--mono);font-size:12px">$1</code>');
   return html;
@@ -6201,7 +5893,7 @@ async function showNginxError(serverName, btn) {
     if (!d.ok) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ดึงไม่ได้: ' + (d.error||'') + '</div>'; if(btn)btn.disabled=false; return; }
     box.innerHTML = `
       <div style="font-size:11px;color:var(--text3);margin-bottom:4px">ข้อความเต็มจาก nginx -t:</div>
-      <pre style="background:#000;border:1px solid var(--border);border-radius:6px;padding:12px;font-size:11px;color:#4ade80;overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;font-family:var(--mono)">${(d.rawOutput||'').replace(/</g,'&lt;')}</pre>
+      <pre style="background:#000;border:1px solid var(--border);border-radius:6px;padding:12px;font-size:11px;color:var(--green);overflow-x:auto;white-space:pre-wrap;word-break:break-all;max-height:300px;overflow-y:auto;font-family:var(--mono)">${(d.rawOutput||'').replace(/</g,'&lt;')}</pre>
       <button class="btn btn-sm btn-green" onclick="aiAnalyze(${JSON.stringify(d.rawOutput||'').replace(/"/g,'&quot;')}, 'nginx -t error จาก ${serverName}')" style="margin-top:8px"><i class="ti ti-robot"></i> ส่งให้ AI วิเคราะห์เลย</button>`;
   } catch(e) { box.innerHTML = '<div style="font-size:12px;color:var(--red)">ผิดพลาด: ' + e.message + '</div>'; }
   if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-text"></i> ดู error เต็มๆ อีกครั้ง'; }
@@ -6331,7 +6023,7 @@ function openISP(){ ensureISPPage(); showPage('isp');
   loadISP();
 }
 function ispBadge(status){
-  var c = status==='blocked' ? '#e24b4a' : (status==='unknown' ? '#888' : '#2ecc71');
+  var c = status==='blocked' ? 'var(--red)' : (status==='unknown' ? '#888' : 'var(--green)');
   return '<span style="color:'+c+';font-weight:600">'+status+'</span>';
 }
 function ispThumb(domain, w, h){
@@ -6356,7 +6048,7 @@ async function loadISP(){
     // ถ้ามี agent ไทย → โชว์ผลจริงจากไทยเป็นหลัก (แยกคอลัมน์รายค่าย)
     if(d.hasAgent && d.thBlocked && d.thBlocked.length){
       var carriers=(d.carriers&&d.carriers.length)?d.carriers:['th'];
-      var hh='<div style="margin-bottom:8px;color:#2ecc71;font-size:13px">แสดงผลจริงจากเน็ตไทย (agent แยกรายค่าย)</div>'+
+      var hh='<div style="margin-bottom:8px;color:var(--green);font-size:13px">แสดงผลจริงจากเน็ตไทย (agent แยกรายค่าย)</div>'+
         '<table style="width:100%;border-collapse:collapse;font-size:13px">'+
         '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:8px">พรีวิว</th><th style="padding:8px">โดเมน</th>'+
         carriers.map(function(c){return '<th style="padding:8px">'+c+'</th>';}).join('')+'<th style="padding:8px">เช็กเมื่อ</th></tr>';
@@ -6433,8 +6125,8 @@ async function loadBackup(){
   catch(e){ document.getElementById('bk-body').innerHTML='โหลดไม่ได้: '+e.message; }
 }
 function bkStatusBadge(s,blocked){
-  var c=s==='up'?'#2ecc71':(s==='down'?'#e24b4a':(s==='warn'?'#e3b93b':'#888'));
-  return '<span style="color:'+c+'">'+s+'</span>'+(blocked?' <span style="color:#e24b4a">· บล็อก</span>':'');
+  var c=s==='up'?'var(--green)':(s==='down'?'var(--red)':(s==='warn'?'var(--amber)':'#888'));
+  return '<span style="color:'+c+'">'+s+'</span>'+(blocked?' <span style="color:var(--red)">· บล็อก</span>':'');
 }
 function renderBackup(){
   var body=document.getElementById('bk-body');
@@ -6444,16 +6136,16 @@ function renderBackup(){
     h+='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px;margin-bottom:12px">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
       '<b>'+g.name+'</b>'+
-      '<span style="font-size:12px">แนะนำใช้: '+(g.recommended?'<b style="color:#2ecc71">'+g.recommended+'</b>':'<span style="color:#e24b4a">ไม่มีตัวที่ใช้ได้!</span>')+
+      '<span style="font-size:12px">แนะนำใช้: '+(g.recommended?'<b style="color:var(--green)">'+g.recommended+'</b>':'<span style="color:var(--red)">ไม่มีตัวที่ใช้ได้!</span>')+
       ' <button class="btn" style="margin-left:8px" onclick="bkAddDomain('+gi+')">+ โดเมน</button>'+
       ' <button class="btn" onclick="bkDelGroup('+gi+')">ลบกลุ่ม</button></span></div>';
     (g.domains||[]).forEach(function(dm,di){
       var isRec = dm.domain===g.recommended;
-      h+='<div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;'+(isRec?'background:#12351f;border:1px solid #2ecc71':'')+'">'+
+      h+='<div style="display:flex;align-items:center;gap:10px;padding:6px 8px;border-radius:6px;'+(isRec?'background:#12351f;border:1px solid var(--green)':'')+'">'+
         '<span style="color:var(--text3,#888);width:70px">'+(di===0?'หลัก':'สำรอง '+di)+'</span>'+
         '<a href="https://'+dm.domain+'" target="_blank" rel="noopener" style="color:inherit;flex:1">'+dm.domain+'</a>'+
         '<span style="font-size:12px">'+bkStatusBadge(dm.status,dm.blocked)+'</span>'+
-        (isRec?'<span style="color:#2ecc71;font-size:12px">← ใช้ตัวนี้</span>':'')+
+        (isRec?'<span style="color:var(--green);font-size:12px">← ใช้ตัวนี้</span>':'')+
         '<button class="btn" onclick="bkDelDomain('+gi+','+di+')" style="padding:2px 8px">×</button></div>';
     });
     h+='</div>';
@@ -6498,7 +6190,7 @@ async function loadHistory(){
 }
 function drawChart(hist){
   var W=900,H=280,pad=34, n=hist.length;
-  var keys=[['down','#e24b4a','Down'],['blocked','#e39a3b','โดนบล็อก'],['warn','#e3d03b','Warn']];
+  var keys=[['down','var(--red)','Down'],['blocked','var(--amber)','โดนบล็อก'],['warn','var(--amber)','Warn']];
   var maxV=1; hist.forEach(function(p){ keys.forEach(function(k){ if(p[k[0]]>maxV)maxV=p[k[0]]; }); });
   function x(i){ return pad+(i/(n-1))*(W-2*pad); }
   function y(v){ return H-pad-(v/maxV)*(H-2*pad); }
@@ -6614,7 +6306,7 @@ function renderWatch(){
       (w.lastCheckAt?' · ล่าสุด '+new Date(w.lastCheckAt).toLocaleTimeString():'')+'</span></div>'+
     '<button class="btn" style="padding:2px 10px;font-size:11px" onclick="wlAdd()">+ เพิ่มโดเมน</button></div>'+
     (list.length?'<div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">'+list.map(function(x){
-      return '<span style="background:rgba(59,154,227,0.12);border:1px solid rgba(59,154,227,0.3);color:#3b9ae3;padding:2px 8px;border-radius:12px;font-size:11px">'+x+
+      return '<span style="background:rgba(59,154,227,0.12);border:1px solid rgba(59,154,227,0.3);color:var(--blue);padding:2px 8px;border-radius:12px;font-size:11px">'+x+
         ' <span style="cursor:pointer;color:var(--text3,#888)" onclick="wlToggle(\''+x+'\')">×</span></span>';
     }).join('')+'</div>':'<div style="margin-top:8px;color:var(--text3,#888);font-size:12px">ยังไม่มีโดเมน — เพิ่มเว็บหลักที่คุณแก้บ่อย จะได้เห็นตอนมันสะดุด</div>')+
     '</div>';
@@ -6647,11 +6339,11 @@ function renderInc(){
   var totDown=0, totWarn=0;
   (d.domains||[]).forEach(function(x){ totDown+=(x.downCount||0); totWarn+=(x.warnCount||0); });
   document.getElementById('inc-cards').innerHTML=
-    incCard('ดับ เข้าไม่ได้ (24 ชม.)', totDown, '#e24b4a')+
-    incCard('ผิดปกติ warn (24 ชม.)', totWarn, '#e3b93b')+
-    incCard('ยังมีปัญหาตอนนี้', d.stillDown, d.stillDown?'#e24b4a':'#2ecc71')+
-    incCard('โดเมนที่กระทบ', (d.domains||[]).length, '#e3b93b')+
-    incCard('เครื่องที่กระทบ', (d.servers||[]).length, '#e3b93b');
+    incCard('ดับ เข้าไม่ได้ (24 ชม.)', totDown, 'var(--red)')+
+    incCard('ผิดปกติ warn (24 ชม.)', totWarn, 'var(--amber)')+
+    incCard('ยังมีปัญหาตอนนี้', d.stillDown, d.stillDown?'var(--red)':'var(--green)')+
+    incCard('โดเมนที่กระทบ', (d.domains||[]).length, 'var(--amber)')+
+    incCard('เครื่องที่กระทบ', (d.servers||[]).length, 'var(--amber)');
 
   var sh='';
   if((d.servers||[]).length){
@@ -6662,7 +6354,7 @@ function renderInc(){
     d.servers.forEach(function(s){
       sh+='<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:6px;font-weight:600">'+s.server+'</td>'+
         '<td style="padding:6px">'+s.incidents+'</td><td style="padding:6px">'+s.domains+'</td>'+
-        '<td style="padding:6px">'+(s.hostEvents?'<span style="color:#e24b4a;font-weight:600">'+s.hostEvents+'</span>':'<span style="color:var(--text3,#888)">0</span>')+'</td></tr>';
+        '<td style="padding:6px">'+(s.hostEvents?'<span style="color:var(--red);font-weight:600">'+s.hostEvents+'</span>':'<span style="color:var(--text3,#888)">0</span>')+'</td></tr>';
     });
     sh+='</table></div>';
   }
@@ -6679,19 +6371,19 @@ function renderInc(){
     '<th style="padding:8px">สาเหตุ</th><th style="padding:8px">อาการล่าสุด</th><th style="padding:8px">รวมเวลา</th><th style="padding:8px"></th></tr>';
   rows.forEach(function(r){
     var cause='';
-    if(r.hostCause && r.domainCause) cause='<span style="color:#e24b4a">โฮส '+r.hostCause+'</span> · <span style="color:#e3b93b">เว็บ '+r.domainCause+'</span>';
-    else if(r.hostCause) cause='<span style="color:#e24b4a;font-weight:600">โฮสมีปัญหา</span>';
-    else if(r.domainCause) cause='<span style="color:#e3b93b;font-weight:600">เฉพาะเว็บนี้</span>';
+    if(r.hostCause && r.domainCause) cause='<span style="color:var(--red)">โฮส '+r.hostCause+'</span> · <span style="color:var(--amber)">เว็บ '+r.domainCause+'</span>';
+    else if(r.hostCause) cause='<span style="color:var(--red);font-weight:600">โฮสมีปัญหา</span>';
+    else if(r.domainCause) cause='<span style="color:var(--amber);font-weight:600">เฉพาะเว็บนี้</span>';
     else cause='<span style="color:var(--text3,#888)">-</span>';
     var badges='';
-    if(r.onWatchlist) badges+=' <span title="เช็กทุก 1 นาที" style="color:#3b9ae3;font-size:10px">⚡1น.</span>';
-    if((r.thBlockedCarriers||[]).length) badges+=' <span title="โดนบล็อกในเน็ตไทย: '+r.thBlockedCarriers.join(', ')+'" style="color:#e39a3b;font-size:10px">🇹🇭บล็อก</span>';
+    if(r.onWatchlist) badges+=' <span title="เช็กทุก 1 นาที" style="color:var(--blue);font-size:10px">⚡1น.</span>';
+    if((r.thBlockedCarriers||[]).length) badges+=' <span title="โดนบล็อกในเน็ตไทย: '+r.thBlockedCarriers.join(', ')+'" style="color:var(--amber);font-size:10px">🇹🇭บล็อก</span>';
     h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(r.stillDown?';background:rgba(226,75,74,0.08)':'')+'">'+
       '<td style="padding:8px;font-weight:600"><a href="https://'+r.domain+'" target="_blank" rel="noopener" style="color:inherit;text-decoration:underline">'+r.domain+'</a>'+
-        (r.stillDown?' <span style="color:#e24b4a;font-size:11px">● ยังมีปัญหา</span>':'')+badges+'</td>'+
+        (r.stillDown?' <span style="color:var(--red);font-size:11px">● ยังมีปัญหา</span>':'')+badges+'</td>'+
       '<td style="padding:8px">'+(r.server||'<span style="color:var(--text3,#888)">ไม่ทราบ</span>')+'</td>'+
-      '<td style="padding:8px;font-weight:700;color:'+(r.downCount>=3?'#e24b4a':(r.downCount?'inherit':'var(--text3,#888)'))+'">'+(r.downCount||0)+'</td>'+
-      '<td style="padding:8px;font-weight:700;color:'+(r.warnCount?'#e3b93b':'var(--text3,#888)')+'">'+(r.warnCount||0)+'</td>'+
+      '<td style="padding:8px;font-weight:700;color:'+(r.downCount>=3?'var(--red)':(r.downCount?'inherit':'var(--text3,#888)'))+'">'+(r.downCount||0)+'</td>'+
+      '<td style="padding:8px;font-weight:700;color:'+(r.warnCount?'var(--amber)':'var(--text3,#888)')+'">'+(r.warnCount||0)+'</td>'+
       '<td style="padding:8px">'+cause+'</td>'+
       '<td style="padding:8px;color:var(--text3,#888)">'+(r.lastError||'-')+(r.lastCode?' ('+r.lastCode+')':'')+'</td>'+
       '<td style="padding:8px">'+(r.totalMin?r.totalMin+' นาที':'-')+'</td>'+
@@ -6727,13 +6419,13 @@ function incUptimeBar(incs){
     if(ov>0) badMin+=ov/60000;
   });
   var uptimePct=Math.max(0, (100-(badMin/totalMin*100))).toFixed(2);
-  var color={up:'#2ecc71',down:'#e24b4a',warn:'#e3b93b'};
+  var color={up:'var(--green)',down:'var(--red)',warn:'var(--amber)'};
   var bars=days.map(function(x){
     return '<div title="'+x.tip+'" style="flex:1;height:34px;background:'+color[x.state]+';border-radius:2px;min-width:3px;cursor:default"></div>';
   }).join('');
   return '<div style="margin-bottom:14px">'+
     '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text3,#888);margin-bottom:4px">'+
-      '<span>30 วันล่าสุด</span><span style="color:'+(uptimePct>=99?'#2ecc71':uptimePct>=95?'#e3b93b':'#e24b4a')+';font-weight:700">Uptime '+uptimePct+'%</span></div>'+
+      '<span>30 วันล่าสุด</span><span style="color:'+(uptimePct>=99?'var(--green)':uptimePct>=95?'var(--amber)':'var(--red)')+';font-weight:700">Uptime '+uptimePct+'%</span></div>'+
     '<div style="display:flex;gap:2px">'+bars+'</div>'+
     '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text3,#888);margin-top:3px"><span>30 วันก่อน</span><span>วันนี้</span></div>'+
     '</div>';
@@ -6752,12 +6444,12 @@ async function incDetail(dom){
       h+='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
         '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">เริ่มดับ</th><th style="padding:6px">กลับมา</th><th style="padding:6px">นาน</th><th style="padding:6px">สาเหตุ</th><th style="padding:6px">Error</th></tr>';
       d.incidents.forEach(function(i){
-        var cz=i.cause==='host'?'<span style="color:#e24b4a">โฮส'+(i.batchSize?' ('+i.batchSize+' โดเมนพร้อมกัน)':'')+'</span>'
-              :i.cause==='domain'?'<span style="color:#e3b93b">เฉพาะเว็บนี้</span>':'<span style="color:var(--text3,#888)">-</span>';
-        cz=(i.kind==='warn'?'<span style="color:#e3b93b">⚠️ warn</span> · ':'<span style="color:#e24b4a">🔴 ดับ</span> · ')+cz;
+        var cz=i.cause==='host'?'<span style="color:var(--red)">โฮส'+(i.batchSize?' ('+i.batchSize+' โดเมนพร้อมกัน)':'')+'</span>'
+              :i.cause==='domain'?'<span style="color:var(--amber)">เฉพาะเว็บนี้</span>':'<span style="color:var(--text3,#888)">-</span>';
+        cz=(i.kind==='warn'?'<span style="color:var(--amber)">⚠️ warn</span> · ':'<span style="color:var(--red)">🔴 ดับ</span> · ')+cz;
         h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
           '<td style="padding:6px">'+new Date(i.startAt).toLocaleString()+'</td>'+
-          '<td style="padding:6px">'+(i.endAt?new Date(i.endAt).toLocaleString():'<span style="color:#e24b4a">ยังดับอยู่</span>')+'</td>'+
+          '<td style="padding:6px">'+(i.endAt?new Date(i.endAt).toLocaleString():'<span style="color:var(--red)">ยังดับอยู่</span>')+'</td>'+
           '<td style="padding:6px">'+(i.durationMin?i.durationMin+' นาที':'-')+'</td>'+
           '<td style="padding:6px">'+cz+'</td>'+
           '<td style="padding:6px;color:var(--text3,#888)">'+(i.error||'-')+(i.statusCode?' ('+i.statusCode+')':'')+'</td></tr>';
@@ -6798,9 +6490,9 @@ async function loadHogs(){
           '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">โดเมน</th><th style="padding:6px">ดับ</th><th style="padding:6px">warn</th><th style="padding:6px">รวมเวลา</th><th style="padding:6px">อาการล่าสุด</th></tr>';
         g.domains.forEach(function(a){
           h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(a.stillDown?';background:rgba(226,75,74,0.08)':'')+'">'+
-            '<td style="padding:6px;font-weight:600"><a href="https://'+a.domain+'" target="_blank" rel="noopener" style="color:inherit">'+a.domain+'</a>'+(a.stillDown?' <span style="color:#e24b4a;font-size:10px">●</span>':'')+'</td>'+
-            '<td style="padding:6px;font-weight:700;color:'+(a.downCount?'#e24b4a':'var(--text3,#888)')+'">'+a.downCount+'</td>'+
-            '<td style="padding:6px;color:'+(a.warnCount?'#e3b93b':'var(--text3,#888)')+'">'+a.warnCount+'</td>'+
+            '<td style="padding:6px;font-weight:600"><a href="https://'+a.domain+'" target="_blank" rel="noopener" style="color:inherit">'+a.domain+'</a>'+(a.stillDown?' <span style="color:var(--red);font-size:10px">●</span>':'')+'</td>'+
+            '<td style="padding:6px;font-weight:700;color:'+(a.downCount?'var(--red)':'var(--text3,#888)')+'">'+a.downCount+'</td>'+
+            '<td style="padding:6px;color:'+(a.warnCount?'var(--amber)':'var(--text3,#888)')+'">'+a.warnCount+'</td>'+
             '<td style="padding:6px">'+(a.totalMin?a.totalMin+' น.':'-')+'</td>'+
             '<td style="padding:6px;color:var(--text3,#888)">'+(a.lastError||'-')+'</td></tr>';
         });
@@ -6823,16 +6515,16 @@ async function loadHogs(){
       var measured='<span style="color:var(--text3,#888)">ยังไม่วัด</span>';
       if(s.measuredPhpfpm){
         var p=s.measuredPhpfpm;
-        var col=(p.pct>=100?'#e24b4a':p.pct>=80?'#e3b93b':'#2ecc71');
+        var col=(p.pct>=100?'var(--red)':p.pct>=80?'var(--amber)':'var(--green)');
         measured='<span style="color:'+col+';font-weight:600" title="PHP-FPM worker ที่ใช้จริง">'+p.active+'/'+(p.max||'?')+(p.pct!=null?' ('+p.pct+'%)':'')+'</span>';
-        if(s.measuredHot&&s.measuredHot.topIpHits>1000) measured+=' <span title="โดน IP เดียวยิงหนัก" style="color:#e39a3b;font-size:10px">🤖'+s.measuredHot.topIp+'</span>';
+        if(s.measuredHot&&s.measuredHot.topIpHits>1000) measured+=' <span title="โดน IP เดียวยิงหนัก" style="color:var(--amber);font-size:10px">🤖'+s.measuredHot.topIp+'</span>';
       }
       h+='<tr style="border-top:1px solid var(--border,#2a2a2a)'+(danger?';background:rgba(226,75,74,0.08)':'')+'">'+
         '<td style="padding:6px;font-weight:700">'+(i+1)+(danger?' 🔴':'')+'</td>'+
         '<td style="padding:6px;font-weight:600"><a href="https://'+s.domain+'" target="_blank" rel="noopener" style="color:inherit">'+s.domain+'</a></td>'+
         '<td style="padding:6px">'+s.server+'</td>'+
-        '<td style="padding:6px;font-weight:700;color:'+(s.points>=10?'#e24b4a':(s.points>=5?'#e3b93b':'inherit'))+'">'+s.points+'</td>'+
-        '<td style="padding:6px">'+(s.firstToFail?'<span style="color:#e24b4a;font-weight:600">'+s.firstToFail+' ครั้ง</span>':'-')+'</td>'+
+        '<td style="padding:6px;font-weight:700;color:'+(s.points>=10?'var(--red)':(s.points>=5?'var(--amber)':'inherit'))+'">'+s.points+'</td>'+
+        '<td style="padding:6px">'+(s.firstToFail?'<span style="color:var(--red);font-weight:600">'+s.firstToFail+' ครั้ง</span>':'-')+'</td>'+
         '<td style="padding:6px">'+s.hostEventCount+'</td>'+
         '<td style="padding:6px">'+measured+'</td>'+
         '<td style="padding:6px;white-space:nowrap"><button class="btn" style="padding:2px 8px;font-size:11px" onclick="measureNow(\''+(s.server||'')+'\')" title="ให้ระบบวัดทรัพยากรจริงจากในเครื่องเดี๋ยวนี้">⚡ วัดจริง</button> '+
@@ -6920,7 +6612,7 @@ function wpEnsurePage(){
   div.innerHTML=
     '<div><h2 style="margin:0;font-size:18px"><i class="ti ti-lock-open"></i> เปิด/ปิด wp-admin</h2>'+
     '<div style="font-size:12px;color:var(--text3,#888)">เปิดให้เข้าหลังบ้าน (wp-login) รายโดเมน — ระบบ configtest ก่อนทุกครั้ง ถ้า config ผิดจะ rollback อัตโนมัติ ไม่ทำเว็บพัง</div></div>'+
-    '<div style="background:rgba(227,154,59,0.1);border:1px solid rgba(227,154,59,0.3);border-radius:8px;padding:10px;font-size:12px;color:#e3b93b">'+
+    '<div style="background:rgba(227,154,59,0.1);border:1px solid rgba(227,154,59,0.3);border-radius:8px;padding:10px;font-size:12px;color:var(--amber)">'+
       '⚠️ เว็บที่เปิด wp-admin ควรมี Cloudflare Managed Challenge กันบอทด้วย ไม่งั้นบอทจะยิงกลับมาที่เว็บนั้น</div>'+
     '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:14px">'+
       '<div style="font-weight:700;font-size:14px;margin-bottom:8px">เปิด wp-admin ให้โดเมน</div>'+
@@ -6930,15 +6622,15 @@ function wpEnsurePage(){
         '<datalist id="wp-domlist"></datalist>'+
         '<span id="wp-srv" style="font-size:12px;color:var(--text3,#888)"></span>'+
         '<button class="btn" style="background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="wpSet(true)">🔓 เปิด wp-admin</button>'+
-        '<button class="btn" style="background:rgba(226,75,74,0.12);color:#e24b4a;border-color:rgba(226,75,74,0.3)" onclick="wpSet(false)">🔒 ปิด (บล็อก)</button>'+
-        '<button class="btn" style="background:rgba(245,130,32,0.13);color:#f58220;border-color:rgba(245,130,32,0.3)" onclick="cfDomain(true)" title="ตั้ง Cloudflare Managed Challenge กันบอทให้โดเมนนี้">☁️ ตั้ง CF กันบอท</button>'+
+        '<button class="btn" style="background:rgba(226,75,74,0.12);color:var(--red);border-color:rgba(226,75,74,0.3)" onclick="wpSet(false)">🔒 ปิด (บล็อก)</button>'+
+        '<button class="btn" style="background:rgba(245,130,32,0.13);color:var(--orange);border-color:rgba(245,130,32,0.3)" onclick="cfDomain(true)" title="ตั้ง Cloudflare Managed Challenge กันบอทให้โดเมนนี้">☁️ ตั้ง CF กันบอท</button>'+
       '</div></div>'+
     '<div id="cf-bulk-card" style="background:var(--bg2,#111);border:1px solid rgba(245,130,32,0.3);border-radius:10px;padding:14px">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
         '<div><b style="font-size:14px">☁️ Cloudflare กันบอท — ทั้งหมดรวดเดียว</b>'+
         '<div style="font-size:11px;color:var(--text3,#888)">ตั้ง Managed Challenge ที่ wp-login + block xmlrpc ให้ทุกโดเมนใน Cloudflare (เก็บ rule เดิมของคุณไว้)</div></div>'+
         '<div style="display:flex;gap:8px">'+
-          '<button class="btn" style="background:rgba(245,130,32,0.15);color:#f58220;border-color:rgba(245,130,32,0.3)" onclick="cfBulk(true)">☁️ ตั้งทั้งหมด</button>'+
+          '<button class="btn" style="background:rgba(245,130,32,0.15);color:var(--orange);border-color:rgba(245,130,32,0.3)" onclick="cfBulk(true)">☁️ ตั้งทั้งหมด</button>'+
           '<button class="btn" onclick="cfBulk(false)" title="ถอด rule ที่ระบบตั้งออกทั้งหมด">ถอดทั้งหมด</button>'+
         '</div></div>'+
       '<div id="cf-bulk-progress" style="margin-top:8px;font-size:12px;color:var(--text3,#888)"></div>'+
@@ -7019,14 +6711,14 @@ async function wpLoadOne(server){
   try{
     var r=await fetch(API+'/api/wpadmin/status?server='+encodeURIComponent(server));
     var d=await r.json();
-    if(!d.success){ el.innerHTML='<b>'+server+'</b> <span style="color:#e24b4a;font-size:12px">— '+(d.error||'อ่านไม่ได้ (agent ไม่ตอบ?)')+'</span>'; return; }
+    if(!d.success){ el.innerHTML='<b>'+server+'</b> <span style="color:var(--red);font-size:12px">— '+(d.error||'อ่านไม่ได้ (agent ไม่ตอบ?)')+'</span>'; return; }
     if(d.apache===false){ el.innerHTML='<b>'+server+'</b> <span style="color:var(--text3,#888);font-size:12px">— ไม่ใช่ Apache (ฟีเจอร์นี้ข้าม)</span>'; return; }
     var open=(d.openDomains||[]);
     var blockBtn = d.blockOn
       ? '<button class="btn" style="padding:3px 10px;font-size:11px;background:rgba(148,163,184,0.15);color:var(--text3,#888);border-color:rgba(148,163,184,0.3)" onclick="wpBlock(\''+server+'\',false)" title="ถอดบล็อก wp-login ออกทั้งเครื่อง (บอทเข้าได้อีก)">หยุดกันบอท</button>'
       : '<button class="btn" style="padding:3px 10px;font-size:11px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="wpBlock(\''+server+'\',true)" title="เปิดบล็อก wp-login ทั้งเครื่อง กันบอทยิงรหัส">🛡️ เปิดกันบอท</button>';
     var head='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px">'+
-      '<div><b>'+server+'</b> <span style="font-size:12px;color:'+(d.blockOn?'#2ecc71':'#e3b93b')+'">— บล็อก wp-login: '+(d.blockOn?'เปิดอยู่ 🔒':'ปิด (ไม่ได้กัน ⚠️)')+'</span></div>'+
+      '<div><b>'+server+'</b> <span style="font-size:12px;color:'+(d.blockOn?'var(--green)':'var(--amber)')+'">— บล็อก wp-login: '+(d.blockOn?'เปิดอยู่ 🔒':'ปิด (ไม่ได้กัน ⚠️)')+'</span></div>'+
       blockBtn+'</div>';
     if(!open.length){ el.innerHTML=head+'<div style="font-size:12px;color:var(--text3,#888);margin-top:6px">'+(d.blockOn?'ทุกเว็บถูกบล็อก wp-admin (ยังไม่เปิดให้เว็บไหน)':'เครื่องนี้ยังไม่ได้กันบอท — กด "เปิดกันบอท" เพื่อบล็อก wp-login')+'</div>'; return; }
     var chips=open.map(function(dom){
@@ -7034,7 +6726,7 @@ async function wpLoadOne(server){
         ' <span style="cursor:pointer;color:var(--text3,#888)" title="ปิดกลับ" onclick="wpQuickClose(\''+dom+'\',\''+server+'\')">✕</span></span>';
     }).join(' ');
     el.innerHTML=head+'<div style="margin-top:8px;font-size:12px">🔓 เปิด wp-admin อยู่ '+open.length+' โดเมน (ที่เหลือบนเครื่องถูกบล็อก):</div><div style="margin-top:4px">'+chips+'</div>';
-  }catch(e){ el.innerHTML='<b>'+server+'</b> <span style="color:#e24b4a;font-size:12px">— '+e.message+'</span>'; }
+  }catch(e){ el.innerHTML='<b>'+server+'</b> <span style="color:var(--red);font-size:12px">— '+e.message+'</span>'; }
 }
 async function wpBlock(server, enable){
   if(!wpNeedKey()) return;
@@ -7107,11 +6799,11 @@ async function cfPollStatus(){
       var r=await fetch(API+'/api/cloudflare/bulk-status'); var d=await r.json();
       if(!box) return;
       var pct=d.total?Math.round(d.done/d.total*100):0;
-      var bar='<div style="background:#222;border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#f58220;height:100%;width:'+pct+'%"></div></div>';
+      var bar='<div style="background:var(--bg4);border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:var(--orange);height:100%;width:'+pct+'%"></div></div>';
       var line='ทำไป '+d.done+'/'+d.total+' — สำเร็จ '+d.ok+' · ล้มเหลว '+d.failed+(d.running?' (กำลังทำ...)':' ✅ เสร็จแล้ว');
       var fails='';
       if(d.failures&&d.failures.length){
-        fails='<div style="margin-top:6px;color:#e24b4a">ที่ล้มเหลว ('+d.failed+'):</div><div style="max-height:120px;overflow:auto;font-size:11px;color:var(--text3,#888)">'+
+        fails='<div style="margin-top:6px;color:var(--red)">ที่ล้มเหลว ('+d.failed+'):</div><div style="max-height:120px;overflow:auto;font-size:11px;color:var(--text3,#888)">'+
           d.failures.map(function(f){return '• '+f.domain+': '+f.error;}).join('<br>')+'</div>';
       }
       box.innerHTML=bar+line+fails;
@@ -7139,7 +6831,7 @@ function cfBadge(row){
   if(row.hasZone===null) return '<span style="color:var(--text3,#888);font-size:11px">⚪ ยังไม่ได้สแกน</span>';
   if(!row.hasZone) return '<span style="color:var(--text3,#888);font-size:11px">⚪ ไม่มีใน Cloudflare</span>';
   if(row.hasRule) return '<span style="color:var(--green,#2ecc71);font-size:11px;font-weight:600">🟢 มี CF กันบอทแล้ว</span>';
-  return '<span style="color:#e3b93b;font-size:11px">🟡 มีใน CF (ยังไม่ตั้งกันบอท)</span>';
+  return '<span style="color:var(--amber);font-size:11px">🟡 มีใน CF (ยังไม่ตั้งกันบอท)</span>';
 }
 function cfRenderList(){
   var el=document.getElementById('cf-domain-list'); if(!el) return;
@@ -7164,7 +6856,7 @@ function cfRenderList(){
     if(r.hasRule){
       act='<button class="btn" style="padding:2px 10px;font-size:11px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="cfRowOpen(\''+r.domain+'\',\''+(r.server||'')+'\')">🔓 เปิด wp-admin</button>';
     } else if(r.hasZone){
-      act='<button class="btn" style="padding:2px 10px;font-size:11px;background:rgba(245,130,32,0.13);color:#f58220;border-color:rgba(245,130,32,0.3)" onclick="cfRowSetCf(\''+r.domain+'\')">☁️ ตั้ง CF ก่อน</button>';
+      act='<button class="btn" style="padding:2px 10px;font-size:11px;background:rgba(245,130,32,0.13);color:var(--orange);border-color:rgba(245,130,32,0.3)" onclick="cfRowSetCf(\''+r.domain+'\')">☁️ ตั้ง CF ก่อน</button>';
     } else {
       act='<span style="color:var(--text3,#888);font-size:11px" title="โดเมนนี้ไม่ได้อยู่ใน Cloudflare — เปิด wp-admin จะไม่มีอะไรกันบอท">— เพิ่มเข้า CF ก่อน</span>';
     }
@@ -7249,12 +6941,12 @@ async function vaultRender(){
     body.innerHTML=
       '<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:18px;max-width:460px">'+
       '<div style="font-weight:700;margin-bottom:4px">ตั้งรหัสตู้เซฟครั้งแรก</div>'+
-      '<div style="font-size:12px;color:#e3b93b;margin-bottom:12px">⚠️ ถ้าลืมรหัสนี้ ข้อมูลจะกู้คืนไม่ได้เลย (นี่คือความปลอดภัยของการเข้ารหัสจริง) — จดเก็บที่ปลอดภัย</div>'+
-      (st.persistent?'':'<div style="font-size:12px;color:#e39a3b;margin-bottom:12px">📌 ตอนนี้เก็บใน /tmp = หายเมื่อ redeploy · ถ้าต้องการเก็บถาวร ตั้ง Railway Volume แล้วใส่ env VAULT_DIR</div>')+
+      '<div style="font-size:12px;color:var(--amber);margin-bottom:12px">⚠️ ถ้าลืมรหัสนี้ ข้อมูลจะกู้คืนไม่ได้เลย (นี่คือความปลอดภัยของการเข้ารหัสจริง) — จดเก็บที่ปลอดภัย</div>'+
+      (st.persistent?'':'<div style="font-size:12px;color:var(--amber);margin-bottom:12px">📌 ตอนนี้เก็บใน /tmp = หายเมื่อ redeploy · ถ้าต้องการเก็บถาวร ตั้ง Railway Volume แล้วใส่ env VAULT_DIR</div>')+
       '<input id="v-init1" type="password" placeholder="ตั้งรหัสตู้เซฟ (6+ ตัว)" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:8px">'+
       '<input id="v-init2" type="password" placeholder="พิมพ์รหัสอีกครั้ง" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:12px" onkeydown="if(event.key===\'Enter\')vaultInit()">'+
       '<button class="btn btn-green" onclick="vaultInit()" style="width:100%;justify-content:center">ตั้งรหัส + เปิดตู้เซฟ</button>'+
-      '<div id="v-err" style="color:#e24b4a;font-size:12px;margin-top:8px;display:none"></div></div>';
+      '<div id="v-err" style="color:var(--red);font-size:12px;margin-top:8px;display:none"></div></div>';
     return;
   }
   // มีตู้แล้ว → ให้ปลดล็อก
@@ -7263,7 +6955,7 @@ async function vaultRender(){
     '<div style="font-weight:700;margin-bottom:12px">🔒 ปลดล็อกตู้เซฟ</div>'+
     '<input id="v-unlock" type="password" placeholder="ใส่รหัสตู้เซฟ" class="form-input" style="width:100%;box-sizing:border-box;margin-bottom:12px" onkeydown="if(event.key===\'Enter\')vaultUnlock()">'+
     '<button class="btn btn-green" onclick="vaultUnlock()" style="width:100%;justify-content:center">ปลดล็อก</button>'+
-    '<div id="v-err" style="color:#e24b4a;font-size:12px;margin-top:8px;display:none"></div></div>';
+    '<div id="v-err" style="color:var(--red);font-size:12px;margin-top:8px;display:none"></div></div>';
   setTimeout(function(){var e=document.getElementById('v-unlock');if(e)e.focus();},100);
 }
 function vErr(m){ var e=document.getElementById('v-err'); if(e){ e.style.display='block'; e.textContent='❌ '+m; } }
@@ -7312,7 +7004,7 @@ function vaultRenderItems(){
           '<i class="ti ti-paperclip"></i>'+
           '<span style="flex:1;font-size:12px;word-break:break-all">'+it.file.name.replace(/</g,'&lt;')+' <span style="color:var(--text3,#888)">('+sizeKB+' KB)</span></span>'+
           '<button class="btn" style="padding:2px 8px;font-size:11px" onclick="vaultDownloadFile('+i+')">⬇ ดาวน์โหลด</button>'+
-          '<button class="btn" style="padding:2px 8px;font-size:11px;color:#e24b4a" onclick="vaultRemoveFile('+i+')">✕</button>'+
+          '<button class="btn" style="padding:2px 8px;font-size:11px;color:var(--red)" onclick="vaultRemoveFile('+i+')">✕</button>'+
         '</div>';
       }
       h+='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px;margin-bottom:14px;width:100%;box-sizing:border-box">'+
@@ -7321,7 +7013,7 @@ function vaultRenderItems(){
         fileChip+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px">'+
           '<label class="btn" style="padding:4px 12px;font-size:12px;cursor:pointer;margin:0"><i class="ti ti-upload"></i> '+(it.file&&it.file.name?'เปลี่ยนไฟล์':'แนบไฟล์')+'<input type="file" style="display:none" onchange="vaultAttachFile('+i+',this)"></label>'+
-          '<button class="btn" style="padding:4px 12px;font-size:12px;color:#e24b4a" onclick="vaultDeleteItem('+i+')"><i class="ti ti-trash"></i> ลบรายการ</button>'+
+          '<button class="btn" style="padding:4px 12px;font-size:12px;color:var(--red)" onclick="vaultDeleteItem('+i+')"><i class="ti ti-trash"></i> ลบรายการ</button>'+
         '</div>'+
       '</div>';
     });
@@ -7481,7 +7173,7 @@ function dnsRenderResults(){
       h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
         '<td style="padding:6px">'+x.domain+'</td>'+
         '<td style="padding:6px">'+r.name+'</td>'+
-        '<td style="padding:6px;color:#e3b93b">'+r.content+'</td>'+
+        '<td style="padding:6px;color:var(--amber)">'+r.content+'</td>'+
         '<td style="padding:6px">'+(r.proxied?'🟠 on':'⚪ off')+'</td></tr>';
     });
   });
@@ -7514,10 +7206,10 @@ function dnsPollRepoint(boxId){
       var r=await fetch(API+'/api/dns/repoint-status'); var d=await r.json();
       if(box){
         var pct=d.total?Math.round(d.done/d.total*100):0;
-        var bar='<div style="background:#222;border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#2ecc71;height:100%;width:'+pct+'%"></div></div>';
+        var bar='<div style="background:var(--bg4);border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:var(--green);height:100%;width:'+pct+'%"></div></div>';
         var line='ทำไป '+d.done+'/'+d.total+' — เปลี่ยนแล้ว '+d.changed+' record · ล้มเหลว '+d.failed+(d.running?' ...':' ✅ เสร็จแล้ว');
         var fails='';
-        if(d.failures&&d.failures.length) fails='<div style="margin-top:6px;color:#e24b4a;font-size:11px">ล้มเหลว: '+d.failures.map(function(f){return f.domain+' ('+f.error+')';}).join(', ')+'</div>';
+        if(d.failures&&d.failures.length) fails='<div style="margin-top:6px;color:var(--red);font-size:11px">ล้มเหลว: '+d.failures.map(function(f){return f.domain+' ('+f.error+')';}).join(', ')+'</div>';
         box.innerHTML=bar+line+fails;
       }
       if(!d.running){ clearInterval(_dnsRepointPoll); _dnsRepointPoll=null; if(typeof toast==='function')toast('เปลี่ยน IP เสร็จ: '+d.changed+' record','success'); }
@@ -7569,11 +7261,11 @@ function dnsRenderAudit(d){
       '<b>สถานะการเปลี่ยน IP</b>'+
       '<span style="font-size:12px;color:var(--text3,#888)">ตรวจ '+d.done+'/'+d.total+' ('+pct+'%)'+(d.running?' ...':' ✅ เสร็จ')+'</span></div>'+
     '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
-      card('#2ecc71','🟢','เปลี่ยนเป็น IP ใหม่แล้ว',c.done,'done')+
-      card('#e3b93b','🟡','ยังชี้ IP เก่า (ต้องเปลี่ยน)',c.pending,'pending')+
-      card('#f58220','🟠','มีทั้งเก่า+ใหม่ (ปนกัน)',c.mixed,'mixed')+
+      card('var(--green)','🟢','เปลี่ยนเป็น IP ใหม่แล้ว',c.done,'done')+
+      card('var(--amber)','🟡','ยังชี้ IP เก่า (ต้องเปลี่ยน)',c.pending,'pending')+
+      card('var(--orange)','🟠','มีทั้งเก่า+ใหม่ (ปนกัน)',c.mixed,'mixed')+
       card('#888','⚪','ไม่เจอในบัญชี CF นี้',c['not-in-account'],'not-in-account')+
-      card('#6ab0f3','🔵','ชี้ IP อื่น',c['other-ip'],'other-ip')+
+      card('var(--blue)','🔵','ชี้ IP อื่น',c['other-ip'],'other-ip')+
     '</div>'+
     '<div style="font-size:11px;color:var(--text3,#888);margin-top:8px">⚪ ไม่เจอในบัญชีนี้ = น่าจะอยู่ Cloudflare อีกบัญชี (เอา API มาเชื่อมเพิ่มทีหลังได้) · กดที่การ์ดเพื่อดูรายชื่อ</div>'+
     '<div id="dns-ipgroups" style="margin-top:14px"></div>'+'<div id="dns-bucket-list" style="margin-top:10px"></div></div>';
@@ -7589,7 +7281,7 @@ function dnsRenderIpGroups(newIp, oldIp){
   var h='<div style="font-weight:700;font-size:14px;margin-bottom:8px">แยกตาม IP ปลายทาง (แต่ละเซิร์ฟเวอร์มีกี่โดเมน)</div><div style="display:flex;flex-direction:column;gap:6px">';
   ips.forEach(function(ip){
     var isNew=ip===newIp, isOld=ip===oldIp;
-    var color=isNew?'#2ecc71':(isOld?'#e3b93b':'#6ab0f3');
+    var color=isNew?'var(--green)':(isOld?'var(--amber)':'var(--blue)');
     var tag=known[ip]?(' — '+known[ip]):''; var badge=isNew?'🟢':(isOld?'🟡':'🔵');
     h+='<div style="background:var(--bg,#0a0a0a);border:1px solid '+color+'44;border-radius:8px;padding:10px;cursor:pointer" onclick="dnsShowIp(\''+ip+'\')"><div style="display:flex;justify-content:space-between;align-items:center"><div><span style="font-family:monospace;font-weight:700;color:'+color+'">'+badge+' '+ip+'</span><span style="font-size:12px;color:var(--text3,#888)">'+tag+'</span></div><div style="font-size:18px;font-weight:700;color:'+color+'">'+g[ip].count+' <span style="font-size:12px;color:var(--text3,#888)">โดเมน</span></div></div></div>';
   });
@@ -7612,7 +7304,7 @@ function dnsShowBucket(key){
   h+='<div style="max-height:300px;overflow:auto;font-size:12px">'+
     items.slice(0,600).map(function(x){
       var ipnote=x.ips?' <span style="color:var(--text3,#888)">('+x.ips.join(', ')+')</span>':'';
-      var err=x.error?' <span style="color:#e24b4a">'+x.error+'</span>':'';
+      var err=x.error?' <span style="color:var(--red)">'+x.error+'</span>':'';
       return '<div style="padding:3px 0;border-bottom:1px solid var(--border,#2a2a2a)">'+x.domain+ipnote+err+'</div>';
     }).join('')+'</div>';
   if(key==='pending'){
@@ -7665,7 +7357,7 @@ function previewSite(domain){
   var img=new Image();
   img.style.cssText='max-width:100%;border-radius:8px;border:1px solid var(--border,#2a2a2a)';
   img.onload=function(){ var b=document.getElementById('site-preview-body'); if(b){ b.innerHTML=''; b.style.display='block'; b.appendChild(img); } };
-  img.onerror=function(){ var b=document.getElementById('site-preview-body'); if(b) b.innerHTML='<div style="color:#e24b4a;text-align:center">แคปรูปไม่ได้<br><span style="font-size:11px;color:var(--text3,#888)">เว็บอาจล่ม เข้าไม่ได้ หรือ service แคปรูปไม่ตอบ</span></div>'; };
+  img.onerror=function(){ var b=document.getElementById('site-preview-body'); if(b) b.innerHTML='<div style="color:var(--red);text-align:center">แคปรูปไม่ได้<br><span style="font-size:11px;color:var(--text3,#888)">เว็บอาจล่ม เข้าไม่ได้ หรือ service แคปรูปไม่ตอบ</span></div>'; };
   img.src=API+'/api/screenshot?domain='+encodeURIComponent(domain)+'&w=640&t='+ts;
 }
 </script>
@@ -7701,8 +7393,8 @@ function kwPickMode(m){
   var v=document.getElementById('kwmode-val'); if(v) v.value=m;
   var g=document.getElementById('kwtab-gsc'), e=document.getElementById('kwtab-ext');
   if(g&&e){
-    if(m==='gsc'){ g.style.background='var(--green,#22c55e)'; g.style.color='#fff'; e.style.background='transparent'; e.style.color='var(--text2,#888)'; }
-    else { e.style.background='var(--blue,#3b82f6)'; e.style.color='#fff'; g.style.background='transparent'; g.style.color='var(--text2,#888)'; }
+    if(m==='gsc'){ g.style.background='var(--green,#22c55e)'; g.style.color='var(--on-accent)'; e.style.background='transparent'; e.style.color='var(--text2,#888)'; }
+    else { e.style.background='var(--blue,#3b82f6)'; e.style.color='var(--on-accent)'; g.style.background='transparent'; g.style.color='var(--text2,#888)'; }
   }
   kwSetMode();
 }
@@ -7733,11 +7425,11 @@ async function kwCheck(){
     var d=await r.json();
     if(!d.success){
       var msg=d.notInGsc?('โดเมนนี้ไม่อยู่ใน Google Search Console (มี '+(d.sitesCount||0)+' เว็บในบัญชีที่เชื่อม)<br><span style="font-size:12px">เว็บของคุณต้องเพิ่มใน GSC ก่อน — หรือสลับไปโหมด "เว็บใดก็ได้ (DataForSEO)" เพื่อเช็คเว็บนอกโดยไม่ต้อง GSC'):d.error;
-      box.innerHTML='<div style="background:var(--bg2,#111);border:1px solid #e24b4a44;border-radius:10px;padding:16px;color:#e3b93b">'+msg+'</span></div>';
+      box.innerHTML='<div style="background:var(--bg2,#111);border:1px solid #e24b4a44;border-radius:10px;padding:16px;color:var(--amber)">'+msg+'</span></div>';
       return;
     }
     kwRender(d);
-  }catch(e){ box.innerHTML='<div style="color:#e24b4a;padding:16px">โหลดไม่ได้: '+e.message+'</div>'; }
+  }catch(e){ box.innerHTML='<div style="color:var(--red);padding:16px">โหลดไม่ได้: '+e.message+'</div>'; }
 }
 function kwRerender(){ if(window._kwLast) kwRender(window._kwLast); }
 function kwRender(d){
@@ -7762,14 +7454,14 @@ function kwRender(d){
   var h='<div style="background:var(--bg2,#111);border:1px solid var(--border,#2a2a2a);border-radius:10px;padding:16px">'+
     '<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:12px">';
   if(isExt){
-    h+= kwStat(d.keywordCount,'keyword ที่ติดอันดับ','#3b82f6')+
-        kwStat((d.totalVolume||0).toLocaleString(),'search volume รวม','#2ecc71')+
-        kwStat('ไทย','location','#a78bfa');
+    h+= kwStat(d.keywordCount,'keyword ที่ติดอันดับ','var(--blue)')+
+        kwStat((d.totalVolume||0).toLocaleString(),'search volume รวม','var(--green)')+
+        kwStat('ไทย','location','var(--purple)');
   }else{
-    h+= kwStat(d.keywordCount,'keyword ที่ติดอันดับ','#3b82f6')+
-        kwStat(d.totalImpressions.toLocaleString(),'impressions รวม','#2ecc71')+
-        kwStat(d.totalClicks.toLocaleString(),'clicks รวม','#e3b93b')+
-        kwStat(d.avgPosition,'อันดับเฉลี่ย','#a78bfa');
+    h+= kwStat(d.keywordCount,'keyword ที่ติดอันดับ','var(--blue)')+
+        kwStat(d.totalImpressions.toLocaleString(),'impressions รวม','var(--green)')+
+        kwStat(d.totalClicks.toLocaleString(),'clicks รวม','var(--amber)')+
+        kwStat(d.avgPosition,'อันดับเฉลี่ย','var(--purple)');
   }
   h+='</div>'+
     (isExt ? '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap">'+'<span style="font-size:12px;color:var(--text3,#888)">'+d.domain+' · DataForSEO (ไทย) · เรียงตาม:</span>'+'<button class="btn" style="padding:2px 10px;font-size:11px;'+(window._kwSort!=='volume'?'background:var(--blue,#3b82f6);color:#fff;border-color:var(--blue,#3b82f6)':'')+'" onclick="window._kwSort=\'position\';kwRerender()">อันดับดีสุด</button>'+'<button class="btn" style="padding:2px 10px;font-size:11px;'+(window._kwSort==='volume'?'background:var(--blue,#3b82f6);color:#fff;border-color:var(--blue,#3b82f6)':'')+'" onclick="window._kwSort=\'volume\';kwRerender()">Volume สูงสุด</button>'+'</div>' : '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">'+d.domain+' · '+d.days+' วันล่าสุด · เรียงตาม impressions</div>');
@@ -7785,7 +7477,7 @@ function kwRender(d){
          '<th style="padding:7px;text-align:right">Competition</th>'+
          '<th style="padding:7px;text-align:right">อันดับ</th></tr>';
       kws.forEach(function(k,i){
-        var posColor=k.position&&k.position<=3?'#2ecc71':k.position&&k.position<=10?'#e3b93b':'#e24b4a';
+        var posColor=k.position&&k.position<=3?'var(--green)':k.position&&k.position<=10?'var(--amber)':'var(--red)';
         h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
           '<td style="padding:7px;color:var(--text3,#888)">'+(i+1)+'</td>'+
           '<td style="padding:7px;font-weight:500">'+k.keyword+'</td>'+
@@ -7801,7 +7493,7 @@ function kwRender(d){
          '<th style="padding:7px;text-align:right">อันดับ</th></tr>';
       kws.forEach(function(k,i){
         var ctr=k.impressions?((k.clicks/k.impressions*100).toFixed(1)+'%'):'-';
-        var posColor=k.position<=3?'#2ecc71':k.position<=10?'#e3b93b':'#e24b4a';
+        var posColor=k.position<=3?'var(--green)':k.position<=10?'var(--amber)':'var(--red)';
         h+='<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
           '<td style="padding:7px;color:var(--text3,#888)">'+(i+1)+'</td>'+
           '<td style="padding:7px;font-weight:500">'+k.keyword+'</td>'+
@@ -7824,9 +7516,9 @@ async function kwHistory(){
   try{
     var r=await fetch(API+'/api/keywords-history?domain='+encodeURIComponent(dom));
     var d=await r.json();
-    if(!d.success){ box.innerHTML='<div style="color:#e24b4a;padding:16px">'+(d.error||'ดึงไม่ได้')+'</div>'; return; }
+    if(!d.success){ box.innerHTML='<div style="color:var(--red);padding:16px">'+(d.error||'ดึงไม่ได้')+'</div>'; return; }
     kwHistRender(d);
-  }catch(e){ box.innerHTML='<div style="color:#e24b4a;padding:16px">โหลดไม่ได้: '+e.message+'</div>'; }
+  }catch(e){ box.innerHTML='<div style="color:var(--red);padding:16px">โหลดไม่ได้: '+e.message+'</div>'; }
 }
 function kwHistRender(d){
   var box=document.getElementById('kw-result');
@@ -7869,7 +7561,7 @@ function kwHistRender(d){
         '<td style="padding:7px;color:var(--text3,#888)">'+(i+1)+'</td>'+
         '<td style="padding:7px;font-weight:500">'+k.keyword+'</td>'+
         '<td style="padding:7px;text-align:right">'+(k.volume||0).toLocaleString()+'</td>'+
-        '<td style="padding:7px;text-align:right;color:#e3b93b">'+(k.previousPosition||'-')+'</td></tr>';
+        '<td style="padding:7px;text-align:right;color:var(--amber)">'+(k.previousPosition||'-')+'</td></tr>';
     });
     h+='</table></div>'+
       '<div style="margin-top:10px"><button class="btn" onclick="navigator.clipboard&&navigator.clipboard.writeText('+JSON.stringify(copyLost)+');this.textContent=\'คัดลอกแล้ว\'">คัดลอกคำที่หลุด</button></div>';
@@ -7992,8 +7684,8 @@ function ccEnsurePage(){
           '<input id="cc-domain" list="cc-domlist" placeholder="miracle55.bio" style="'+INP+';width:100%" onkeydown="if(event.key===\'Enter\')ccCheck()">'+
           '<datalist id="cc-domlist"></datalist></div>'+
         '<button class="btn" style="padding:8px 14px;font-size:13px" onclick="ccCheck()"><i class="ti ti-search"></i> ตรวจสถานะ</button>'+
-        '<button class="btn" style="padding:8px 12px;font-size:12px;background:rgba(99,102,241,0.15);color:#818cf8;border-color:rgba(99,102,241,0.35)" onclick="ccDiagnose()" title="เช็คว่า token ตัวไหนมีสิทธิ์อะไรบ้าง (ไม่เปลี่ยนอะไรจริง)">🔎 ตรวจสิทธิ์ Token</button>'+
-        '<button class="btn" style="padding:8px 14px;font-size:13px;background:rgba(245,130,32,0.15);color:#f58220;border-color:rgba(245,130,32,0.35)" onclick="ccApply(true)">⚡ เปิด Cache เลย</button>'+
+        '<button class="btn" style="padding:8px 12px;font-size:12px;background:rgba(99,102,241,0.15);color:var(--indigo);border-color:rgba(99,102,241,0.35)" onclick="ccDiagnose()" title="เช็คว่า token ตัวไหนมีสิทธิ์อะไรบ้าง (ไม่เปลี่ยนอะไรจริง)">🔎 ตรวจสิทธิ์ Token</button>'+
+        '<button class="btn" style="padding:8px 14px;font-size:13px;background:rgba(245,130,32,0.15);color:var(--orange);border-color:rgba(245,130,32,0.35)" onclick="ccApply(true)">⚡ เปิด Cache เลย</button>'+
         '<button class="btn" style="padding:8px 12px;font-size:12px;background:rgba(148,163,184,0.12);color:var(--text3,#888)" onclick="ccApply(false)" title="ลบเฉพาะ rule ที่ระบบสร้าง ([auto-cache]) — rule อื่นไม่แตะ">ถอด rule</button>'+
       '</div>'+
       '<div style="margin-top:8px;font-size:12px;color:var(--text3,#888)">ทางลัด: '+
@@ -8035,7 +7727,7 @@ function ccEnsurePage(){
       '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px">วางรายชื่อโดเมน บรรทัดละ 1 ตัว (หรือคั่นด้วย , เว้นวรรค) — ใช้ตัวเลือกจากการ์ดที่ 1</div>'+
       '<textarea id="cc-bulk-list" rows="5" placeholder="miracle55.bio&#10;next55-th.com&#10;kodzap.club" style="'+INP+';width:100%;font-family:monospace"></textarea>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">'+
-        '<button class="btn" style="padding:8px 14px;font-size:13px;background:rgba(245,130,32,0.15);color:#f58220;border-color:rgba(245,130,32,0.35)" onclick="ccBulk(true)">⚡ เปิด Cache ทั้งลิสต์</button>'+
+        '<button class="btn" style="padding:8px 14px;font-size:13px;background:rgba(245,130,32,0.15);color:var(--orange);border-color:rgba(245,130,32,0.35)" onclick="ccBulk(true)">⚡ เปิด Cache ทั้งลิสต์</button>'+
         '<button class="btn" style="padding:8px 12px;font-size:12px;background:rgba(148,163,184,0.12);color:var(--text3,#888)" onclick="ccBulk(false)">ถอด rule ทั้งลิสต์</button>'+
         '<span id="cc-bulk-count" style="font-size:12px;color:var(--text3,#888)"></span>'+
       '</div>'+
@@ -8046,7 +7738,7 @@ function ccEnsurePage(){
     '<div style="'+CARD+';border-color:rgba(226,75,74,0.3)">'+
       '<div style="font-weight:600;margin-bottom:6px">4️⃣ หา zone ที่ค้าง Pause (ทั้งบัญชี Cloudflare)</div>'+
       '<div style="font-size:12px;color:var(--text3,#888);margin-bottom:8px;line-height:1.8">'+
-        'zone ที่ถูก Pause = <b style="color:#e24b4a">Cloudflare ไม่ทำงานเลย</b> — traffic วิ่งผ่านเซิร์ฟเวอร์ตรงๆ ทั้งหมด<br>'+
+        'zone ที่ถูก Pause = <b style="color:var(--red)">Cloudflare ไม่ทำงานเลย</b> — traffic วิ่งผ่านเซิร์ฟเวอร์ตรงๆ ทั้งหมด<br>'+
         'มักเกิดจาก auto-fix ตอนเจอ error 521-524 แล้วปลดไม่สำเร็จ (redeploy ทับ) → ค้างเงียบๆ โดยไม่มีใครรู้</div>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
         '<button class="btn" style="padding:8px 14px;font-size:13px" onclick="ccPauseScan()"><i class="ti ti-radar"></i> สแกนทุก zone</button>'+
@@ -8060,12 +7752,12 @@ function ccEnsurePage(){
 
     // ── หมายเหตุ ──
     '<div style="'+CARD+';border-color:rgba(245,130,32,0.25)">'+
-      '<div style="font-weight:600;margin-bottom:6px;color:#f58220">⚠️ อ่านก่อนใช้</div>'+
+      '<div style="font-weight:600;margin-bottom:6px;color:var(--orange)">⚠️ อ่านก่อนใช้</div>'+
       '<ul style="margin:0;padding-left:18px;font-size:12px;color:var(--text3,#888);line-height:1.9">'+
         '<li>โดเมนต้องอยู่ในบัญชี Cloudflare ที่ตั้ง token ไว้แล้ว — ถ้าไม่เจอ zone ให้เพิ่ม token ใน <code>CLOUDFLARE_API_TOKENS</code></li>'+
         '<li>Token ต้องมีสิทธิ์ <b>Zone → Cache Rules → Edit</b> และ <b>Zone → DNS → Edit</b></li>'+
         '<li>เปิดเมฆส้มแล้ว IP จริงจะถูกซ่อน — ระบบข้าม record ของ mail/ftp/ns/panel ให้อัตโนมัติ</li>'+
-        '<li><b style="color:#e24b4a">สำคัญ:</b> ก่อนเปิดเมฆส้ม ให้ตั้ง SSL/TLS ใน Cloudflare เป็น <b>Full</b> หรือ <b>Full (strict)</b> — ถ้าเป็น Flexible เว็บ WordPress จะเด้งวนไม่รู้จบ</li>'+
+        '<li><b style="color:var(--red)">สำคัญ:</b> ก่อนเปิดเมฆส้ม ให้ตั้ง SSL/TLS ใน Cloudflare เป็น <b>Full</b> หรือ <b>Full (strict)</b> — ถ้าเป็น Flexible เว็บ WordPress จะเด้งวนไม่รู้จบ</li>'+
         '<li>rule ที่ระบบสร้างมีป้าย <code>[auto-cache]</code> — rule อื่นที่คุณตั้งเองจะไม่ถูกลบ</li>'+
         '<li>ถ้าเปลี่ยนรูปแล้วยังเห็นรูปเก่า ให้ Purge Cache ใน Cloudflare หรือเปลี่ยนชื่อไฟล์</li>'+
       '</ul>'+
@@ -8074,7 +7766,7 @@ function ccEnsurePage(){
   // สไตล์ chip (ใส่ครั้งเดียว)
   if(!document.getElementById('cc-style')){
     var st=document.createElement('style'); st.id='cc-style';
-    st.textContent='.cc-chip{display:inline-block;background:rgba(245,130,32,0.12);border:1px solid rgba(245,130,32,0.3);color:#f58220;padding:2px 10px;border-radius:12px;font-size:12px;cursor:pointer;margin:2px}'+
+    st.textContent='.cc-chip{display:inline-block;background:rgba(245,130,32,0.12);border:1px solid rgba(245,130,32,0.3);color:var(--orange);padding:2px 10px;border-radius:12px;font-size:12px;cursor:pointer;margin:2px}'+
       '.cc-chip:hover{background:rgba(245,130,32,0.25)}'+
       '#page-cfcache code{background:rgba(148,163,184,0.15);padding:1px 5px;border-radius:4px;font-size:11px}';
     document.head.appendChild(st);
@@ -8112,14 +7804,14 @@ function ccOpts(){
 async function ccCheck(){
   var v=((document.getElementById('cc-domain')||{}).value||'').trim().toLowerCase();
   var box=document.getElementById('cc-result'); if(!box) return;
-  if(!v){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">พิมพ์ชื่อโดเมนก่อน</span>'; return; }
+  if(!v){ box.innerHTML='<span style="color:var(--red);font-size:13px">พิมพ์ชื่อโดเมนก่อน</span>'; return; }
   box.innerHTML='<span style="color:var(--text3,#888);font-size:13px">กำลังตรวจ '+v+' ...</span>';
   try{
     var r=await fetch(API+'/api/cfcache/status?domain='+encodeURIComponent(v));
     var d=await r.json();
-    if(!d.success){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">ตรวจไม่ได้: '+(d.error||'?')+'</span>'; return; }
+    if(!d.success){ box.innerHTML='<span style="color:var(--red);font-size:13px">ตรวจไม่ได้: '+(d.error||'?')+'</span>'; return; }
     if(!d.hasZone){
-      box.innerHTML='<div style="color:#e3b93b;font-size:13px">🟡 ไม่พบ <b>'+v+'</b> ในบัญชี Cloudflare ที่ตั้ง token ไว้<br>'+
+      box.innerHTML='<div style="color:var(--amber);font-size:13px">🟡 ไม่พบ <b>'+v+'</b> ในบัญชี Cloudflare ที่ตั้ง token ไว้<br>'+
         '<span style="font-size:12px;color:var(--text3,#888)">→ ต้องเพิ่มโดเมนเข้า Cloudflare ก่อน หรือเพิ่ม API token ของบัญชีนั้นใน CLOUDFLARE_API_TOKENS</span></div>';
       return;
     }
@@ -8127,54 +7819,54 @@ async function ccCheck(){
     var L=d.live||{}, alerts='';
     if(d.zonePaused){
       alerts+='<div style="background:rgba(226,75,74,0.12);border:1px solid rgba(226,75,74,0.4);border-radius:8px;padding:10px;margin-bottom:10px">'+
-        '<div style="color:#e24b4a;font-weight:600;font-size:13px">🛑 zone นี้ถูก Pause อยู่ — CF ไม่ทำงานเลย</div>'+
+        '<div style="color:var(--red);font-weight:600;font-size:13px">🛑 zone นี้ถูก Pause อยู่ — CF ไม่ทำงานเลย</div>'+
         '<div style="font-size:12px;color:var(--text3,#888);margin-top:4px">เมฆส้ม/Cache Rule จะไม่มีผลจนกว่าจะปลด (มักเกิดจาก auto-fix ตอนเจอ error 521-524 แล้วค้าง)</div>'+
         '<button class="btn" style="margin-top:8px;padding:5px 12px;font-size:12px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.35)" onclick="ccUnpause()">▶️ ปลด Pause เดี๋ยวนี้</button></div>';
     }
     if(d.zoneStatus && d.zoneStatus!=='active'){
-      alerts+='<div style="color:#e3b93b;font-size:12px;margin-bottom:8px">⚠️ สถานะ zone = <b>'+d.zoneStatus+'</b> (ยังไม่ active)</div>';
+      alerts+='<div style="color:var(--amber);font-size:12px;margin-bottom:8px">⚠️ สถานะ zone = <b>'+d.zoneStatus+'</b> (ยังไม่ active)</div>';
     }
     if(L.nsIsCloudflare===false){
       alerts+='<div style="background:rgba(226,75,74,0.12);border:1px solid rgba(226,75,74,0.4);border-radius:8px;padding:10px;margin-bottom:10px">'+
-        '<div style="color:#e24b4a;font-weight:600;font-size:13px">🛑 Nameserver ยังไม่ได้ชี้มา Cloudflare</div>'+
+        '<div style="color:var(--red);font-weight:600;font-size:13px">🛑 Nameserver ยังไม่ได้ชี้มา Cloudflare</div>'+
         '<div style="font-size:12px;color:var(--text3,#888);margin-top:4px">ตอนนี้: '+(L.ns||[]).join(', ')+'<br>ต้องไปเปลี่ยน NS ที่ผู้ให้บริการโดเมน (registrar) เป็นของ CF ก่อน'+
         ((d.cfNameServers||[]).length?(' → <b>'+d.cfNameServers.join(', ')+'</b>'):'')+'</div></div>';
     }
     if(L.viaCloudflare===false && L.nsIsCloudflare!==false && !d.zonePaused){
       alerts+='<div style="background:rgba(227,185,59,0.12);border:1px solid rgba(227,185,59,0.4);border-radius:8px;padding:10px;margin-bottom:10px">'+
-        '<div style="color:#e3b93b;font-weight:600;font-size:13px">⚠️ DNS จริงยังตอบ IP ของเซิร์ฟเวอร์ ไม่ใช่ IP ของ Cloudflare</div>'+
+        '<div style="color:var(--amber);font-weight:600;font-size:13px">⚠️ DNS จริงยังตอบ IP ของเซิร์ฟเวอร์ ไม่ใช่ IP ของ Cloudflare</div>'+
         '<div style="font-size:12px;color:var(--text3,#888);margin-top:4px">ตอบอยู่: '+(L.ips||[]).join(', ')+' — traffic ยังไม่ผ่าน CF (อาจต้องรอ TTL เก่าหมด หรือ zone ถูก pause)</div></div>';
     }
     var liveTxt = L.viaCloudflare===true
       ? '<span style="color:var(--green,#2ecc71)">✅ ผ่าน Cloudflare จริง ('+(L.ips||[]).join(', ')+')</span>'
       : (L.viaCloudflare===false
-          ? '<span style="color:#e24b4a">❌ ยังชี้ origin ตรง ('+(L.ips||[]).join(', ')+')</span>'
+          ? '<span style="color:var(--red)">❌ ยังชี้ origin ตรง ('+(L.ips||[]).join(', ')+')</span>'
           : '<span style="color:var(--text3,#888)">– เช็คไม่ได้ '+(L.ipError||L.error||'')+'</span>');
     var proxyTxt = d.mainCount===0
-      ? '<span style="color:#e3b93b">ไม่มี A/CNAME ของ @ หรือ www</span>'
+      ? '<span style="color:var(--amber)">ไม่มี A/CNAME ของ @ หรือ www</span>'
       : (d.mainProxied
           ? '<span style="color:var(--green,#2ecc71)">🟠 เปิดเมฆส้มแล้ว ('+d.mainProxiedCount+'/'+d.mainCount+')</span>'
-          : '<span style="color:#e24b4a">⚪ ยังเป็นเมฆเทา ('+d.mainProxiedCount+'/'+d.mainCount+' proxied) — CF ยังไม่ได้ช่วยอะไร</span>');
+          : '<span style="color:var(--red)">⚪ ยังเป็นเมฆเทา ('+d.mainProxiedCount+'/'+d.mainCount+' proxied) — CF ยังไม่ได้ช่วยอะไร</span>');
     var ruleTxt = d.hasCacheRule
       ? '<span style="color:var(--green,#2ecc71)">✅ มี Cache Rule ของระบบแล้ว</span>'
-      : '<span style="color:#e3b93b">⚠️ ยังไม่มี Cache Rule (มี rule อื่น '+(d.cacheRules||0)+' ตัว)</span>';
+      : '<span style="color:var(--amber)">⚠️ ยังไม่มี Cache Rule (มี rule อื่น '+(d.cacheRules||0)+' ตัว)</span>';
     var recs=(d.records||[]).slice(0,40).map(function(x){
       return '<tr style="border-top:1px solid var(--border,#2a2a2a)"><td style="padding:4px 6px">'+x.name+'</td>'+
         '<td style="padding:4px 6px;color:var(--text3,#888)">'+x.type+'</td>'+
         '<td style="padding:4px 6px;color:var(--text3,#888)">'+x.content+'</td>'+
-        '<td style="padding:4px 6px">'+(x.proxied?'<span style="color:#f58220">🟠 proxied</span>':'<span style="color:var(--text3,#888)">⚪ DNS only</span>')+'</td></tr>';
+        '<td style="padding:4px 6px">'+(x.proxied?'<span style="color:var(--orange)">🟠 proxied</span>':'<span style="color:var(--text3,#888)">⚪ DNS only</span>')+'</td></tr>';
     }).join('');
     box.innerHTML=alerts+'<div style="font-size:13px;line-height:1.9">'+
-      '<div>zone: <b>'+(d.zone||v)+'</b>'+(d.zonePaused?' <span style="color:#e24b4a">(PAUSED)</span>':'')+'</div>'+
+      '<div>zone: <b>'+(d.zone||v)+'</b>'+(d.zonePaused?' <span style="color:var(--red)">(PAUSED)</span>':'')+'</div>'+
       '<div>DNS จริงบนเน็ต: '+liveTxt+'</div>'+
       '<div>เมฆส้ม: '+proxyTxt+'</div>'+
       '<div>Cache Rule: '+ruleTxt+'</div>'+
-      (d.recError?'<div style="color:#e24b4a;font-size:12px">อ่าน DNS ไม่ได้: '+d.recError+'</div>':'')+
-      (d.ruleError?'<div style="color:#e24b4a;font-size:12px">อ่าน Cache Rule ไม่ได้: '+d.ruleError+' (token อาจไม่มีสิทธิ์ Cache Rules)</div>':'')+
+      (d.recError?'<div style="color:var(--red);font-size:12px">อ่าน DNS ไม่ได้: '+d.recError+'</div>':'')+
+      (d.ruleError?'<div style="color:var(--red);font-size:12px">อ่าน Cache Rule ไม่ได้: '+d.ruleError+' (token อาจไม่มีสิทธิ์ Cache Rules)</div>':'')+
       '</div>'+
       (recs?'<details style="margin-top:8px"><summary style="cursor:pointer;font-size:12px;color:var(--text3,#888)">ดู DNS record ('+(d.records||[]).length+')</summary>'+
         '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:6px">'+recs+'</table></details>':'');
-  }catch(e){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>'; }
+  }catch(e){ box.innerHTML='<span style="color:var(--red);font-size:13px">'+e.message+'</span>'; }
 }
 
 async function ccApply(enable){
@@ -8199,7 +7891,7 @@ async function ccApply(enable){
     if(r.status===403){ window._wpKey=null; if(typeof toast==='function')toast('คีย์ผิด ลองใหม่','error'); if(box)box.innerHTML=''; return; }
     if(!d.success){
       if(typeof toast==='function')toast('ทำไม่ได้: '+(d.error||'?'),'error');
-      if(box) box.innerHTML='<span style="color:#e24b4a;font-size:13px">❌ '+(d.error||'?')+'</span>';
+      if(box) box.innerHTML='<span style="color:var(--red);font-size:13px">❌ '+(d.error||'?')+'</span>';
       return;
     }
     var pl=(d.proxied||[]).length;
@@ -8213,7 +7905,7 @@ async function ccApply(enable){
     setTimeout(ccCheck,1500);
   }catch(e){
     if(typeof toast==='function')toast(e.message,'error');
-    if(box) box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>';
+    if(box) box.innerHTML='<span style="color:var(--red);font-size:13px">'+e.message+'</span>';
   }
 }
 
@@ -8230,7 +7922,7 @@ async function ccUnpause(){
     if(!d.success){
       if(typeof toast==='function')toast('ปลดไม่ได้','error');
       var b=document.getElementById('cc-result');
-      if(b) b.innerHTML='<div style="color:#e24b4a;font-size:13px">❌ '+(d.error||'?')+'</div>';
+      if(b) b.innerHTML='<div style="color:var(--red);font-size:13px">❌ '+(d.error||'?')+'</div>';
       return;
     }
     if(typeof toast==='function')toast('▶️ ปลด Pause '+v+' แล้ว — รอ 1 นาทีค่อยตรวจ header','success');
@@ -8241,16 +7933,16 @@ async function ccUnpause(){
 async function ccDiagnose(){
   var v=((document.getElementById('cc-domain')||{}).value||'').trim().toLowerCase();
   var box=document.getElementById('cc-result'); if(!box) return;
-  if(!v){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">พิมพ์ชื่อโดเมนก่อน</span>'; return; }
+  if(!v){ box.innerHTML='<span style="color:var(--red);font-size:13px">พิมพ์ชื่อโดเมนก่อน</span>'; return; }
   if(typeof wpNeedKey==='function'){ if(!wpNeedKey()) return; }
   box.innerHTML='<span style="color:var(--text3,#888);font-size:13px">กำลังตรวจสิทธิ์ token ทีละตัว (ทดสอบเขียนด้วยค่าเดิม ไม่เปลี่ยนอะไร) ...</span>';
   try{
     var r=await fetch(API+'/api/cfcache/diagnose',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({key:window._wpKey,domain:v})});
     var d=await r.json();
-    if(r.status===403){ window._wpKey=null; box.innerHTML='<span style="color:#e24b4a;font-size:13px">คีย์ผิด ลองใหม่</span>'; return; }
-    if(!d.success){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">ตรวจไม่ได้: '+(d.error||'?')+'</span>'; return; }
-    function ic(x){ return x===true?'<span style="color:var(--green,#2ecc71)">✅</span>':(x===false?'<span style="color:#e24b4a">❌</span>':'<span style="color:var(--text3,#888)">–</span>'); }
+    if(r.status===403){ window._wpKey=null; box.innerHTML='<span style="color:var(--red);font-size:13px">คีย์ผิด ลองใหม่</span>'; return; }
+    if(!d.success){ box.innerHTML='<span style="color:var(--red);font-size:13px">ตรวจไม่ได้: '+(d.error||'?')+'</span>'; return; }
+    function ic(x){ return x===true?'<span style="color:var(--green,#2ecc71)">✅</span>':(x===false?'<span style="color:var(--red)">❌</span>':'<span style="color:var(--text3,#888)">–</span>'); }
     var rows=(d.rows||[]).map(function(t){
       var notes=(t.notes||[]).length?'<div style="font-size:11px;color:var(--text3,#888);padding:2px 6px 8px 6px;line-height:1.7">• '+t.notes.join('<br>• ')+'</div>':'';
       return '<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
@@ -8264,7 +7956,7 @@ async function ccDiagnose(){
         (notes?'<tr><td colspan="7" style="padding:0">'+notes+'</td></tr>':'');
     }).join('');
     var okAll=/^✅/.test(d.verdict||'');
-    box.innerHTML='<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:'+(okAll?'var(--green,#2ecc71)':'#e24b4a')+'">'+(d.verdict||'')+'</div>'+
+    box.innerHTML='<div style="font-size:13px;font-weight:600;margin-bottom:8px;color:'+(okAll?'var(--green,#2ecc71)':'var(--red)')+'">'+(d.verdict||'')+'</div>'+
       '<table style="width:100%;border-collapse:collapse;font-size:12px">'+
       '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:6px">Token</th>'+
       '<th style="padding:6px">ใช้ได้</th><th style="padding:6px">เห็น zone</th>'+
@@ -8276,22 +7968,22 @@ async function ccDiagnose(){
         '• <code>Zone</code> → <code>DNS</code> → <b>Edit</b><br>'+
         '• <code>Zone</code> → <code>Zone</code> → <b>Read</b><br>'+
         'และที่ <b>Zone Resources</b> ต้องเลือก <i>All zones</i> หรือใส่โดเมนนี้เข้าไปด้วย · เสร็จแล้วกด <b>Continue → Save</b> (ไม่ต้องสร้าง token ใหม่ ค่าเดิมใช้ได้ต่อ)</div>');
-  }catch(e){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>'; }
+  }catch(e){ box.innerHTML='<span style="color:var(--red);font-size:13px">'+e.message+'</span>'; }
 }
 
 async function ccProbe(){
   var u=((document.getElementById('cc-probe-url')||{}).value||'').trim();
   var box=document.getElementById('cc-probe-result'); if(!box) return;
-  if(!u){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">วางลิงก์ไฟล์ก่อน</span>'; return; }
+  if(!u){ box.innerHTML='<span style="color:var(--red);font-size:13px">วางลิงก์ไฟล์ก่อน</span>'; return; }
   box.innerHTML='<span style="color:var(--text3,#888);font-size:13px">กำลังยิง 2 ครั้ง (ประมาณ 3 วินาที) ...</span>';
   try{
     var r=await fetch(API+'/api/cfcache/probe?url='+encodeURIComponent(u));
     var d=await r.json();
-    if(!d.success){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">ตรวจไม่ได้: '+(d.error||'?')+'</span>'; return; }
+    if(!d.success){ box.innerHTML='<span style="color:var(--red);font-size:13px">ตรวจไม่ได้: '+(d.error||'?')+'</span>'; return; }
     function row(label,x){
       if(!x) return '';
       var cs=x.cfCacheStatus||'(ไม่มี header — ไม่ผ่าน Cloudflare)';
-      var col=/^HIT$/i.test(x.cfCacheStatus||'')?'var(--green,#2ecc71)':(/^(MISS|EXPIRED|REVALIDATED|UPDATING)$/i.test(x.cfCacheStatus||'')?'#e3b93b':'#e24b4a');
+      var col=/^HIT$/i.test(x.cfCacheStatus||'')?'var(--green,#2ecc71)':(/^(MISS|EXPIRED|REVALIDATED|UPDATING)$/i.test(x.cfCacheStatus||'')?'var(--amber)':'var(--red)');
       return '<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
         '<td style="padding:5px 8px;color:var(--text3,#888)">'+label+'</td>'+
         '<td style="padding:5px 8px">HTTP '+x.status+'</td>'+
@@ -8301,18 +7993,18 @@ async function ccProbe(){
     var second=d.second||{};
     var verdict;
     if(/^HIT$/i.test(second.cfCacheStatus||'')) verdict='<div style="color:var(--green,#2ecc71);font-weight:600;font-size:13px">🎉 สำเร็จ — Cloudflare เสิร์ฟไฟล์นี้แทนเซิร์ฟเวอร์แล้ว</div>';
-    else if(!second.cfCacheStatus && !d.first.cfCacheStatus) verdict='<div style="color:#e24b4a;font-weight:600;font-size:13px">❌ ไฟล์นี้ไม่ผ่าน Cloudflare เลย (เมฆเทา) — ต้องเปิดเมฆส้มก่อน</div>';
-    else if(/^DYNAMIC$/i.test(second.cfCacheStatus||'')) verdict='<div style="color:#e3b93b;font-weight:600;font-size:13px">⚠️ DYNAMIC = CF ยังไม่ถือว่าไฟล์นี้ cache ได้ → Cache Rule ยังไม่ทำงาน/ยังไม่ครอบนามสกุลนี้</div>';
-    else if(/^BYPASS$/i.test(second.cfCacheStatus||'')) verdict='<div style="color:#e3b93b;font-weight:600;font-size:13px">⚠️ BYPASS = มีอะไรสั่งข้าม cache (cookie / no-cache / rule อื่น)</div>';
-    else verdict='<div style="color:#e3b93b;font-weight:600;font-size:13px">⏳ ยังไม่ HIT — ลองกดซ้ำอีกครั้งใน 1-2 นาที (ครั้งแรก CF ต้องดึงจาก origin ก่อน)</div>';
+    else if(!second.cfCacheStatus && !d.first.cfCacheStatus) verdict='<div style="color:var(--red);font-weight:600;font-size:13px">❌ ไฟล์นี้ไม่ผ่าน Cloudflare เลย (เมฆเทา) — ต้องเปิดเมฆส้มก่อน</div>';
+    else if(/^DYNAMIC$/i.test(second.cfCacheStatus||'')) verdict='<div style="color:var(--amber);font-weight:600;font-size:13px">⚠️ DYNAMIC = CF ยังไม่ถือว่าไฟล์นี้ cache ได้ → Cache Rule ยังไม่ทำงาน/ยังไม่ครอบนามสกุลนี้</div>';
+    else if(/^BYPASS$/i.test(second.cfCacheStatus||'')) verdict='<div style="color:var(--amber);font-weight:600;font-size:13px">⚠️ BYPASS = มีอะไรสั่งข้าม cache (cookie / no-cache / rule อื่น)</div>';
+    else verdict='<div style="color:var(--amber);font-weight:600;font-size:13px">⏳ ยังไม่ HIT — ลองกดซ้ำอีกครั้งใน 1-2 นาที (ครั้งแรก CF ต้องดึงจาก origin ก่อน)</div>';
     box.innerHTML=verdict+
       '<table style="width:100%;border-collapse:collapse;font-size:12px;margin-top:8px">'+
       '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:5px 8px">ครั้งที่</th><th style="padding:5px 8px">สถานะ</th><th style="padding:5px 8px">cf-cache-status</th><th style="padding:5px 8px">cache-control</th></tr>'+
       row('1',d.first)+row('2',d.second)+'</table>'+
       '<div style="font-size:11px;color:var(--text3,#888);margin-top:6px">ขนาดไฟล์: '+(d.first.contentLength?(Math.round(d.first.contentLength/1024)+' KB'):'?')+
       ' · ชนิด: '+(d.first.contentType||'?')+(d.first.cfRay?' · cf-ray '+d.first.cfRay:'')+'</div>'+
-      (d.first.contentLength&&d.first.contentLength>1048576?'<div style="margin-top:6px;font-size:12px;color:#e3b93b">⚠️ ไฟล์นี้ใหญ่ '+Math.round(d.first.contentLength/1048576*10)/10+' MB — ควรบีบให้เหลือ &lt;500KB ด้วย (แบนเนอร์ไม่ควรเกินขนาดนี้)</div>':'');
-  }catch(e){ box.innerHTML='<span style="color:#e24b4a;font-size:13px">'+e.message+'</span>'; }
+      (d.first.contentLength&&d.first.contentLength>1048576?'<div style="margin-top:6px;font-size:12px;color:var(--amber)">⚠️ ไฟล์นี้ใหญ่ '+Math.round(d.first.contentLength/1048576*10)/10+' MB — ควรบีบให้เหลือ &lt;500KB ด้วย (แบนเนอร์ไม่ควรเกินขนาดนี้)</div>':'');
+  }catch(e){ box.innerHTML='<span style="color:var(--red);font-size:13px">'+e.message+'</span>'; }
 }
 
 function ccParseList(){
@@ -8381,7 +8073,7 @@ function ccPollScan(){
 function ccRenderScan(d){
   var el=document.getElementById('cc-scan-result'); if(!el) return;
   var info=document.getElementById('cc-scan-info');
-  if(d.error){ el.innerHTML='<div style="color:#e24b4a;font-size:13px">สแกนไม่สำเร็จ: '+d.error+'</div>'; return; }
+  if(d.error){ el.innerHTML='<div style="color:var(--red);font-size:13px">สแกนไม่สำเร็จ: '+d.error+'</div>'; return; }
   var paused=d.paused||[], na=d.notActive||[];
   if(info) info.textContent='(ทั้งหมด '+(d.zones||0)+' zone · จดไว้รอปลด '+(d.registry||0)+')';
   var h='';
@@ -8389,7 +8081,7 @@ function ccRenderScan(d){
     h+='<div style="color:var(--green,#2ecc71);font-size:13px;font-weight:600">✅ ไม่มี zone ไหนค้าง Pause — Cloudflare ทำงานครบทุกตัว</div>';
   }
   if(paused.length){
-    h+='<div style="color:#e24b4a;font-weight:600;font-size:13px;margin-bottom:6px">🛑 พบ '+paused.length+' zone ที่ถูก Pause อยู่ (CF ไม่ทำงาน)</div>'+
+    h+='<div style="color:var(--red);font-weight:600;font-size:13px;margin-bottom:6px">🛑 พบ '+paused.length+' zone ที่ถูก Pause อยู่ (CF ไม่ทำงาน)</div>'+
       '<div style="max-height:280px;overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'+
       '<tr style="text-align:left;color:var(--text3,#888)"><th style="padding:5px 8px">โดเมน</th><th style="padding:5px 8px">สถานะ</th>'+
       '<th style="padding:5px 8px">ค้างมา</th><th style="padding:5px 8px">บัญชี</th><th style="padding:5px 8px"></th></tr>'+
@@ -8397,14 +8089,14 @@ function ccRenderScan(d){
         return '<tr style="border-top:1px solid var(--border,#2a2a2a)">'+
           '<td style="padding:5px 8px;font-weight:600">'+p.domain+'</td>'+
           '<td style="padding:5px 8px;color:var(--text3,#888)">'+(p.status||'-')+'</td>'+
-          '<td style="padding:5px 8px;color:'+(p.stuckMin>60?'#e24b4a':'var(--text3,#888)')+'">'+
+          '<td style="padding:5px 8px;color:'+(p.stuckMin>60?'var(--red)':'var(--text3,#888)')+'">'+
             (p.stuckMin!==null&&p.stuckMin!==undefined?(p.stuckMin>=60?(Math.round(p.stuckMin/60)+' ชม.'):(p.stuckMin+' นาที')):'ไม่ทราบ')+'</td>'+
           '<td style="padding:5px 8px;color:var(--text3,#888);font-size:11px">'+(p.token||'-')+'</td>'+
           '<td style="padding:5px 8px"><button class="btn" style="padding:2px 10px;font-size:11px;background:rgba(16,185,129,0.15);color:var(--green,#2ecc71);border-color:rgba(16,185,129,0.3)" onclick="ccResumeOne(\''+p.domain+'\')">ปลด</button></td></tr>';
       }).join('')+'</table></div>';
   }
   if(na.length){
-    h+='<div style="color:#e3b93b;font-size:12px;margin-top:10px">⚠️ อีก '+na.length+' zone สถานะยังไม่ active: '+
+    h+='<div style="color:var(--amber);font-size:12px;margin-top:10px">⚠️ อีก '+na.length+' zone สถานะยังไม่ active: '+
       na.slice(0,25).map(function(x){return x.domain+' ('+x.status+')';}).join(', ')+(na.length>25?' …':'')+'</div>';
   }
   el.innerHTML=h;
@@ -8447,7 +8139,7 @@ function ccPollResume(){
     try{
       var r=await fetch(API+'/api/cfpause/resume-status'); var d=await r.json();
       var pct=d.total?Math.round(d.done/d.total*100):0;
-      var bar='<div style="background:#222;border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#2ecc71;height:100%;width:'+pct+'%;transition:width .3s"></div></div>';
+      var bar='<div style="background:var(--bg4);border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:var(--green);height:100%;width:'+pct+'%;transition:width .3s"></div></div>';
       if(box) box.innerHTML=bar+'ปลดไป '+d.done+'/'+d.total+' — <b style="color:var(--green,#2ecc71)">สำเร็จ '+d.ok+'</b> · ล้มเหลว '+d.failed+(d.running?' (กำลังทำ...)':' ✅ เสร็จแล้ว');
       window._ccResumeFails=d.failures||[];
       if(out) out.innerHTML=ccRenderResumeFails(d);
@@ -8466,7 +8158,7 @@ function ccRenderResumeFails(d){
   var head='';
   if(names.length){
     head='<div style="background:rgba(226,75,74,0.12);border:1px solid rgba(226,75,74,0.4);border-radius:8px;padding:10px;margin-bottom:8px">'+
-      '<div style="color:#e24b4a;font-weight:600;font-size:13px">🔑 ติดที่สิทธิ์ของ token</div>'+
+      '<div style="color:var(--red);font-weight:600;font-size:13px">🔑 ติดที่สิทธิ์ของ token</div>'+
       '<div style="font-size:12px;color:var(--text3,#888);margin-top:4px;line-height:1.8">'+
       names.map(function(n){return '• <b>'+n+'</b> — ปลดไม่ได้ '+bt[n]+' zone';}).join('<br>')+
       '<br><br><b style="color:var(--text,#eee)">วิธีแก้:</b> Cloudflare → My Profile → API Tokens → Edit token ตัวนั้น → '+
@@ -8474,7 +8166,7 @@ function ccRenderResumeFails(d){
       '<br>(สิทธิ์นี้คือตัวที่ใช้ pause/unpause · ค่า token ไม่เปลี่ยน ไม่ต้องแก้ Railway)</div></div>';
   }
   return head+
-    '<div style="font-size:12px;color:#e24b4a;margin-bottom:4px">ปลดไม่ได้ '+f.length+' รายการ '+
+    '<div style="font-size:12px;color:var(--red);margin-bottom:4px">ปลดไม่ได้ '+f.length+' รายการ '+
     '<button class="btn" style="padding:2px 10px;font-size:11px;margin-left:6px" onclick="ccCopyFails()">📋 คัดลอกรายชื่อ</button></div>'+
     '<div style="max-height:160px;overflow:auto;font-size:11px;color:var(--text3,#888);line-height:1.7">'+
     f.map(function(x){return '• '+x.domain+(x.token?(' ['+x.token+']'):'');}).join('<br>')+'</div>';
@@ -8501,11 +8193,11 @@ function ccPollBulk(){
       var r=await fetch(API+'/api/cfcache/bulk-status'); var d=await r.json();
       if(!box) return;
       var pct=d.total?Math.round(d.done/d.total*100):0;
-      var bar='<div style="background:#222;border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:#f58220;height:100%;width:'+pct+'%;transition:width .3s"></div></div>';
+      var bar='<div style="background:var(--bg4);border-radius:6px;height:10px;overflow:hidden;margin:6px 0"><div style="background:var(--orange);height:100%;width:'+pct+'%;transition:width .3s"></div></div>';
       var line='ทำไป '+d.done+'/'+d.total+' — สำเร็จ '+d.ok+' · ล้มเหลว '+d.failed+' · เปิดเมฆส้ม '+(d.proxied||0)+' record'+(d.running?' (กำลังทำ...)':' ✅ เสร็จแล้ว');
       var fails='';
       if(d.failures&&d.failures.length){
-        fails='<div style="margin-top:6px;color:#e24b4a">ที่ล้มเหลว ('+d.failed+'):</div>'+
+        fails='<div style="margin-top:6px;color:var(--red)">ที่ล้มเหลว ('+d.failed+'):</div>'+
           '<div style="max-height:140px;overflow:auto;font-size:11px;color:var(--text3,#888)">'+
           d.failures.map(function(f){return '• '+f.domain+': '+f.error;}).join('<br>')+'</div>';
       }
